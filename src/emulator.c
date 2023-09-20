@@ -71,14 +71,14 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
   DEBUG("Emulating instruction\n");
 
   if (fi->common->has_mask) {
-    ERROR("Cannot handle masks yet\n");
-    ASSERT(0);
+    // ERROR("Cannot handle masks yet\n");
+    // ASSERT(0);
     return -1;
   }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    ERROR("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
-    ASSERT(0);
+    // ERROR("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
+    // ASSERT(0);
     return -1;
   }
 
@@ -103,13 +103,13 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
       src1 = fi->operand_addrs[1];
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op_map!\n");
+        // ERROR("Using vanilla op_map!\n");
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle unary instruction with op_size = %d\n", fi->common->op_size);
-        ASSERT(0);
+        // ERROR("Cannot handle unary instruction with op_size = %d\n", fi->common->op_size);
+        // ASSERT(0);
         return -1;
       }
 
@@ -237,7 +237,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         // PAD: IS THIS RIGHT?
-        ERROR("Using vanilla op map for 8 bytes?!\n");
+        // ERROR("Using vanilla op map for 8 bytes?!\n");
         func = vanilla_op_map[fi->common->op_type][1];  // PAD: why is this vanilla?
       } else {
         ERROR("Cannot handle f2u or f2i instruction with op_size = %d\n", fi->common->op_size);
@@ -300,8 +300,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
       break;
 
     default:
-      ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
-      ASSERT(0);
+      // ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
+      return -1;
       break;
   }
 

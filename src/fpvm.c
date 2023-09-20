@@ -1110,80 +1110,99 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
   char instbuf[256];
+  long stream_index = 0;
 
-  START_PERF(mc, decode_cache);
-  fi = decode_cache_lookup(mc, rip);
-  END_PERF(mc, decode_cache);
 
-  if (!fi) {
-    DEBUG("Instruction is not in the decode cache\n");
-    START_PERF(mc, decode);
-    fi = fpvm_decoder_decode_inst(rip);
-    END_PERF(mc, decode);
-    do_insert = 1;
-  }
-  // usleep(10000);
-  // fpvm_decoder_print_inst(fi, stderr);
 
-  if (!fi) {
-    ERROR("Cannot decode instruction\n");
-    ASSERT(0);
-    // BAD
-    goto fail_do_trap;
-  }
+  while (1) {
+    // Construct the fpvm register state.
+    fpvm_regs_t regs;
+    regs.mcontext = &uc->uc_mcontext;
+    // PAD: This stupidly just treats everything as SSE2
+    // and must be fixed
+    regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+    regs.fpr_size = 16;
 
-  fpvm_regs_t regs;
+    long ind = stream_index++;
+    START_PERF(mc, decode_cache);
+    fi = decode_cache_lookup(mc, rip);
+    END_PERF(mc, decode_cache);
 
-  regs.mcontext = &uc->uc_mcontext;
+    if (!fi) {
+      if (ind != 0) break;
+      DEBUG("Instruction is not in the decode cache\n");
+      START_PERF(mc, decode);
+      fi = fpvm_decoder_decode_inst(rip);
+      END_PERF(mc, decode);
+      do_insert = 1;
+    }
+    // fpvm_decoder_print_inst(fi, stderr);
 
-  // PAD: This stupidly just treats everything as SSE2
-  // and must be fixed
-  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
-  regs.fpr_size = 16;
+    if (!fi) {
+      if (ind != 0) break;
 
-  // bind operands
-  START_PERF(mc, bind);
-  if (fpvm_decoder_bind_operands(fi, &regs)) {
+      ERROR("Cannot decode instruction\n");
+      ASSERT(0);
+      // BAD
+      goto fail_do_trap;
+    }
+
+    // bind operands
+    START_PERF(mc, bind);
+    if (fpvm_decoder_bind_operands(fi, &regs)) {
+      if (ind == 0) {
+        END_PERF(mc, bind);
+        ERROR("Cannot bind operands of instruction\n");
+        ASSERT(0);
+        goto fail_do_trap;
+      } else {
+        break;
+      }
+    }
     END_PERF(mc, bind);
-    ERROR("Cannot bind operands of instruction\n");
-    ASSERT(0);
-    goto fail_do_trap;
-  }
-  END_PERF(mc, bind);
 
-#if DEBUG_OUTPUT
-  DEBUG("Detailed instruction dump:\n");
-  fpvm_decoder_print_inst(fi, stderr);
-#endif
+    // #if DEBUG_OUTPUT
+    //   DEBUG("Detailed instruction dump:\n");
+    //   fpvm_decoder_print_inst(fi, stderr);
+    // #endif
 
-  DEBUG("About to emulate:\n");
-#if DEBUG_OUTPUT
-  fpvm_dump_xmms_double(stderr, regs.fprs);
-  fpvm_dump_xmms_float(stderr, regs.fprs);
-  fpvm_dump_float_control(stderr, uc);
-  fpvm_dump_gprs(stderr, uc);
-#endif
+    //   DEBUG("About to emulate:\n");
+    // #if DEBUG_OUTPUT
+    //   fpvm_dump_xmms_double(stderr, regs.fprs);
+    //   fpvm_dump_xmms_float(stderr, regs.fprs);
+    //   fpvm_dump_float_control(stderr, uc);
+    //   fpvm_dump_gprs(stderr, uc);
+    // #endif
 
-  START_PERF(mc, emulate);
-  if (fpvm_emulator_emulate_inst(fi)) {
+    START_PERF(mc, emulate);
+    if (fpvm_emulator_emulate_inst(fi)) {
+      if (ind == 0) {
+        END_PERF(mc, emulate);
+        ERROR("Failed to emulate instruction\n");
+        ASSERT(0);
+        goto fail_do_trap;
+      } else {
+        break;
+      }
+    }
     END_PERF(mc, emulate);
-    ERROR("Failed to emulate instruction\n");
-    ASSERT(0);
-    goto fail_do_trap;
-    ;
+
+    rip += fi->length;
+    break;
   }
-  END_PERF(mc, emulate);
 
-  DEBUG("Emulation done:\n");
-#if DEBUG_OUTPUT
-  fpvm_dump_xmms_double(stderr, regs.fprs);
-  fpvm_dump_xmms_float(stderr, regs.fprs);
-  fpvm_dump_float_control(stderr, uc);
-  fpvm_dump_gprs(stderr, uc);
-#endif
 
-  // skip instruction
-  uc->uc_mcontext.gregs[REG_RIP] += fi->length;
+
+  // DEBUG("Emulation done:\n");
+  // #if DEBUG_OUTPUT
+  //   fpvm_dump_xmms_double(stderr, regs.fprs);
+  //   fpvm_dump_xmms_float(stderr, regs.fprs);
+  //   fpvm_dump_float_control(stderr, uc);
+  //   fpvm_dump_gprs(stderr, uc);
+  // #endif
+
+  // Skip those instructions we just emulated.
+  uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
 
   if (do_insert) {
     // put into the cache for next time

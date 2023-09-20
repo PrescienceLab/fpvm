@@ -261,6 +261,7 @@ static int decode_to_common(fpvm_inst_t *fi) {
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     ERROR("instruction decodes to unknown common op type\n");
+    return -1;
   }
   return 0;
 }
@@ -336,6 +337,7 @@ void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
 
   fprintf(out, "0x%" PRIx64 ":\t%s\t\t%s (%u bytes)\n", inst->address, inst->mnemonic, inst->op_str,
       inst->size);
+  return;
 
   fprintf(out, " instruction: %x (%s)\n", inst->id, inst_name(inst->id));
 
