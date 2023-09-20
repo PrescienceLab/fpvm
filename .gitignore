@@ -9,3 +9,5 @@ include/fpvm/config.h
 config.mk
 .vscode
 gc.log
+
+/bench/

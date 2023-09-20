@@ -330,6 +330,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
         "%p,%p,%p,%p,%p)\n",
         func, special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
         src4);
+
+    // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
+    //            If this begins to cause problems, we will have to fix that
+    if (special.byte_width > 8) special.byte_width = 8;
     rc |= func(&special, dest, src1, src2, src3, src4);
   }
 
