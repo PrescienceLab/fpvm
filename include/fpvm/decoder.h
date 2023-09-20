@@ -15,21 +15,21 @@ typedef enum {
   FPVM_OP_MAX,
 
   // comparisons
-  FPVM_OP_CMP,   // ordered compare of floats
-  FPVM_OP_UCMP,  //  unordered compare of floats
-  FPVM_OP_LTCMP, // write to dest of less than result
+  FPVM_OP_CMP,    // ordered compare of floats
+  FPVM_OP_UCMP,   //  unordered compare of floats
+  FPVM_OP_LTCMP,  // write to dest of less than result
 
   // float to integer conversion
   FPVM_OP_F2I,
-  FPVM_OP_F2IT, // f2i with trunctation
+  FPVM_OP_F2IT,  // f2i with trunctation
   FPVM_OP_F2U,
-  FPVM_OP_F2UT, // f2u with trunction
+  FPVM_OP_F2UT,  // f2u with trunction
 
   // integer to float conversion
   FPVM_OP_I2F,
-  FPVM_OP_I2FT, // do we need?
+  FPVM_OP_I2FT,  // do we need?
   FPVM_OP_U2F,
-  FPVM_OP_U2FT, // do we need?
+  FPVM_OP_U2FT,  // do we need?
 
   // float to float conversion
   FPVM_OP_F2F,
@@ -47,11 +47,11 @@ typedef enum {
 
 typedef struct {
   fpvm_op_t op_type;
-  int is_vector;    // is this a vector FP?
-  int has_mask;     // mask vector?
-  unsigned op_size; // size of operands
+  int is_vector;     // is this a vector FP?
+  int has_mask;      // mask vector?
+  unsigned op_size;  // size of operands
   // dest_size is currently only meaningful for conversion (F2* or I2* or U2*)
-  unsigned dest_size; // size of destination operands in conversion
+  unsigned dest_size;  // size of destination operands in conversion
 } fpvm_inst_common_t;
 
 typedef struct fpvm_inst {
@@ -62,17 +62,17 @@ typedef struct fpvm_inst {
 
   // note that operands are in the *intel* order, not the at&t order
   unsigned operand_count;
-  void *operand_addrs[16];    // where each operand is
-  unsigned operand_sizes[16]; // size of operand (different from op_size in the
-                              // case of registers)
+  void *operand_addrs[16];     // where each operand is
+  unsigned operand_sizes[16];  // size of operand (different from op_size in the
+                               // case of registers)
 
   uint64_t *side_effect_addrs[8];
   // For x86:
   // 0 => rflags, 1=mxcsr, etc
 
-  void *internal; // internal representation (e.g., capstone)
+  void *internal;  // internal representation (e.g., capstone)
 
-  void *link; // for use by the caller in any way they want (decoder cache, say)
+  void *link;  // for use by the caller in any way they want (decoder cache, say)
 
 } fpvm_inst_t;
 
@@ -83,15 +83,15 @@ typedef struct fpvm_inst {
 // exactly how >SSE2 registers are actually handled.
 //
 typedef struct fpvm_regs {
-  mcontext_t *mcontext; // including GPRs and FP context like mxcsr
+  mcontext_t *mcontext;  // including GPRs and FP context like mxcsr
 
   // fprs points to a blob that contains the
   // register contents in order (xmm0,xmm1, ...)
   // the fpr_size is intended to capture the base size of
   // the registers in the implementation, e.g, 16 bytes, 32 bytes,
   // etc.
-  unsigned fpr_size; // e.g., xmm=16, ymm=32, zmm=64 not provided by kernel
-  void *fprs;        // pointer to the xmm/ymm/zmm registers
+  unsigned fpr_size;  // e.g., xmm=16, ymm=32, zmm=64 not provided by kernel
+  void *fprs;         // pointer to the xmm/ymm/zmm registers
 
 } fpvm_regs_t;
 

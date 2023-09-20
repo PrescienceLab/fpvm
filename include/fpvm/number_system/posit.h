@@ -6,9 +6,10 @@
 #include <fpvm/number_system.h>
 #define POSIT_NUMBER_SYSTEM 1
 
-#define __POSIT_BIN_OP(type, op)\
-    int posit_##op##_##type(op_special_t *special,void *dest, void *src1, void *src2, void *src3, void *src4){ \
-    }
+#define __POSIT_BIN_OP(type, op)                                                           \
+  int posit_##op##_##type(                                                                 \
+      op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
+  }
 
 __POSIT_BIN_OP(add, double);
 __POSIT_BIN_OP(sub, double);

@@ -24,18 +24,18 @@
 
 #define RESET "\e[0m"
 
-#define MAX(a, b)                                                              \
-  ({                                                                           \
-    __typeof__(a) _a = (a);                                                    \
-    __typeof__(b) _b = (b);                                                    \
-    _a > _b ? _a : _b;                                                         \
+#define MAX(a, b)           \
+  ({                        \
+    __typeof__(a) _a = (a); \
+    __typeof__(b) _b = (b); \
+    _a > _b ? _a : _b;      \
   })
 
-#define MIN(a, b)                                                              \
-  ({                                                                           \
-    __typeof__(a) _a = (a);                                                    \
-    __typeof__(b) _b = (b);                                                    \
-    _a < _b ? _a : _b;                                                         \
+#define MIN(a, b)           \
+  ({                        \
+    __typeof__(a) _a = (a); \
+    __typeof__(b) _b = (b); \
+    _a < _b ? _a : _b;      \
   })
 
 #define RAT_DO_DEBUG
@@ -48,14 +48,18 @@
 #define RAT_DEBUG(...)
 #endif
 
-void fpvm_number_init(void *ptr) { (void)ptr; }
+void fpvm_number_init(void *ptr) {
+  (void)ptr;
+}
 
 typedef struct fraction_s {
   double num;
   double den;
 } rat_t;
 
-void rat_print(rat_t a) { printf("%lf/%lf", a.num, a.den); }
+void rat_print(rat_t a) {
+  printf("%lf/%lf", a.num, a.den);
+}
 
 rat_t rat_simplify(rat_t a) {
   return a;
@@ -73,8 +77,7 @@ rat_t rat_simplify(rat_t a) {
     result.den = 0;
   } else {
     while (gcd > 1) {
-      if (x1 % gcd == 0 && x2 % gcd == 0)
-        break;
+      if (x1 % gcd == 0 && x2 % gcd == 0) break;
       gcd--;
     }
     result.num = x1 / gcd;
@@ -101,7 +104,7 @@ rat_t rat_new(double val) {
   }
 
   int exponent;
-  double significand = frexp(val, &exponent); // val = significand * 2^exponent
+  double significand = frexp(val, &exponent);  // val = significand * 2^exponent
   double numerator = val;
   double denominator = 1;
   // 0.5 <= significand < 1.0
@@ -181,7 +184,9 @@ rat_t rat_min(rat_t a, rat_t b) {
   return rat_new(MIN(rat_solve(a), rat_solve(b)));
 }
 
-void fpvm_number_deinit(void *ptr) { (void)ptr; }
+void fpvm_number_deinit(void *ptr) {
+  (void)ptr;
+}
 
 rat_t *allocate_rat(double initial_value = 0.0) {
   rat_t *val = (rat_t *)fpvm_gc_alloc(sizeof(*val));
@@ -242,8 +247,7 @@ static rat_t *rat_unbox(void *double_ptr) {
   return rat_value;
 }
 
-static void fpvm_rat_debug_binary_op(const char *name, rat_t *src1,
-                                     rat_t *src2) {
+static void fpvm_rat_debug_binary_op(const char *name, rat_t *src1, rat_t *src2) {
   // decode_to_double(src1);
   // decode_to_double(src2);
 
@@ -260,15 +264,15 @@ static void fpvm_rat_debug_binary_op(const char *name, rat_t *src1,
   // RAT_DEBUG("%s \t%.32RNf\t%.32RNf\n", name, src1, src2);
 }
 
-#define RAT_BINARY_OP(NAME, TYPE)                                              \
-  FPVM_MATH_DECL(NAME, TYPE) {                                                 \
-    rat_t *rat_dst = allocate_rat();                                           \
-    rat_t *rat_src1 = rat_unbox(src1);                                         \
-    rat_t *rat_src2 = rat_unbox(src2);                                         \
-    fpvm_rat_debug_binary_op(#NAME, rat_src1, rat_src2);                       \
-    *rat_dst = rat_##NAME(*rat_src1, *rat_src2);                               \
-    *(double *)dest = rat_box(rat_dst);                                        \
-    return 0;                                                                  \
+#define RAT_BINARY_OP(NAME, TYPE)                        \
+  FPVM_MATH_DECL(NAME, TYPE) {                           \
+    rat_t *rat_dst = allocate_rat();                     \
+    rat_t *rat_src1 = rat_unbox(src1);                   \
+    rat_t *rat_src2 = rat_unbox(src2);                   \
+    fpvm_rat_debug_binary_op(#NAME, rat_src1, rat_src2); \
+    *rat_dst = rat_##NAME(*rat_src1, *rat_src2);         \
+    *(double *)dest = rat_box(rat_dst);                  \
+    return 0;                                            \
   }
 
 RAT_BINARY_OP(add, double);
@@ -355,22 +359,22 @@ FPVM_MATH_DECL(nmsub, double) {
 FPVM_MATH_DECL(f2i, double) {
   double value = decode_to_double(src1);
   switch (special->byte_width) {
-  case 1:
-    *(int8_t *)src2 = value;
-    break;
-  case 2:
-    *(int16_t *)src2 = value;
-    break;
-  case 4:
-    *(int32_t *)src2 = value;
-    break;
-  case 8:
-    *(int64_t *)src2 = value;
-    break;
-  default:
-    ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
-    return -1;
-    break;
+    case 1:
+      *(int8_t *)src2 = value;
+      break;
+    case 2:
+      *(int16_t *)src2 = value;
+      break;
+    case 4:
+      *(int32_t *)src2 = value;
+      break;
+    case 8:
+      *(int64_t *)src2 = value;
+      break;
+    default:
+      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      return -1;
+      break;
   }
   return 0;
 }
@@ -378,40 +382,39 @@ FPVM_MATH_DECL(f2i, double) {
 FPVM_MATH_DECL(f2u, double) {
   double value = decode_to_double(src1);
   switch (special->byte_width) {
-  case 1:
-    *(uint8_t *)src2 = value;
-    break;
-  case 2:
-    *(uint16_t *)src2 = value;
-    break;
-  case 4:
-    *(uint32_t *)src2 = value;
-    break;
-  case 8:
-    *(uint64_t *)src2 = value;
-    break;
-  default:
-    ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
-    return -1;
-    break;
+    case 1:
+      *(uint8_t *)src2 = value;
+      break;
+    case 2:
+      *(uint16_t *)src2 = value;
+      break;
+    case 4:
+      *(uint32_t *)src2 = value;
+      break;
+    case 8:
+      *(uint64_t *)src2 = value;
+      break;
+    default:
+      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      return -1;
+      break;
   }
   return 0;
 }
 
-int f2f_double(op_special_t *special, void *dest, void *src1, void *src2,
-               void *src3, void *src4) {
+int f2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   double value = decode_to_double(src1);
   switch (special->byte_width) {
-  case 4:
-    *(float *)src2 = value;
-    break;
-  case 8:
-    *(double *)src2 = value;
-    break;
-  default:
-    ERROR("Cannot handle double->float(%d)\n", special->byte_width);
-    return -1;
-    break;
+    case 4:
+      *(float *)src2 = value;
+      break;
+    case 8:
+      *(double *)src2 = value;
+      break;
+    default:
+      ERROR("Cannot handle double->float(%d)\n", special->byte_width);
+      return -1;
+      break;
   }
   return 0;
 }
@@ -425,16 +428,13 @@ FPVM_MATH_DECL(u2f, double) {
   return 0;
 }
 
-int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
-                void *src3, void *src4) {
+int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   // rat_t *dst = allocate_rat();
   *(double *)dest = sqrt(decode_to_double(src1));
   return 0;
 }
 
-int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
-               void *src3, void *src4) {
-
+int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   double a = decode_to_double(src1);
   double b = decode_to_double(src2);
 
@@ -445,8 +445,7 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
   // compare_result = 0 - src1 = src2
   int compare_result = a - b;
   uint64_t *rflags = special->rflags;
-  *rflags &=
-      ~(RFLAGS_OF | RFLAGS_AF | RFLAGS_SF | RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);
+  *rflags &= ~(RFLAGS_OF | RFLAGS_AF | RFLAGS_SF | RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);
 
   if (isnan(a) || isnan(b)) {
     *rflags |= (RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);
@@ -455,17 +454,16 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
       *rflags |= (RFLAGS_CF);
     } else if (compare_result == 0) {
       *rflags |= (RFLAGS_ZF);
-    } else if (compare_result > 0) { // a>b
-                                     // set nothing
+    } else if (compare_result > 0) {  // a>b
+                                      // set nothing
     }
   }
   return 0;
 }
 
-int restore_double(op_special_t *special, void *dest, void *src1, void *src2,
-                   void *src3, void *src4) {
-  RAT_DEBUG("restore_double %016lx  %016lx\n", *(uint64_t *)src1,
-            *(uint64_t *)src2);
+int restore_double(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  RAT_DEBUG("restore_double %016lx  %016lx\n", *(uint64_t *)src1, *(uint64_t *)src2);
   void *allsrc[4] = {src1, src2, src3, src4};
   for (int i = 0; i < 4; i++) {
     if (allsrc[i] != NULL) {
@@ -475,10 +473,9 @@ int restore_double(op_special_t *special, void *dest, void *src1, void *src2,
   return 0;
 }
 
-int restore_float(op_special_t *special, void *dest, void *src1, void *src2,
-                  void *src3, void *src4) {
-  RAT_ERROR("restore_float %016lx  %016lx\n", *(uint64_t *)src1,
-            *(uint64_t *)src2);
+int restore_float(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  RAT_ERROR("restore_float %016lx  %016lx\n", *(uint64_t *)src1, *(uint64_t *)src2);
   // skip float
   return 0;
 }

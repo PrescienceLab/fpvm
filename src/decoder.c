@@ -130,13 +130,11 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     // float to integer conversion
 
     [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
-    [X86_INS_VCVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8,
-                           4}, // rounding mode changed as side effect?
-    [X86_INS_VCVTSD2USI] = {FPVM_OP_F2U, 0, 0, 8,
-                            4}, // rounding mode changed as side effect?
+    [X86_INS_VCVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},   // rounding mode changed as side effect?
+    [X86_INS_VCVTSD2USI] = {FPVM_OP_F2U, 0, 0, 8, 4},  // rounding mode changed as side effect?
     [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
-    [X86_INS_VCVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},  // rounding mode?
-    [X86_INS_VCVTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4}, // rounding mode?
+    [X86_INS_VCVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},   // rounding mode?
+    [X86_INS_VCVTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4},  // rounding mode?
     [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
     [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
 
@@ -299,8 +297,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   size_t count = cs_disasm(handle, addr, 16, (uint64_t)addr, 1, &inst);
 
   if (count != 1) {
-    ERROR("Failed to decode instruction (return=%lu, errno=%d)\n", count,
-          cs_errno(handle));
+    ERROR("Failed to decode instruction (return=%lu, errno=%d)\n", count, cs_errno(handle));
     return 0;
   }
 
@@ -337,84 +334,76 @@ void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
   cs_insn *inst = (cs_insn *)fi->internal;
   int i;
 
-  fprintf(out, "0x%" PRIx64 ":\t%s\t\t%s (%u bytes)\n", inst->address,
-          inst->mnemonic, inst->op_str, inst->size);
+  fprintf(out, "0x%" PRIx64 ":\t%s\t\t%s (%u bytes)\n", inst->address, inst->mnemonic, inst->op_str,
+      inst->size);
 
   fprintf(out, " instruction: %x (%s)\n", inst->id, inst_name(inst->id));
 
-  fprintf(out, " op_type=%d is_vector=%d has_mask=%d op_size=%d\n",
-          fi->common->op_type, fi->common->is_vector, fi->common->has_mask,
-          fi->common->op_size);
+  fprintf(out, " op_type=%d is_vector=%d has_mask=%d op_size=%d\n", fi->common->op_type,
+      fi->common->is_vector, fi->common->has_mask, fi->common->op_size);
 
   fprintf(out, " %d bound operands:\n", fi->operand_count);
   for (i = 0; i < fi->operand_count; i++) {
-    fprintf(out, "  %d -> (%p, %u)\n", i, fi->operand_addrs[i],
-            fi->operand_sizes[i]);
+    fprintf(out, "  %d -> (%p, %u)\n", i, fi->operand_addrs[i], fi->operand_sizes[i]);
   }
 
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
 
   fprintf(out,
-          " %u implicit regs read %u implict regs written, instruction in %u "
-          "groups\n",
-          det->regs_read_count, det->regs_write_count, det->groups_count);
+      " %u implicit regs read %u implict regs written, instruction in %u "
+      "groups\n",
+      det->regs_read_count, det->regs_write_count, det->groups_count);
   if (det->regs_read_count > 0) {
     for (i = 0; i < det->regs_read_count; i++) {
-      fprintf(out, "  implicit read %02x - %s\n", det->regs_read[i],
-              reg_name(det->regs_read[i]));
+      fprintf(out, "  implicit read %02x - %s\n", det->regs_read[i], reg_name(det->regs_read[i]));
     }
   }
   if (det->regs_write_count > 0) {
     for (i = 0; i < det->regs_write_count; i++) {
-      fprintf(out, "  implicit write %02x - %s\n", det->regs_write[i],
-              reg_name(det->regs_write[i]));
+      fprintf(
+          out, "  implicit write %02x - %s\n", det->regs_write[i], reg_name(det->regs_write[i]));
     }
   }
   if (det->groups_count > 0) {
     for (i = 0; i < det->groups_count; i++) {
-      fprintf(out, "  group %02x - %s \n", det->groups[i],
-              group_name(det->groups[i]));
+      fprintf(out, "  group %02x - %s \n", det->groups[i], group_name(det->groups[i]));
     }
   }
   fprintf(out,
-          " prefixes: %02x (%s) %02x (%s) %02x (%s) %02x (%s) rex: %02x  "
-          "baseaddrsize: %02x\n",
-          x86->prefix[0], prefix_name(x86->prefix[0]), x86->prefix[1],
-          prefix_name(x86->prefix[1]), x86->prefix[2],
-          prefix_name(x86->prefix[2]), x86->prefix[3],
-          prefix_name(x86->prefix[3]), x86->rex, x86->addr_size);
-  fprintf(out, " opcode: %02x %02x %02x %02x\n", x86->opcode[0], x86->opcode[1],
-          x86->opcode[2], x86->opcode[3]);
-  fprintf(out,
-          " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08lx\n",
-          x86->modrm, x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale,
-          x86->disp);
+      " prefixes: %02x (%s) %02x (%s) %02x (%s) %02x (%s) rex: %02x  "
+      "baseaddrsize: %02x\n",
+      x86->prefix[0], prefix_name(x86->prefix[0]), x86->prefix[1], prefix_name(x86->prefix[1]),
+      x86->prefix[2], prefix_name(x86->prefix[2]), x86->prefix[3], prefix_name(x86->prefix[3]),
+      x86->rex, x86->addr_size);
+  fprintf(out, " opcode: %02x %02x %02x %02x\n", x86->opcode[0], x86->opcode[1], x86->opcode[2],
+      x86->opcode[3]);
+  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08lx\n", x86->modrm,
+      x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale, x86->disp);
 
   fprintf(out, " operands: %02x\n", x86->op_count);
   for (i = 0; i < x86->op_count; i++) {
     cs_x86_op *o = &x86->operands[i];
     switch (o->type) {
-    case X86_OP_REG:
-      fprintf(out, "  %d: register %d (%s)\n", i, o->reg, reg_name(o->reg));
-      break;
-    case X86_OP_IMM:
-      fprintf(out, "  %d: immediate %016lx\n", i, o->imm);
-      break;
-    // case X86_OP_FP:
-    //   fprintf(out,"  %d: float immediate %lf (%016lx)\n", i, o->fp,
-    //   *(uint64_t*)&o->fp); break;
-    case X86_OP_MEM:
-      fprintf(out,
-              "  %d: memory (seg=%d (%s) base=%d (%s) index=%d (%s), scale=%d, "
-              "disp=016%lx)\n",
-              i, o->mem.segment, reg_name(o->mem.segment), o->mem.base,
-              reg_name(o->mem.base), o->mem.index, reg_name(o->mem.index),
-              o->mem.scale, o->mem.disp);
-      break;
-    default:
-      fprintf(out, "  %d: UNKNOWN\n", i);
-      break;
+      case X86_OP_REG:
+        fprintf(out, "  %d: register %d (%s)\n", i, o->reg, reg_name(o->reg));
+        break;
+      case X86_OP_IMM:
+        fprintf(out, "  %d: immediate %016lx\n", i, o->imm);
+        break;
+      // case X86_OP_FP:
+      //   fprintf(out,"  %d: float immediate %lf (%016lx)\n", i, o->fp,
+      //   *(uint64_t*)&o->fp); break;
+      case X86_OP_MEM:
+        fprintf(out,
+            "  %d: memory (seg=%d (%s) base=%d (%s) index=%d (%s), scale=%d, "
+            "disp=016%lx)\n",
+            i, o->mem.segment, reg_name(o->mem.segment), o->mem.base, reg_name(o->mem.base),
+            o->mem.index, reg_name(o->mem.index), o->mem.scale, o->mem.disp);
+        break;
+      default:
+        fprintf(out, "  %d: UNKNOWN\n", i);
+        break;
     }
   }
 }
@@ -435,9 +424,7 @@ void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
 
 #define IS_NORMAL_FPR(r) (IS_XMM(r) || IS_YMM(r) || IS_ZMM(r))
 
-#define IS_FPR(r)                                                              \
-  (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) ||       \
-   IS_MMX(r))
+#define IS_FPR(r) (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) || IS_MMX(r))
 
 // the map is from capstone regnum to mcontext gpr, offset (assuming
 // little endian), size
@@ -495,8 +482,8 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
     [X86_REG_EBP] = {REG_RBP, 0, 4},
     [X86_REG_RBP] = {REG_RBP, 0, 8},
 
-#define SANE_GPR(x)                                                            \
-  [X86_REG_##x##B] = {REG_##x, 0, 1}, [X86_REG_##x##W] = {REG_##x, 0, 2},      \
+#define SANE_GPR(x)                                                       \
+  [X86_REG_##x##B] = {REG_##x, 0, 1}, [X86_REG_##x##W] = {REG_##x, 0, 2}, \
   [X86_REG_##x##D] = {REG_##x, 0, 4}, [X86_REG_##x] = {REG_##x, 0, 8}
 
     SANE_GPR(R8),
@@ -542,13 +529,11 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 
   int i;
 
-  DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n",
-        fr->mcontext, fr->fprs, fr->fpr_size);
+  DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n", fr->mcontext, fr->fprs,
+      fr->fpr_size);
 
-  if (fi->common->op_type == FPVM_OP_CMP ||
-      fi->common->op_type == FPVM_OP_UCMP) {
-    fi->side_effect_addrs[0] =
-        (void *)(uint64_t *)&fr->mcontext->gregs[REG_EFL];
+  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
+    fi->side_effect_addrs[0] = (void *)(uint64_t *)&fr->mcontext->gregs[REG_EFL];
     // PAD: DO WE HANDLE SIDE EFFECTS IN COMPARES CORRECTLY?
     // CMP/UCMP put their result in the rflags register
     // WHAT ABOUT OTEHR SIDE EFFECTING INSTRUCTIONS?
@@ -566,209 +551,201 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   for (i = 0; i < x86->op_count; i++) {
     cs_x86_op *o = &x86->operands[i];
     switch (o->type) {
+      case X86_OP_REG:
 
-    case X86_OP_REG:
+        if (IS_FPR(o->reg)) {
+          // PAD: how FPRs beyond the classic x87 and 16 xmm registers are
+          // conveyed to a signal handler is a bit of a mystery, hence this
+          // assertion see /usr/include/x86_64-linux-gnu/sys/ucontext.h for why
+          // this is confusing that's the system-specific defn of an mcontext. it
+          // may be that we have to explicitly handle FPRs beyond these by a dump
+          // and restore chunk of assembly
+          ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) && ((o->reg - X86_REG_XMM0) < 16) &&
+                 ((o->reg - X86_REG_XMM0) >= 0));
 
-      if (IS_FPR(o->reg)) {
-        // PAD: how FPRs beyond the classic x87 and 16 xmm registers are
-        // conveyed to a signal handler is a bit of a mystery, hence this
-        // assertion see /usr/include/x86_64-linux-gnu/sys/ucontext.h for why
-        // this is confusing that's the system-specific defn of an mcontext. it
-        // may be that we have to explicitly handle FPRs beyond these by a dump
-        // and restore chunk of assembly
-        ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) &&
-               ((o->reg - X86_REG_XMM0) < 16) &&
-               ((o->reg - X86_REG_XMM0) >= 0));
-
-        if (IS_NORMAL_FPR(o->reg)) {
-          if (IS_XMM(o->reg)) {
-            // PAD: probably wrong for > xmm15
-            fi->operand_addrs[fi->operand_count] =
-                fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
-            if (fr->fpr_size >= 16) {
-              fi->operand_sizes[fi->operand_count] = 16;
-            } else {
-              ERROR("incompatable fpr size for xmm\n");
-              return -1;
-            }
-          } else if (IS_YMM(o->reg)) {
-            // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
-            // stashes these contents
-            fi->operand_addrs[fi->operand_count] =
-                fr->fprs + fr->fpr_size * (o->reg - X86_REG_YMM0);
-            if (fr->fpr_size >= 32) {
+          if (IS_NORMAL_FPR(o->reg)) {
+            if (IS_XMM(o->reg)) {
+              // PAD: probably wrong for > xmm15
+              fi->operand_addrs[fi->operand_count] =
+                  fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
+              if (fr->fpr_size >= 16) {
+                fi->operand_sizes[fi->operand_count] = 16;
+              } else {
+                ERROR("incompatable fpr size for xmm\n");
+                return -1;
+              }
+            } else if (IS_YMM(o->reg)) {
+              // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
+              // stashes these contents
+              fi->operand_addrs[fi->operand_count] =
+                  fr->fprs + fr->fpr_size * (o->reg - X86_REG_YMM0);
+              if (fr->fpr_size >= 32) {
+                fi->operand_sizes[fi->operand_count] = 32;
+              } else {
+                ERROR("incompatable fpr size for ymm\n");
+                return -1;
+              }
               fi->operand_sizes[fi->operand_count] = 32;
+            } else if (IS_ZMM(o->reg)) {
+              // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
+              // stashes these contents
+              fi->operand_addrs[fi->operand_count] =
+                  fr->fprs + fr->fpr_size * (o->reg - X86_REG_ZMM0);
+              if (fr->fpr_size >= 64) {
+                fi->operand_sizes[fi->operand_count] = 64;
+              } else {
+                ERROR("incompatable fpr size for zmm\n");
+                return -1;
+              }
             } else {
-              ERROR("incompatable fpr size for ymm\n");
-              return -1;
-            }
-            fi->operand_sizes[fi->operand_count] = 32;
-          } else if (IS_ZMM(o->reg)) {
-            // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
-            // stashes these contents
-            fi->operand_addrs[fi->operand_count] =
-                fr->fprs + fr->fpr_size * (o->reg - X86_REG_ZMM0);
-            if (fr->fpr_size >= 64) {
-              fi->operand_sizes[fi->operand_count] = 64;
-            } else {
-              ERROR("incompatable fpr size for zmm\n");
+              // PAD: Should catch
+              ERROR("unsupported normal fpr\n");
+              ASSERT(0);
               return -1;
             }
           } else {
-            // PAD: Should catch
-            ERROR("unsupported normal fpr\n");
+            ERROR("unsupported whacko fpr %s\n", reg_name(o->reg));
             ASSERT(0);
             return -1;
           }
-        } else {
-          ERROR("unsupported whacko fpr %s\n", reg_name(o->reg));
-          ASSERT(0);
-          return -1;
+          DEBUG("Mapped FPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
+
+        } else {  // GPR
+
+          // PAD: if we are handling a GPR, it should really only be because of a
+          // float<->int conversion
+
+          // PAD: it is possible the capstone->mcontext mapping is wrong (see
+          // capstone_to_mcontext array)
+
+          reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(o->reg);
+
+          if (MCREG(m) == REG_NONE || MCREG(m) == REG_ZERO) {
+            ERROR("No mapping of %s!\n", reg_name(o->reg));
+            ASSERT(0);
+            return -1;
+          }
+
+          // PAD: the following should be sanity checked.   The idea is to
+          // generate addresses within the mcontext that correspond to the
+          // capstone register
+          fi->operand_addrs[fi->operand_count] =
+              (void *)(((uint64_t)(&(fr->mcontext->gregs[MCREG(m)]))) + MCOFF(m));
+          fi->operand_sizes[fi->operand_count] = MCSIZE(m);
+
+          DEBUG("Mapped GPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
         }
-        DEBUG("Mapped FPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
-              fi->operand_addrs[fi->operand_count],
-              fi->operand_sizes[fi->operand_count]);
 
-      } else { // GPR
+        fi->operand_count++;
 
-        // PAD: if we are handling a GPR, it should really only be because of a
-        // float<->int conversion
+        break;
 
-        // PAD: it is possible the capstone->mcontext mapping is wrong (see
-        // capstone_to_mcontext array)
-
-        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(o->reg);
-
-        if (MCREG(m) == REG_NONE || MCREG(m) == REG_ZERO) {
-          ERROR("No mapping of %s!\n", reg_name(o->reg));
-          ASSERT(0);
-          return -1;
-        }
-
-        // PAD: the following should be sanity checked.   The idea is to
-        // generate addresses within the mcontext that correspond to the
-        // capstone register
-        fi->operand_addrs[fi->operand_count] =
-            (void *)(((uint64_t)(&(fr->mcontext->gregs[MCREG(m)]))) + MCOFF(m));
-        fi->operand_sizes[fi->operand_count] = MCSIZE(m);
-
-        DEBUG("Mapped GPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
-              fi->operand_addrs[fi->operand_count],
-              fi->operand_sizes[fi->operand_count]);
-      }
-
-      fi->operand_count++;
-
-      break;
-
-    case X86_OP_IMM:
-      // PAD: I don't think any of the instructions we will see in SSE2 will
-      // include an immediate, so this is here for completeness ERROR("Huh - saw
-      // an immediate!\n");
-      fi->operand_addrs[fi->operand_count] = &o->imm;
-      fi->operand_sizes[fi->operand_count] = 8;
-      DEBUG("Mapped immediate %016lx at %p (%u)\n", o->imm,
-            fi->operand_addrs[fi->operand_count],
+      case X86_OP_IMM:
+        // PAD: I don't think any of the instructions we will see in SSE2 will
+        // include an immediate, so this is here for completeness ERROR("Huh - saw
+        // an immediate!\n");
+        fi->operand_addrs[fi->operand_count] = &o->imm;
+        fi->operand_sizes[fi->operand_count] = 8;
+        DEBUG("Mapped immediate %016lx at %p (%u)\n", o->imm, fi->operand_addrs[fi->operand_count],
             fi->operand_sizes[fi->operand_count]);
-      fi->operand_count++;
+        fi->operand_count++;
 
-      break;
+        break;
 
-      //
-      // PAD: I don't know what this operand type in capstone is supposed to
-      // represent My guess is that it's an FP immediate in some new encoding
-      // (probably after SSE2)
-      //    case X86_OP_FP:
-      // ERROR("X86_OP_FP\n");
-      // ASSERT(0);
-      /// return -1;
-      /// break;
-      //   fi->operand_addrs[fi->operand_count] = &o->imm;
-      //   fi->operand_sizes[fi->operand_count] = 8;
-      //   DEBUG("Mapped FP immediate %016lx (%lf) at %p
-      //   (%u)\n",*(uint64_t*)(double*)&(o->fp),o->fp,
-      //   fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count]);
-      //   fi->operand_count++;
+        //
+        // PAD: I don't know what this operand type in capstone is supposed to
+        // represent My guess is that it's an FP immediate in some new encoding
+        // (probably after SSE2)
+        //    case X86_OP_FP:
+        // ERROR("X86_OP_FP\n");
+        // ASSERT(0);
+        /// return -1;
+        /// break;
+        //   fi->operand_addrs[fi->operand_count] = &o->imm;
+        //   fi->operand_sizes[fi->operand_count] = 8;
+        //   DEBUG("Mapped FP immediate %016lx (%lf) at %p
+        //   (%u)\n",*(uint64_t*)(double*)&(o->fp),o->fp,
+        //   fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count]);
+        //   fi->operand_count++;
 
-      //   break;
+        //   break;
 
-    case X86_OP_MEM: {
+      case X86_OP_MEM: {
+        // PAD: We must handle memory operands, and in SSE2, these appear to only
+        // be generated in the traditional x86 manner (scaled base index
+        // diplacement mode), including the use of rip as the base This code
+        // computes the memory address and size.   if it gets it wrong any
+        // resulting read/write could corrupt memory
+        x86_op_mem *mo = &o->mem;
 
-      // PAD: We must handle memory operands, and in SSE2, these appear to only
-      // be generated in the traditional x86 manner (scaled base index
-      // diplacement mode), including the use of rip as the base This code
-      // computes the memory address and size.   if it gets it wrong any
-      // resulting read/write could corrupt memory
-      x86_op_mem *mo = &o->mem;
-
-      DEBUG("Decoding seg=%d (%s) disp=%016lx base=%d (%s) index=%d (%s) "
+        DEBUG(
+            "Decoding seg=%d (%s) disp=%016lx base=%d (%s) index=%d (%s) "
             "scale=%d\n",
-            mo->segment, reg_name(mo->segment), mo->disp, mo->base,
-            reg_name(mo->base), mo->index, reg_name(mo->index), mo->scale);
+            mo->segment, reg_name(mo->segment), mo->disp, mo->base, reg_name(mo->base), mo->index,
+            reg_name(mo->index), mo->scale);
 
-      if (mo->segment == X86_REG_FS || mo->segment == X86_REG_GS) {
-        // PAD: This is thread-local storage
-        // Note that all other segment overrides are ignored because
-        // other segments are all base 0 in 64 bit mode.   It could be that
-        // the segment descriptor can override the default size, though, but
-        // I don't believe that's the case
-        ERROR("Cannot currently handle FS/GS override (TLS)\n");
+        if (mo->segment == X86_REG_FS || mo->segment == X86_REG_GS) {
+          // PAD: This is thread-local storage
+          // Note that all other segment overrides are ignored because
+          // other segments are all base 0 in 64 bit mode.   It could be that
+          // the segment descriptor can override the default size, though, but
+          // I don't believe that's the case
+          ERROR("Cannot currently handle FS/GS override (TLS)\n");
+          ASSERT(0);
+          return -1;
+        }
+
+        // Now we ignore the segment assuming we are in 64 bit mode
+
+        // Now process in the usual order disp(base, index, scale)
+        uint64_t addr = mo->disp;
+
+        if (mo->base != X86_REG_INVALID) {
+          //
+          // PAD: again these mappings into the mcontext must be correct
+          // for this to work.
+          // and capstone better not use some out of range psuedoregister
+          reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base);
+          addr += fr->mcontext->gregs[MCREG(m)];
+          // in rip-relative mode, rip is the address of the next instruction
+          // rip can only used for the base register, which is why this code
+          // does not exist elsewhere
+          if (MCREG(m) == REG_RIP) {
+            addr += fi->length;
+          }
+        } else {
+          // PAD: this is probably OK, it just means there is no base register
+        }
+
+        if (mo->index != X86_REG_INVALID) {
+          // PAD: again, assuming the mapping to mcontext are correct and no
+          // surprise pseudoregister
+          reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);
+          addr += fr->mcontext->gregs[MCREG(m)] * mo->scale;  // assuming scale is not shift amount
+        } else {
+          // PAD: this is probably OK, it just means there is no index regiser
+        }
+
+        fi->operand_addrs[fi->operand_count] = (void *)addr;
+        ;
+        // PAD: the following assumes there is no operand size override for
+        // integer and it assumes that for FP we are always talking about 8 byte
+        // quantities
+        fi->operand_sizes[fi->operand_count] = 8;  // PAD: THIS IS BOGUS
+
+        DEBUG("Mapped memory operand to %p (%u) [SIZE BOGUS!] data %016lx (%lf)\n",
+            fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count],
+            *(uint64_t *)addr, *(double *)addr);
+        fi->operand_count++;
+      } break;
+
+      default:
+        ERROR("WTF? \n");
         ASSERT(0);
         return -1;
-      }
-
-      // Now we ignore the segment assuming we are in 64 bit mode
-
-      // Now process in the usual order disp(base, index, scale)
-      uint64_t addr = mo->disp;
-
-      if (mo->base != X86_REG_INVALID) {
-        //
-        // PAD: again these mappings into the mcontext must be correct
-        // for this to work.
-        // and capstone better not use some out of range psuedoregister
-        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base);
-        addr += fr->mcontext->gregs[MCREG(m)];
-        // in rip-relative mode, rip is the address of the next instruction
-        // rip can only used for the base register, which is why this code
-        // does not exist elsewhere
-        if (MCREG(m) == REG_RIP) {
-          addr += fi->length;
-        }
-      } else {
-        // PAD: this is probably OK, it just means there is no base register
-      }
-
-      if (mo->index != X86_REG_INVALID) {
-        // PAD: again, assuming the mapping to mcontext are correct and no
-        // surprise pseudoregister
-        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);
-        addr += fr->mcontext->gregs[MCREG(m)] *
-                mo->scale; // assuming scale is not shift amount
-      } else {
-        // PAD: this is probably OK, it just means there is no index regiser
-      }
-
-      fi->operand_addrs[fi->operand_count] = (void *)addr;
-      ;
-      // PAD: the following assumes there is no operand size override for
-      // integer and it assumes that for FP we are always talking about 8 byte
-      // quantities
-      fi->operand_sizes[fi->operand_count] = 8; // PAD: THIS IS BOGUS
-
-      DEBUG(
-          "Mapped memory operand to %p (%u) [SIZE BOGUS!] data %016lx (%lf)\n",
-          fi->operand_addrs[fi->operand_count],
-          fi->operand_sizes[fi->operand_count], *(uint64_t *)addr,
-          *(double *)addr);
-      fi->operand_count++;
-    } break;
-
-    default:
-      ERROR("WTF? \n");
-      ASSERT(0);
-      return -1;
-      break;
+        break;
     }
   }
 
@@ -776,9 +753,9 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 }
 
 static char *group_name(uint8_t group) {
-#define DO_GROUP(x)                                                            \
-  case x:                                                                      \
-    return #x;                                                                 \
+#define DO_GROUP(x) \
+  case x:           \
+    return #x;      \
     break;
 
   switch (group) {
@@ -829,59 +806,59 @@ static char *group_name(uint8_t group) {
     DO_GROUP(X86_GRP_VLX);
     DO_GROUP(X86_GRP_SMAP);
     DO_GROUP(X86_GRP_NOVLX);
-  default:
-    return "UNKNOWN";
+    default:
+      return "UNKNOWN";
   }
 }
 
 static char *prefix_name(uint8_t prefix) {
   switch (prefix) {
-  case X86_PREFIX_LOCK:
-    return "LOCK";
-    break;
-  case X86_PREFIX_REP:
-    return "REP";
-    break;
-  case X86_PREFIX_REPNE:
-    return "REPNE";
-    break;
-  case X86_PREFIX_CS:
-    return "CS";
-    break;
-  case X86_PREFIX_SS:
-    return "SS";
-    break;
-  case X86_PREFIX_DS:
-    return "DS";
-    break;
-  case X86_PREFIX_ES:
-    return "ES";
-    break;
-  case X86_PREFIX_FS:
-    return "FS";
-    break;
-  case X86_PREFIX_GS:
-    return "GS";
-    break;
-  case X86_PREFIX_OPSIZE:
-    return "OPSIZE";
-    break;
-  case X86_PREFIX_ADDRSIZE:
-    return "ADDRSIZE";
-    break;
-  case 0:
-    return "none";
-    break;
-  default:
-    return "UNKNOWN";
-    break;
+    case X86_PREFIX_LOCK:
+      return "LOCK";
+      break;
+    case X86_PREFIX_REP:
+      return "REP";
+      break;
+    case X86_PREFIX_REPNE:
+      return "REPNE";
+      break;
+    case X86_PREFIX_CS:
+      return "CS";
+      break;
+    case X86_PREFIX_SS:
+      return "SS";
+      break;
+    case X86_PREFIX_DS:
+      return "DS";
+      break;
+    case X86_PREFIX_ES:
+      return "ES";
+      break;
+    case X86_PREFIX_FS:
+      return "FS";
+      break;
+    case X86_PREFIX_GS:
+      return "GS";
+      break;
+    case X86_PREFIX_OPSIZE:
+      return "OPSIZE";
+      break;
+    case X86_PREFIX_ADDRSIZE:
+      return "ADDRSIZE";
+      break;
+    case 0:
+      return "none";
+      break;
+    default:
+      return "UNKNOWN";
+      break;
   }
 }
 
 static char *reg_name(x86_reg reg) {
-#define DO_REG(x)                                                              \
-  case x:                                                                      \
-    return #x;                                                                 \
+#define DO_REG(x) \
+  case x:         \
+    return #x;    \
     break;
   switch (reg) {
     DO_REG(X86_REG_AH);
@@ -1117,16 +1094,16 @@ static char *reg_name(x86_reg reg) {
     DO_REG(X86_REG_R13W);
     DO_REG(X86_REG_R14W);
     DO_REG(X86_REG_R15W);
-  default:
-    return "UNKNOWN";
-    break;
+    default:
+      return "UNKNOWN";
+      break;
   }
 }
 
 static char *inst_name(x86_insn inst) {
-#define DO_INST(x)                                                             \
-  case x:                                                                      \
-    return #x;                                                                 \
+#define DO_INST(x) \
+  case x:          \
+    return #x;     \
     break;
 
   switch (inst) {
@@ -2424,8 +2401,8 @@ static char *inst_name(x86_insn inst) {
     DO_INST(X86_INS_XSHA256);
     DO_INST(X86_INS_XSTORE);
     DO_INST(X86_INS_XTEST);
-  default:
-    return "UNKNOWN";
-    break;
+    default:
+      return "UNKNOWN";
+      break;
   }
 }

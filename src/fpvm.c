@@ -74,13 +74,11 @@
 #include <fpvm/number_system.h>
 
 volatile static int inited = 0;
-volatile static int aborted =
-    0; // set if the target is doing its own FPE processing
+volatile static int aborted = 0;  // set if the target is doing its own FPE processing
 
-volatile static int exceptmask =
-    FE_ALL_EXCEPT; // which C99 exceptions to handle, default all
+volatile static int exceptmask = FE_ALL_EXCEPT;  // which C99 exceptions to handle, default all
 volatile static int mxcsrmask_base =
-    0x3f; // which sse exceptions to handle, default all (using base zero)
+    0x3f;  // which sse exceptions to handle, default all (using base zero)
 
 #define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
 #define MXCSR_MASK_MASK (mxcsrmask_base << 7)
@@ -89,21 +87,20 @@ volatile static int mxcsrmask_base =
 // All masked, flags zeroed, round nearest, special features off
 #define MXCSR_OURS 0x1f80
 
-static int control_mxcsr_round_daz_ftz = 0;    // control the rounding bits
-static uint32_t orig_mxcsr_round_daz_ftz_mask; // captured at start
+static int control_mxcsr_round_daz_ftz = 0;     // control the rounding bits
+static uint32_t orig_mxcsr_round_daz_ftz_mask;  // captured at start
 static uint32_t our_mxcsr_round_daz_ftz_mask =
-    0; // as we want to run 0 = round to nearest, no FAZ, no DAZ (IEEE default)
+    0;  // as we want to run 0 = round to nearest, no FAZ, no DAZ (IEEE default)
 
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
 
 static int (*orig_fork)() = 0;
-static int (*orig_pthread_create)(pthread_t *tid, const pthread_attr_t *attr,
-                                  void *(*start)(void *), void *arg) = 0;
+static int (*orig_pthread_create)(
+    pthread_t *tid, const pthread_attr_t *attr, void *(*start)(void *), void *arg) = 0;
 static int (*orig_pthread_exit)(void *ret) __attribute__((noreturn)) = 0;
 static sighandler_t (*orig_signal)(int sig, sighandler_t func) = 0;
-static int (*orig_sigaction)(int sig, const struct sigaction *act,
-                             struct sigaction *oldact) = 0;
+static int (*orig_sigaction)(int sig, const struct sigaction *act, struct sigaction *oldact) = 0;
 // static int (*orig_feenableexcept)(int) = 0 ;
 // static int (*orig_fedisableexcept)(int) = 0 ;
 // static int (*orig_fegetexcept)() = 0 ;
@@ -161,22 +158,22 @@ double (*orig___powidf2)(double a, int b) = 0;
 
 static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int;
 
-#define ORIG_RETURN(func, ...)                                                 \
-  if (orig_##func) {                                                           \
-    return orig_##func(__VA_ARGS__);                                           \
-  } else {                                                                     \
-    ERROR("cannot call orig_" #func " returning zero\n");                      \
-    return 0;                                                                  \
+#define ORIG_RETURN(func, ...)                            \
+  if (orig_##func) {                                      \
+    return orig_##func(__VA_ARGS__);                      \
+  } else {                                                \
+    ERROR("cannot call orig_" #func " returning zero\n"); \
+    return 0;                                             \
   }
-#define ORIG_IF_CAN(func, ...)                                                 \
-  if (orig_##func) {                                                           \
-    if (!DEBUG_OUTPUT) {                                                       \
-      orig_##func(__VA_ARGS__);                                                \
-    } else {                                                                   \
-      DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__));        \
-    }                                                                          \
-  } else {                                                                     \
-    DEBUG("cannot call orig_" #func " - skipping\n");                          \
+#define ORIG_IF_CAN(func, ...)                                          \
+  if (orig_##func) {                                                    \
+    if (!DEBUG_OUTPUT) {                                                \
+      orig_##func(__VA_ARGS__);                                         \
+    } else {                                                            \
+      DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
+    }                                                                   \
+  } else {                                                              \
+    DEBUG("cannot call orig_" #func " - skipping\n");                   \
   }
 
 #define SHOW_CALL_STACK()
@@ -195,8 +192,7 @@ typedef struct execution_context {
   uint64_t total_inst;
   uint64_t emulated_inst;
 
-  fpvm_inst_t *
-      *decode_cache; // chaining hash - array of pointers to instructions
+  fpvm_inst_t **decode_cache;  // chaining hash - array of pointers to instructions
   uint64_t decode_cache_size;
   uint64_t decode_cache_hits;
   uint64_t decode_cache_unique;
@@ -212,12 +208,12 @@ typedef struct execution_context {
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
 #define PRINT_PERF(c, x) perf_stat_print(&c->x##_stat, stderr)
-#define PRINT_PERFS(c)                                                         \
-  PRINT_PERF(c, gc);                                                           \
-  PRINT_PERF(c, decode_cache);                                                 \
-  PRINT_PERF(c, decode);                                                       \
-  PRINT_PERF(c, bind);                                                         \
-  PRINT_PERF(c, emulate);                                                      \
+#define PRINT_PERFS(c)         \
+  PRINT_PERF(c, gc);           \
+  PRINT_PERF(c, decode_cache); \
+  PRINT_PERF(c, decode);       \
+  PRINT_PERF(c, bind);         \
+  PRINT_PERF(c, emulate);      \
   PRINT_PERF(c, patch);
 #else
 #define START_PERF(c, x)
@@ -231,22 +227,22 @@ typedef struct execution_context {
 typedef union {
   uint32_t val;
   struct {
-    uint8_t ie : 1;       // detected nan
-    uint8_t de : 1;       // detected denormal
-    uint8_t ze : 1;       // detected divide by zero
-    uint8_t oe : 1;       // detected overflow (infinity)
-    uint8_t ue : 1;       // detected underflow (zero)
-    uint8_t pe : 1;       // detected precision (rounding)
-    uint8_t daz : 1;      // denormals become zeros
-    uint8_t im : 1;       // mask nan exceptions
-    uint8_t dm : 1;       // mask denorm exceptions
-    uint8_t zm : 1;       // mask zero exceptions
-    uint8_t om : 1;       // mask overflow exceptions
-    uint8_t um : 1;       // mask underflow exceptions
-    uint8_t pm : 1;       // mask precision exceptions
-    uint8_t rounding : 2; // rounding (toward
-                          // 00=>nearest,01=>negative,10=>positive,11=>zero)
-    uint8_t fz : 1;       // flush to zero (denormals are zeros)
+    uint8_t ie : 1;        // detected nan
+    uint8_t de : 1;        // detected denormal
+    uint8_t ze : 1;        // detected divide by zero
+    uint8_t oe : 1;        // detected overflow (infinity)
+    uint8_t ue : 1;        // detected underflow (zero)
+    uint8_t pe : 1;        // detected precision (rounding)
+    uint8_t daz : 1;       // denormals become zeros
+    uint8_t im : 1;        // mask nan exceptions
+    uint8_t dm : 1;        // mask denorm exceptions
+    uint8_t zm : 1;        // mask zero exceptions
+    uint8_t om : 1;        // mask overflow exceptions
+    uint8_t um : 1;        // mask underflow exceptions
+    uint8_t pm : 1;        // mask precision exceptions
+    uint8_t rounding : 2;  // rounding (toward
+                           // 00=>nearest,01=>negative,10=>positive,11=>zero)
+    uint8_t fz : 1;        // flush to zero (denormals are zeros)
     uint16_t rest;
   } __attribute__((packed));
 } __attribute__((packed)) mxcsr_t;
@@ -255,29 +251,29 @@ typedef union {
   uint64_t val;
   struct {
     // note that not all of these are visible in user mode
-    uint8_t cf : 1;     // detected carry
-    uint8_t res1 : 1;   // reserved MB1
-    uint8_t pf : 1;     // detected parity
-    uint8_t res2 : 1;   // reserved
-    uint8_t af : 1;     // detected adjust (BCD math)
-    uint8_t res3 : 1;   // resered
-    uint8_t zf : 1;     // detected zero
-    uint8_t sf : 1;     // detected negative
-    uint8_t tf : 1;     // trap enable flag (single stepping)
-    uint8_t intf : 1;   // interrupt enable flag
-    uint8_t df : 1;     // direction flag (1=down);
-    uint8_t of : 1;     // detected overflow
-    uint8_t iopl : 2;   // I/O privilege level (ring)
-    uint8_t nt : 1;     // nested task
-    uint8_t res4 : 1;   // reserved
-    uint8_t rf : 1;     // resume flag;
-    uint8_t vm : 1;     // virtual 8086 mode
-    uint8_t ac : 1;     // alignment check enable
-    uint8_t vif : 1;    // virtual interrupt flag
-    uint8_t vip : 1;    // virtual interrupt pending;
-    uint8_t id : 1;     // have cpuid instruction
-    uint16_t res5 : 10; // reserved
-    uint32_t res6;      // nothing in top half of rflags yet
+    uint8_t cf : 1;      // detected carry
+    uint8_t res1 : 1;    // reserved MB1
+    uint8_t pf : 1;      // detected parity
+    uint8_t res2 : 1;    // reserved
+    uint8_t af : 1;      // detected adjust (BCD math)
+    uint8_t res3 : 1;    // resered
+    uint8_t zf : 1;      // detected zero
+    uint8_t sf : 1;      // detected negative
+    uint8_t tf : 1;      // trap enable flag (single stepping)
+    uint8_t intf : 1;    // interrupt enable flag
+    uint8_t df : 1;      // direction flag (1=down);
+    uint8_t of : 1;      // detected overflow
+    uint8_t iopl : 2;    // I/O privilege level (ring)
+    uint8_t nt : 1;      // nested task
+    uint8_t res4 : 1;    // reserved
+    uint8_t rf : 1;      // resume flag;
+    uint8_t vm : 1;      // virtual 8086 mode
+    uint8_t ac : 1;      // alignment check enable
+    uint8_t vif : 1;     // virtual interrupt flag
+    uint8_t vip : 1;     // virtual interrupt pending;
+    uint8_t id : 1;      // have cpuid instruction
+    uint16_t res5 : 10;  // reserved
+    uint32_t res6;       // nothing in top half of rflags yet
   } __attribute__((packed));
 } __attribute__((packed)) rflags_t;
 
@@ -304,7 +300,9 @@ static void lock_contexts() {
   }
 }
 
-static void unlock_contexts() { __sync_and_and_fetch(&context_lock, 0); }
+static void unlock_contexts() {
+  __sync_and_and_fetch(&context_lock, 0);
+}
 
 static execution_context_t *find_execution_context(int tid) {
   int i;
@@ -358,21 +356,21 @@ static void stringify_current_fe_exceptions(char *buf) {
   uint32_t mxcsr = get_mxcsr();
   buf[0] = 0;
 
-#define FE_HANDLE(x)                                                           \
-  if (orig_fetestexcept(x)) {                                                  \
-    if (!have) {                                                               \
-      strcat(buf, #x);                                                         \
-      have = 1;                                                                \
-    } else {                                                                   \
-      strcat(buf, " " #x);                                                     \
-    }                                                                          \
+#define FE_HANDLE(x)          \
+  if (orig_fetestexcept(x)) { \
+    if (!have) {              \
+      strcat(buf, #x);        \
+      have = 1;               \
+    } else {                  \
+      strcat(buf, " " #x);    \
+    }                         \
   }
   FE_HANDLE(FE_DIVBYZERO);
   FE_HANDLE(FE_INEXACT);
   FE_HANDLE(FE_INVALID);
   FE_HANDLE(FE_OVERFLOW);
   FE_HANDLE(FE_UNDERFLOW);
-  if (mxcsr & 0x2) { // denorm
+  if (mxcsr & 0x2) {  // denorm
     if (have) {
       strcat(buf, " ");
     }
@@ -405,9 +403,9 @@ static void dump_rflags(char *pre, ucontext_t *uc) {
 
   sprintf(buf, "rflags = %016lx", r->val);
 
-#define EF(x, y)                                                               \
-  if (r->x) {                                                                  \
-    strcat(buf, " " #y);                                                       \
+#define EF(x, y)         \
+  if (r->x) {            \
+    strcat(buf, " " #y); \
   }
 
   EF(zf, zero);
@@ -431,9 +429,9 @@ static void dump_mxcsr(char *pre, ucontext_t *uc) {
 
   sprintf(buf, "mxcsr = %08x flags:", m->val);
 
-#define MF(x, y)                                                               \
-  if (m->x) {                                                                  \
-    strcat(buf, " " #y);                                                       \
+#define MF(x, y)         \
+  if (m->x) {            \
+    strcat(buf, " " #y); \
   }
 
   MF(ie, NAN);
@@ -453,11 +451,11 @@ static void dump_mxcsr(char *pre, ucontext_t *uc) {
   MF(pm, precision);
 
   DEBUG("%s: %s rounding: %s %s %s\n", pre, buf,
-        m->rounding == 0   ? "nearest"
-        : m->rounding == 1 ? "negative"
-        : m->rounding == 2 ? "positive"
-                           : "zero",
-        m->daz ? "DAZ" : "", m->fz ? "FTZ" : "");
+      m->rounding == 0   ? "nearest"
+      : m->rounding == 1 ? "negative"
+      : m->rounding == 2 ? "positive"
+                         : "zero",
+      m->daz ? "DAZ" : "", m->fz ? "FTZ" : "");
 }
 
 #endif
@@ -606,8 +604,7 @@ static void *trampoline(void *p) {
   pthread_exit(ret);
 }
 
-int pthread_create(pthread_t *tid, const pthread_attr_t *attr,
-                   void *(*start)(void *), void *arg) {
+int pthread_create(pthread_t *tid, const pthread_attr_t *attr, void *(*start)(void *), void *arg) {
   struct tramp_context c;
 
   DEBUG("pthread_create\n");
@@ -649,12 +646,12 @@ sighandler_t signal(int sig, sighandler_t func) {
   SHOW_CALL_STACK();
   if ((sig == SIGFPE || sig == SIGTRAP) && !aborted) {
     if (!aggressive) {
-      abort_operation(
-          "target is using sigaction with SIGFPE or SIGTRAP (nonaggressive)");
+      abort_operation("target is using sigaction with SIGFPE or SIGTRAP (nonaggressive)");
     } else {
       // do not override our signal handlers - we are not aborting
-      DEBUG("not overriding SIGFPE or SIGTRAP because we are in aggressive "
-            "mode\n");
+      DEBUG(
+          "not overriding SIGFPE or SIGTRAP because we are in aggressive "
+          "mode\n");
       return 0;
     }
   }
@@ -669,8 +666,9 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *oldact) {
       abort_operation("target is using sigaction with SIGFPE or SIGTRAP");
     } else {
       // do not override our signal handlers - we are not aborting
-      DEBUG("not overriding SIGFPE or SIGTRAP because we are in aggressive "
-            "mode\n");
+      DEBUG(
+          "not overriding SIGFPE or SIGTRAP because we are in aggressive "
+          "mode\n");
       return 0;
     }
   }
@@ -776,10 +774,10 @@ int feupdateenv(const fenv_t *envp) {
 }
 
 static int setup_shims() {
-#define SHIMIFY(x)                                                             \
-  if (!(orig_##x = dlsym(RTLD_NEXT, #x))) {                                    \
-    ERROR("Failed to setup SHIM for " #x "\n");                                \
-    return -1;                                                                 \
+#define SHIMIFY(x)                              \
+  if (!(orig_##x = dlsym(RTLD_NEXT, #x))) {     \
+    ERROR("Failed to setup SHIM for " #x "\n"); \
+    return -1;                                  \
   }
 
   if (disable_pthreads == 0) {
@@ -852,18 +850,15 @@ static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
     uc->uc_mcontext.fpregs->mxcsr &= MXCSR_ROUND_DAZ_FTZ_MASK;
     uc->uc_mcontext.fpregs->mxcsr |= mask;
     DEBUG("mxcsr masked to 0x%08x after round daz ftz update (0x%08x)\n",
-          uc->uc_mcontext.fpregs->mxcsr, mask);
+        uc->uc_mcontext.fpregs->mxcsr, mask);
     // dump_mxcsr("set_mxcsr_round_daz_ftz: ", uc);
   }
 }
 
-inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c,
-                                               void *rip);
-inline static void decode_cache_insert(execution_context_t *c,
-                                       fpvm_inst_t *inst);
+inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c, void *rip);
+inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst);
 
 static void fp_restore_handler(void *priv) {
-
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
 
   execution_context_t *mc = find_execution_context(gettid());
@@ -952,18 +947,17 @@ out:
 static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
-  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo,
-        si->si_errno, si->si_code, si->si_addr);
+  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
+      si->si_addr);
 
   if (!mc || mc->state == ABORT) {
-    clear_fp_exceptions_context(uc);       // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 1); // exceptions masked
+    clear_fp_exceptions_context(uc);        // exceptions cleared
+    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
-    set_trap_flag_context(uc, 0); // traps disabled
+    set_trap_flag_context(uc, 0);  // traps disabled
     if (!mc) {
       // this may end badly
-      abort_operation(
-          "Cannot find execution context during sigtrap_handler exec");
+      abort_operation("Cannot find execution context during sigtrap_handler exec");
     } else {
       DEBUG("FP and TRAP mcontext restored on abort\n");
     }
@@ -973,8 +967,8 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   // turn FP exceptions back on
   if (mc) {
     orig_mxcsr_round_daz_ftz_mask = get_mxcsr_round_daz_ftz(uc);
-    clear_fp_exceptions_context(uc);       // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 0); // exceptions unmasked
+    clear_fp_exceptions_context(uc);        // exceptions cleared
+    set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
     set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
     // set_trap_flag_context(uc,0);         // traps disabled
 
@@ -1030,8 +1024,7 @@ inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
 }
 
-inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c,
-                                               void *rip) {
+inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c, void *rip) {
   uint64_t bin = decode_cache_hash_rip(rip, c->decode_cache_size);
 
   fpvm_inst_t *cur = c->decode_cache[bin];
@@ -1039,8 +1032,7 @@ inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c,
 
   while (cur) {
     if (cur->addr == rip) {
-      DEBUG("Found instruction %p in the decode cache bin %lu chain %lu\n", rip,
-            bin, count);
+      DEBUG("Found instruction %p in the decode cache bin %lu chain %lu\n", rip, bin, count);
       c->decode_cache_hits++;
       return cur;
     }
@@ -1048,22 +1040,19 @@ inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c,
     count++;
   }
 
-  DEBUG("Instruction %p is not in the decode cache bin %lu chain %lu\n", rip,
-        bin, count);
+  DEBUG("Instruction %p is not in the decode cache bin %lu chain %lu\n", rip, bin, count);
 
   return 0;
 }
 
-inline static void decode_cache_insert(execution_context_t *c,
-                                       fpvm_inst_t *inst) {
+inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst) {
   uint64_t bin = decode_cache_hash_rip(inst->addr, c->decode_cache_size);
 
   inst->link = (void *)c->decode_cache[bin];
   c->decode_cache[bin] = inst;
   c->decode_cache_unique++;
 
-  DEBUG("Instruction %p inserted in the decode cache bin %lu chain 0\n",
-        inst->addr, bin);
+  DEBUG("Instruction %p inserted in the decode cache bin %lu chain 0\n", inst->addr, bin);
 }
 
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
@@ -1077,20 +1066,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   fpvm_gc_run();
   END_PERF(mc, gc);
 
-  DEBUG("FPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
-        "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-        si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1],
-        rip[2], rip[3], rip[4], rip[5], rip[6], rip[7], rip[8], rip[9], rip[10],
-        rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG(
+      "FPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
+      "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+      si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
+      rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
   DEBUG("FPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
 
   if (!mc) {
-    clear_fp_exceptions_context(uc);       // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 1); // exceptions masked
+    clear_fp_exceptions_context(uc);        // exceptions cleared
+    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
-    set_trap_flag_context(uc, 0); // traps disabled
-    abort_operation(
-        "Cannot find execution context during sigfpvm_handler exec");
+    set_trap_flag_context(uc, 0);  // traps disabled
+    abort_operation("Cannot find execution context during sigfpvm_handler exec");
     ASSERT(0);
     return;
   }
@@ -1099,9 +1087,9 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
 #if DEBUG_OUTPUT
   char buf[80];
-#define CASE(X)                                                                \
-  case X:                                                                      \
-    strcpy(buf, #X);                                                           \
+#define CASE(X)      \
+  case X:            \
+    strcpy(buf, #X); \
     break;
   switch (si->si_code) {
     CASE(FPE_FLTDIV);
@@ -1112,9 +1100,9 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     CASE(FPE_FLTSUB);
     CASE(FPE_INTDIV);
     CASE(FPE_INTOVF);
-  default:
-    sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
-    break;
+    default:
+      sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
+      break;
   }
   DEBUG("FPE exceptions: %s\n", buf);
 #endif
@@ -1207,10 +1195,10 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   mc->emulated_inst++;
 
   if (!(mc->total_inst % 1000000)) {
-    INFO("%lu total instructions handled, %lu emulated successfully, %lu "
-         "decode cache hits, %lu unique instructions\n",
-         mc->total_inst, mc->emulated_inst, mc->decode_cache_hits,
-         mc->decode_cache_unique);
+    INFO(
+        "%lu total instructions handled, %lu emulated successfully, %lu "
+        "decode cache hits, %lu unique instructions\n",
+        mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
     PRINT_PERFS(mc);
   }
 
@@ -1222,28 +1210,28 @@ fail_do_trap:
 
   fpvm_decoder_get_inst_str(fi, instbuf, 256);
 
-  ERROR("Unable to emulate instruction and starting single step - instr %s - "
-        "rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x "
-        "%02x %02x %02x %02x %02x %02x\n",
-        instbuf, rip, rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6],
-        rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14],
-        rip[15]);
+  ERROR(
+      "Unable to emulate instruction and starting single step - instr %s - "
+      "rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x "
+      "%02x %02x %02x %02x %02x %02x\n",
+      instbuf, rip, rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7], rip[8], rip[9],
+      rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
 
   if (fi) {
     fpvm_decoder_free_inst(fi);
   }
 
   if (!(mc->total_inst % 1000000)) {
-    INFO("%lu total instructions handled, %lu emulated successfully\n",
-         mc->total_inst, mc->emulated_inst);
+    INFO("%lu total instructions handled, %lu emulated successfully\n", mc->total_inst,
+        mc->emulated_inst);
   }
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
-  clear_fp_exceptions_context(uc);       // exceptions cleared
-  set_mask_fp_exceptions_context(uc, 1); // exceptions masked
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
   set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
-  set_trap_flag_context(uc, 1); // traps disabled
+  set_trap_flag_context(uc, 1);  // traps disabled
 
   // our next stop should be the instruction, and then, immediately afterwards,
   // the sigtrap handler
@@ -1254,11 +1242,10 @@ fail_do_trap:
 static __attribute__((destructor)) void fpvm_deinit(void);
 
 static void sigint_handler(int sig, siginfo_t *si, void *priv) {
-
   DEBUG("Handling break\n");
 
   if (oldsa_int.sa_sigaction) {
-    fpvm_deinit(); // dump everything out
+    fpvm_deinit();  // dump everything out
     // invoke underlying handler
     oldsa_int.sa_sigaction(sig, si, priv);
   } else {
@@ -1325,7 +1312,6 @@ static int teardown_execution_context(int tid) {
 }
 
 static int bringup() {
-
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
 
@@ -1388,7 +1374,6 @@ static int bringup() {
 // This should probably be specific to FPVM, but
 // when we invoke
 static void config_exceptions(char *buf) {
-
   exceptmask = 0;
   mxcsrmask_base = 0;
 
@@ -1399,7 +1384,7 @@ static void config_exceptions(char *buf) {
   }
   if (strcasestr(buf, "den")) {
     DEBUG("tracking DENORM\n");
-    exceptmask |= 0; // not provided...
+    exceptmask |= 0;  // not provided...
     mxcsrmask_base |= 0x2;
   }
   if (strcasestr(buf, "div")) {
@@ -1451,24 +1436,19 @@ static void config_round_daz_ftz(char *buf) {
   control_mxcsr_round_daz_ftz = 1;
   our_mxcsr_round_daz_ftz_mask = r;
 
-  DEBUG("Configuring rounding control to 0x%08x\n",
-        our_mxcsr_round_daz_ftz_mask);
+  DEBUG("Configuring rounding control to 0x%08x\n", our_mxcsr_round_daz_ftz_mask);
 }
 
 // Called on load of preload library
 static __attribute__((constructor)) void fpvm_init(void) {
-
   INFO("init\n");
   if (!inited) {
-    if (getenv("FPVM_AGGRESSIVE") &&
-        tolower(getenv("FPVM_AGGRESSIVE")[0]) == 'y') {
+    if (getenv("FPVM_AGGRESSIVE") && tolower(getenv("FPVM_AGGRESSIVE")[0]) == 'y') {
       DEBUG("Setting AGGRESSIVE\n");
       aggressive = 1;
     }
-    if ((getenv("FPVM_DISABLE_PTHREADS") &&
-         tolower(getenv("FPVM_DISABLE_PTHREADS")[0]) == 'y') ||
-        (getenv("DISABLE_PTHREADS") &&
-         tolower(getenv("DISABLE_PTHREADS")[0]) == 'y')) {
+    if ((getenv("FPVM_DISABLE_PTHREADS") && tolower(getenv("FPVM_DISABLE_PTHREADS")[0]) == 'y') ||
+        (getenv("DISABLE_PTHREADS") && tolower(getenv("DISABLE_PTHREADS")[0]) == 'y')) {
       disable_pthreads = 1;
     }
     if (getenv("FPVM_EXCEPT_LIST")) {

@@ -16,15 +16,14 @@
 #define DEBUG_OUTPUT CONFIG_DEBUG
 #define NO_OUTPUT CONFIG_NO_OUTPUT
 
-#define DEFAULT_DECODE_CACHE_SIZE 65537 // ideally a prime number
+#define DEFAULT_DECODE_CACHE_SIZE 65537  // ideally a prime number
 
 #ifndef gettid
 #define gettid() syscall(SYS_gettid)
 #endif
 
 #if DEBUG_OUTPUT
-#define DEBUG(S, ...)                                                          \
-  fprintf(stderr, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__)
+#define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__)
 #else
 #define DEBUG(S, ...)
 #endif
@@ -33,10 +32,8 @@
 #define INFO(S, ...)
 #define ERROR(S, ...)
 #else
-#define INFO(S, ...)                                                           \
-  fprintf(stderr, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__)
-#define ERROR(S, ...)                                                          \
-  fprintf(stderr, "fpvm ERROR(%8ld): " S, gettid(), ##__VA_ARGS__)
+#define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__)
+#define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): " S, gettid(), ##__VA_ARGS__)
 #endif
 
 // eventually make this a menuconfig option

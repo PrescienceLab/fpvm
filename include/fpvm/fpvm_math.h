@@ -31,4 +31,3 @@ extern double (*orig_atan2)(double, double);
 
 extern double (*orig___powidf2)(double, int);
 // MATH_STUB_ONE(__powidf2, double);
-

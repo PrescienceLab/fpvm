@@ -6,8 +6,9 @@
 #include <cassert>
 #include <unistd.h>
 
-#define GC_DEBUG_PRINT if (GC_DEBUG) printf 
+#define GC_DEBUG_PRINT \
+  if (GC_DEBUG) printf
 
-extern "C" void do_garbage_collect(allocator *);
-void add_alloc(void * addr);
+extern "C" void do_garbage_collect(allocator*);
+void add_alloc(void* addr);
 void remove_alloc(void* addr);
