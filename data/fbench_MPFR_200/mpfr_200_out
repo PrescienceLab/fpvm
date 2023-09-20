@@ -1,0 +1,18 @@
+Ready to begin John Walker's floating point accuracy
+and performance benchmark.  1000 iterations will be made.
+
+
+Measured run time in seconds should be divided by 1000
+to normalise for reporting results.  For archival results,
+adjust iteration count so the benchmark runs about five minutes.
+
+Press return to begin benchmark:Stop the timer:   Marginal ray          47.09479120920   0.04178472683
+   Paraxial ray          47.08372160249   0.04177864821
+Longitudinal spherical aberration:        -0.01106960671
+    (Maximum permissible):                 0.05306749907
+Offense against sine condition (coma):     0.00008954761
+    (Maximum permissible):                 0.00250000000
+Axial chromatic aberration:                0.00448229032
+    (Maximum permissible):                 0.05306749907
+
+No errors in results.

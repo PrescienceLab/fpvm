@@ -1,0 +1,11 @@
+*.o
+fpvm.so
+test_fpvm
+build/
+miniaero*
+setupmesh.0
+.config
+include/fpvm/config.h
+config.mk
+.vscode
+gc.log

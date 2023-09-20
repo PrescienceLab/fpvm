@@ -1,0 +1,81 @@
+FPVM Tool 
+=========
+
+Copyright (c) 2021 Peter A. Dinda  Please see LICENSE file.
+
+This is a tool for floating point trap and emulate processing
+on x64.
+
+This is a work in progress
+
+
+Configuring, Building and Testing
+--------------------
+
+To Configure:
+
+   $ make menuconfig
+
+
+To build:
+
+   $ make
+
+
+To test:
+
+   $ make test
+
+
+Running
+-------
+
+To run against a binary:
+
+   $ LD_PRELOAD=build/fpvm.so exec.exe
+
+
+Testing with pre-patched benchmarks
+-----------------------------------
+
+There are 5 binaries that we have processed for the purposes of testing fpvm.
+- fbench
+- lorenz_attractor
+- three_body_simulation
+- enzo
+- nas/cg
+
+To run one of these on FPVM, use the "test.sh" file:
+   
+   $ ./test.sh fbench
+   $ ./test.sh lorenz
+   $ ./test.sh three-body
+   $ ./test.sh enzo
+   $ ./test.sh nas
+
+There will be information printed to stdout, but all output files will go to:
+./test_output/<test-name>
+
+
+Forcing SSE
+-----------
+
+To compile SSE only:
+
+gcc ..... -mno-avx -mno-avx2 -mno-avx512f -mno-avx512pf -mno-avx512er -mno-avx512cd
+
+To force libc to use SSE only:
+
+export GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX512_Usable
+
+
+
+Adding a new alternative math implementation
+--------------------------------------------
+
+If you want to add your own alternative math implementation, foo, edit
+Kconfig to add your alternative math to the choice option, calling it
+`ALT_MATH_FOO` in this example.  Then add your implementation to
+`src/alt/foo.cpp`. Wrap all your code except for `#include
+<fpvm/config.h>` in `#if CONFIG_ALT_MATH_FOO`, so the compiler doesn't
+compile your implementation unless you want it to.

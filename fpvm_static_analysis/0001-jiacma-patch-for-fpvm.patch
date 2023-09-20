@@ -1,0 +1,2393 @@
+From 28c8f564f235e4fb0fdbb65b6a19ab736acb608e Mon Sep 17 00:00:00 2001
+From: MJChku <mjc97cooper@gmail.com>
+Date: Mon, 15 Nov 2021 09:08:34 +0000
+Subject: [PATCH 1/4] angr fix for FPVM static analysis
+
+---
+ angr/analyses/disassembly.py | 8 ++++++--
+ angr/block.py                | 3 +++
+ angr/engines/failure.py      | 4 +++-
+ angr/engines/pcode/lifter.py | 4 +++-
+ angr/engines/vex/lifter.py   | 5 +++--
+ angr/factory.py              | 1 +
+ 6 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/angr/analyses/disassembly.py b/angr/analyses/disassembly.py
+index 5d28b17..cb20c22 100644
+--- a/angr/analyses/disassembly.py
++++ b/angr/analyses/disassembly.py
+@@ -845,9 +845,11 @@ class Disassembly(Analysis):
+                 self._graph = cfg.graph
+                 for start, end in ranges:
+                     assert(start < end)
+-                    # Grab all blocks that intersect target range
++                    # Grab all blocks that intersect target ran
++                    # for n in self._graph.nodes():
++                    #     print(n, n.addr, n.size)
+                     blocks = sorted([n.block.codenode
+-                                     for n in self._graph.nodes() if not (n.addr + n.size <= start or n.addr >= end)],
++                                     for n in self._graph.nodes() if n.size and not (n.addr + n.size <= start or n.addr >= end)],
+                                     key=lambda node: (node.addr, not node.is_hook))
+ 
+                     # Trim blocks that are not within range
+@@ -1068,6 +1070,8 @@ class Disassembly(Analysis):
+             edges_by_line = set()
+             for edge in self._graph.edges.items():
+                 from_block, to_block = edge[0]
++                if from_block.size == None:
++                    continue
+                 if to_block.addr != from_block.addr + from_block.size:
+                     from_addr = edge[1]['ins_addr']
+                     to_addr = to_block.addr
+diff --git a/angr/block.py b/angr/block.py
+index 6009563..544b9ab 100644
+--- a/angr/block.py
++++ b/angr/block.py
+@@ -243,6 +243,7 @@ class Block(Serializable):
+         if self._project is not None:
+             print(self._project.analyses.Disassembly(ranges=[(self.addr, self.addr + self.size)]).render(**kwargs))
+         else:
++            print(" exception")
+             self.disassembly.pp()
+ 
+     @property
+@@ -310,6 +311,7 @@ class Block(Serializable):
+                 self._disassembly = self.vex.disassembly
+             else:
+                 self._disassembly = self.capstone
++
+         return self._disassembly
+ 
+     @property
+@@ -321,6 +323,7 @@ class Block(Serializable):
+         insns = []
+ 
+         for cs_insn in cs.disasm(self.bytes, self.addr):
++            # print(cs_insn)
+             insns.append(CapstoneInsn(cs_insn))
+         block = CapstoneBlock(self.addr, insns, self.thumb, self.arch)
+ 
+diff --git a/angr/engines/failure.py b/angr/engines/failure.py
+index 410990c..21e9220 100644
+--- a/angr/engines/failure.py
++++ b/angr/engines/failure.py
+@@ -10,7 +10,9 @@ class SimEngineFailure(SuccessorsMixin, ProcedureMixin):
+         jumpkind = state.history.parent.jumpkind if state.history and state.history.parent else None
+ 
+         if jumpkind in ('Ijk_EmFail', 'Ijk_MapFail') or (jumpkind is not None and jumpkind.startswith('Ijk_Sig')):
+-            raise AngrExitError("Cannot execute following jumpkind %s" % jumpkind)
++            #AngrExitError("Cannot execute following jumpkind %s" % jumpkind)
++            print( "Cannot execute following jumpkind %s" % jumpkind)
++            #raise AngrExitError("Cannot execute following jumpkind %s" % jumpkind)
+ 
+         if jumpkind == 'Ijk_Exit':
+             from ..procedures import SIM_PROCEDURES
+diff --git a/angr/engines/pcode/lifter.py b/angr/engines/pcode/lifter.py
+index c095d6e..84d4e4a 100644
+--- a/angr/engines/pcode/lifter.py
++++ b/angr/engines/pcode/lifter.py
+@@ -32,7 +32,9 @@ l = logging.getLogger(__name__)
+ 
+ IRSB_MAX_SIZE = 400
+ IRSB_MAX_INST = 99
++# IRSB_MAX_INST = 1
+ MAX_INSTRUCTIONS = 99999
++# MAX_INSTRUCTIONS = 1
+ MAX_BYTES = 5000
+ 
+ # This class exists to ease compatibility with CFGFast's processing of
+@@ -995,7 +997,7 @@ class PcodeLifterEngineMixin(SimEngineBase):
+         cache_size: int = 50000,
+         default_opt_level: int = 1,
+         support_selfmodifying_code: Optional[bool] = None,
+-        single_step: bool = False,
++        single_step: bool = True,
+         default_strict_block_end: bool = False,
+         **kwargs
+     ):
+diff --git a/angr/engines/vex/lifter.py b/angr/engines/vex/lifter.py
+index df31139..7084000 100644
+--- a/angr/engines/vex/lifter.py
++++ b/angr/engines/vex/lifter.py
+@@ -16,7 +16,8 @@ from ... import sim_options as o
+ l = logging.getLogger(__name__)
+ 
+ VEX_IRSB_MAX_SIZE = 400
+-VEX_IRSB_MAX_INST = 99
++# VEX_IRSB_MAX_INST = 99
++VEX_IRSB_MAX_INST = 1
+ 
+ class VEXLifter(SimEngineBase):
+     def __init__(self, project,
+@@ -24,7 +25,7 @@ class VEXLifter(SimEngineBase):
+                  cache_size=50000,
+                  default_opt_level=1,
+                  support_selfmodifying_code=None,
+-                 single_step=False,
++                 single_step=True,
+                  default_strict_block_end=False, **kwargs):
+ 
+         super().__init__(project, **kwargs)
+diff --git a/angr/factory.py b/angr/factory.py
+index f2defc7..7fce285 100644
+--- a/angr/factory.py
++++ b/angr/factory.py
+@@ -304,6 +304,7 @@ class AngrObjectFactory:
+         if max_size is not None:
+             l.warning('Keyword argument "max_size" has been deprecated for block(). Please use "size" instead.')
+             size = max_size
++        
+         return Block(addr, project=self.project, size=size, byte_string=byte_string, vex=vex,
+                      extra_stop_points=extra_stop_points, thumb=thumb, backup_state=backup_state,
+                      opt_level=opt_level, num_inst=num_inst, traceflags=traceflags,
+-- 
+2.7.4
+
+
+From c8e763d028ecd4f5c5b28468bf65adaf24d4efa1 Mon Sep 17 00:00:00 2001
+From: Florian Magin <8415354+fmagin@users.noreply.github.com>
+Date: Wed, 17 Nov 2021 03:56:38 +0100
+Subject: [PATCH 2/4] Fix inconsistent return type (#2971)
+
+Using state.mem[0x1000].string.concrete returns a Python `bytes` object for a non empty
+C String in memory, but previously returned an empty Python `string` if
+the C String in memory was empty (i.e. pointing to a null byte).
+
+Additionally, make the size arguments to the state.memory.load methods
+keywords so the type checker doesn't complain
+
+Co-authored-by: Florian Magin <fmagin@users.noreply.github.com>
+---
+ angr/sim_type.py | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/angr/sim_type.py b/angr/sim_type.py
+index c48d9e2..b9390d5 100644
+--- a/angr/sim_type.py
++++ b/angr/sim_type.py
+@@ -743,24 +743,24 @@ class SimTypeString(NamedTypeMixin, SimTypeArray):
+     def __repr__(self):
+         return 'string_t'
+ 
+-    def extract(self, state, addr, concrete=False):
++    def extract(self, state: "SimState", addr, concrete=False):
+         if self.length is None:
+             out = None
+-            last_byte = state.memory.load(addr, 1)
++            last_byte = state.memory.load(addr, size=1)
+             # if we try to extract a symbolic string, it's likely that we are going to be trapped in a very large loop.
+             if state.solver.symbolic(last_byte):
+                 raise ValueError("Trying to extract a symbolic string at %#x" % state.solver.eval(addr))
+             addr += 1
+             while not (claripy.is_true(last_byte == 0) or state.solver.symbolic(last_byte)):
+                 out = last_byte if out is None else out.concat(last_byte)
+-                last_byte = state.memory.load(addr, 1)
++                last_byte = state.memory.load(addr, size=1)
+                 addr += 1
+         else:
+-            out = state.memory.load(addr, self.length)
++            out = state.memory.load(addr, size=self.length)
+         if not concrete:
+             return out if out is not None else claripy.BVV(0, 0)
+         else:
+-            return state.solver.eval(out, cast_to=bytes) if out is not None else ''
++            return state.solver.eval(out, cast_to=bytes) if out is not None else b''
+ 
+     _can_refine_int = True
+ 
+-- 
+2.7.4
+
+
+From cb9ea678979679e21e82d1112f3d71d94a2de49f Mon Sep 17 00:00:00 2001
+From: Alan Wang <wzj401@gmail.com>
+Date: Sun, 21 Nov 2021 20:24:56 -0800
+Subject: [PATCH 3/4] Use original op in CCallMultivaluedException to make
+ _perform_vex_expr_CCall happy (#2977)
+
+---
+ angr/engines/vex/claripy/ccall.py | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/angr/engines/vex/claripy/ccall.py b/angr/engines/vex/claripy/ccall.py
+index 8ea8eff..d5d95ca 100644
+--- a/angr/engines/vex/claripy/ccall.py
++++ b/angr/engines/vex/claripy/ccall.py
+@@ -42,9 +42,9 @@ def boolean_extend(O, a, b, size):
+ def op_concretize(op):
+     if type(op) is int:
+         return op
+-    op = op.ite_excavated
+-    if op.op == 'If':
+-        cases = list(claripy.reverse_ite_cases(op))
++    op_e = op.ite_excavated
++    if op_e.op == 'If':
++        cases = list(claripy.reverse_ite_cases(op_e))
+         if all(c.op == 'BVV' for _, c in cases):
+             raise CCallMultivaluedException(cases, op)
+     if op.op != 'BVV':
+-- 
+2.7.4
+
+
+From 64d787e9f49c9f98701ababbdd0b241499f3cab2 Mon Sep 17 00:00:00 2001
+From: Jiacheng Ma <mjc97cooper@gmail.com>
+Date: Tue, 18 Jan 2022 00:23:13 -0600
+Subject: [PATCH 4/4] Update angr for fpvm analysis
+
+---
+ angr/analyses/cfg/cfg_emulated.py                  |  52 +-
+ angr/analyses/cfg/cfg_job_base.py                  |   8 +
+ angr/analyses/forward_analysis/forward_analysis.py |  10 +-
+ angr/analyses/vfg.py                               | 573 ++++++++++++++++++---
+ angr/engines/successors.py                         |  15 +-
+ angr/engines/vex/claripy/ccall.py                  |  11 +-
+ angr/engines/vex/lifter.py                         |   4 +-
+ angr/engines/vex/light/light.py                    |   6 +-
+ angr/procedures/libc/memcpy.py                     |   3 +
+ angr/sim_options.py                                |  13 +
+ angr/sim_state.py                                  | 246 ++++++++-
+ angr/sim_state_options.py                          |   4 +
+ angr/state_plugins/callstack.py                    |  20 +-
+ angr/state_plugins/history.py                      |  87 ++--
+ angr/state_plugins/solver.py                       |  14 +-
+ angr/storage/memory_mixins/default_filler_mixin.py |   3 +-
+ .../memory_mixins/paged_memory/pages/ultra_page.py |  18 +-
+ .../regioned_memory/abstract_merger_mixin.py       |  20 +-
+ .../regioned_memory/regioned_memory_mixin.py       |  25 +-
+ angr/utils/algo.py                                 |   5 +
+ 20 files changed, 987 insertions(+), 150 deletions(-)
+
+diff --git a/angr/analyses/cfg/cfg_emulated.py b/angr/analyses/cfg/cfg_emulated.py
+index 5d41158..69eb952 100644
+--- a/angr/analyses/cfg/cfg_emulated.py
++++ b/angr/analyses/cfg/cfg_emulated.py
+@@ -1104,6 +1104,9 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+         src_ins_addr = job.src_ins_addr
+         addr = job.addr
+ 
++
++        if addr == 0x0:
++            print("wirred about to exit at next instruction")
+         # Log this address
+         if l.level == logging.DEBUG:
+             self._analyzed_addrs.add(addr)
+@@ -1184,7 +1187,13 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+         if self._keep_state:
+             # TODO: if we are reusing an existing CFGNode, we will be overwriting the original input state here. we
+             # TODO: should save them all, which, unfortunately, requires some redesigning :-(
++            # print("BIGGGGGG ERROR", len(cfg_node.final_states))
+             cfg_node.input_state = sim_successors.initial_state
++            # pass
++            # _merge_state = sim_successors.initial_state
++            # for _s in  cfg_node.final_states:
++            #     (_merge_state, m, anything_merged) = _merge_state.custom_merge(_s)
++            # cfg_node.input_state = _merge_state
+ 
+         # See if this job cancels another FakeRet
+         # This should be done regardless of whether this job should be skipped or not, otherwise edges will go missing
+@@ -1273,6 +1282,9 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+         """
+ 
+         addr = job.addr
++        if addr == 0x4010a9:
++            print("break")
++            
+         sim_successors = job.sim_successors
+         cfg_node = job.cfg_node
+         input_state = job.state
+@@ -1325,7 +1337,13 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+                          [ suc for suc in all_successors if suc.history.jumpkind == 'Ijk_FakeRet' ]
+ 
+         if self._keep_state:
+-            cfg_node.final_states = all_successors[::]
++            # _merge_states = all_successors[::]
++            # _res_states = []
++            # for _merge_state in _merge_states:
++            #     for _s in  cfg_node.final_states:
++            #         (_merge_state, m, anything_merged) = _merge_state.custom_merge(_s)
++            #     _res_states.append(_merge_state)
++            cfg_node.final_states =  all_successors[::]
+ 
+         if is_indirect_jump and not indirect_jump_resolved_by_resolvers:
+             # For indirect jumps, filter successors that do not make sense
+@@ -1364,11 +1382,17 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+                 if extra_successor_addrs:
+                     l.error('CFGEmulated terminates at %#x although base graph provided more exits.', addr)
+ 
++        # if addr == 0x4012e5:
++        #     print("match ---")
++        #     for i in successors:
++        #         print(i.history.jumpkind, hex(i.solver.eval_one(i.ip)))
++
+         if not successors:
+             # There is no way out :-(
+             # Log it first
+             self._push_unresolvable_run(addr)
+-
++            l.error(f" WTF ======= {hex(addr)}")
++            
+             if sim_successors.sort == 'SimProcedure' and isinstance(sim_successors.artifacts['procedure'],
+                     SIM_PROCEDURES["stubs"]["PathTerminator"]):
+                 # If there is no valid exit in this branch and it's not
+@@ -1616,10 +1640,10 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+                                       )
+ 
+         for block_id in pending_exits_to_remove:
+-            l.debug('Removing all pending exits to %#x since the target function %#x does not return',
+-                    self._block_id_addr(block_id),
+-                    next(iter(self._pending_jobs[block_id])).returning_source,
+-                    )
++            # l.debug('Removing all pending exits to %#x since the target function %#x does not return',
++            #         self._block_id_addr(block_id),
++            #         next(iter(self._pending_jobs[block_id])).returning_source,
++            #         )
+ 
+             for to_remove in self._pending_jobs[block_id]:
+                 self._deregister_analysis_job(to_remove.caller_func_addr, to_remove)
+@@ -2861,10 +2885,10 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+             if saved_state.mode == 'fastpath':
+                 # Got a SimFastPathError or SimSolverModeError in FastPath mode.
+                 # We wanna switch to symbolic mode for current IRSB.
+-                l.debug('Switch to symbolic mode for address %#x', addr)
++                l.error('Switch to symbolic mode for address %#x', addr)
+                 # Make a copy of the current 'fastpath' state
+ 
+-                l.debug('Symbolic jumps at basic block %#x.', addr)
++                l.error('Symbolic jumps at basic block %#x.', addr)
+ 
+                 new_state = None
+                 if addr != current_function_addr:
+@@ -2887,7 +2911,7 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+                 exception_info = sys.exc_info()
+                 # Got a SimSolverModeError in symbolic mode. We are screwed.
+                 # Skip this IRSB
+-                l.debug("Caught a SimIRSBError %s. Don't panic, this is usually expected.", ex)
++                l.error("Caught a SimIRSBError %s. Don't panic, this is usually expected.", ex)
+                 inst = SIM_PROCEDURES["stubs"]["PathTerminator"]()
+                 sim_successors = ProcedureEngine().process(state, procedure=inst)
+ 
+@@ -2895,13 +2919,15 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+             exception_info = sys.exc_info()
+             # It's a tragedy that we came across some instructions that VEX
+             # does not support. I'll create a terminating stub there
+-            l.debug("Caught a SimIRSBError during CFG recovery. Creating a PathTerminator.", exc_info=True)
++            l.error("Caught a SimIRSBError during CFG recovery. Creating a PathTerminator.", exc_info=True)
++            l.error("Skip to next one")
+             inst = SIM_PROCEDURES["stubs"]["PathTerminator"]()
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
++            
+ 
+         except claripy.ClaripyError:
+             exception_info = sys.exc_info()
+-            l.debug("Caught a ClaripyError during CFG recovery. Don't panic, this is usually expected.", exc_info=True)
++            l.error("Caught a ClaripyError during CFG recovery. Don't panic, this is usually expected.", exc_info=True)
+             # Generate a PathTerminator to terminate the current path
+             inst = SIM_PROCEDURES["stubs"]["PathTerminator"]()
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
+@@ -2915,7 +2941,7 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+ 
+         except AngrExitError as ex:
+             exception_info = sys.exc_info()
+-            l.debug("Caught a AngrExitError during CFG recovery. Don't panic, this is usually expected.", exc_info=True)
++            l.error("Caught a AngrExitError during CFG recovery. Don't panic, this is usually expected.", exc_info=True)
+             # Generate a PathTerminator to terminate the current path
+             inst = SIM_PROCEDURES["stubs"]["PathTerminator"]()
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
+@@ -2928,7 +2954,7 @@ class CFGEmulated(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-metho
+             else:
+                 sec_name = section.name
+             # AngrError shouldn't really happen though
+-            l.debug("Caught an AngrError during CFG recovery at %#x (%s)",
++            l.error("Caught an AngrError during CFG recovery at %#x (%s)",
+                     addr, sec_name, exc_info=True)
+             # We might be on a wrong branch, and is likely to encounter the
+             # "No bytes in memory xxx" exception
+diff --git a/angr/analyses/cfg/cfg_job_base.py b/angr/analyses/cfg/cfg_job_base.py
+index 3918322..db33164 100644
+--- a/angr/analyses/cfg/cfg_job_base.py
++++ b/angr/analyses/cfg/cfg_job_base.py
+@@ -41,6 +41,8 @@ class BlockID(object):
+         if self._hash is None:
+             self._hash = hash((self.callsite_tuples,) + (self.addr, self.jump_type))
+         return self._hash
++    
++    
+ 
+     def __eq__(self, other):
+         return isinstance(other, BlockID) and \
+@@ -66,6 +68,12 @@ class BlockID(object):
+             return self.callsite_tuples[-1]
+         return None
+ 
++    @property
++    def askey(self):
++        if self._hash is None:
++            self._hash = hash((self.callsite_tuples,) + (self.addr, self.jump_type))
++        return self._hash.to_bytes(64, 'big', signed=True )
++        # return str(self._hash)
+ 
+ class FunctionKey(object):
+     """
+diff --git a/angr/analyses/forward_analysis/forward_analysis.py b/angr/analyses/forward_analysis/forward_analysis.py
+index 4b91cda..f0d4791 100644
+--- a/angr/analyses/forward_analysis/forward_analysis.py
++++ b/angr/analyses/forward_analysis/forward_analysis.py
+@@ -367,6 +367,9 @@ class ForwardAnalysis:
+                 # consume and skip this job
+                 self._job_info_queue = self._job_info_queue[1:]
+                 self._job_map.pop(self._job_key(job_info.job), None)
++
++                #mjc
++                self._post_job_handling(job_info.job, None, None)
+                 continue
+ 
+             # remove the job info from the map
+@@ -461,8 +464,11 @@ class ForwardAnalysis:
+             self._job_map[key] = job_info
+ 
+         if self._order_jobs:
+-            binary_insert(self._job_info_queue, job_info, lambda elem: self._job_sorting_key(elem.job))
+-
++            try :
++                binary_insert(self._job_info_queue, job_info, lambda elem: self._job_sorting_key(elem.job))
++            except Exception:
++                print("skip this job")
++                pass
+         else:
+             self._job_info_queue.append(job_info)
+ 
+diff --git a/angr/analyses/vfg.py b/angr/analyses/vfg.py
+index 4998f24..2438981 100644
+--- a/angr/analyses/vfg.py
++++ b/angr/analyses/vfg.py
+@@ -1,6 +1,9 @@
++import sys
+ import logging
+-from collections import defaultdict
+-
++from collections import defaultdict, namedtuple
++# import cshelve as shelve
++import bshelve as shelve
++import pickle
+ import archinfo
+ from archinfo.arch_arm import is_arm_arch
+ import claripy
+@@ -14,13 +17,49 @@ from .. import sim_options
+ from ..engines.procedure import ProcedureEngine
+ from ..engines import SimSuccessors
+ from ..errors import AngrDelayJobNotice, AngrSkipJobNotice, AngrVFGError, AngrError, AngrVFGRestartAnalysisNotice, \
+-    AngrJobMergingFailureNotice, SimValueError, SimIRSBError, SimError
++    AngrJobMergingFailureNotice, SimValueError, SimIRSBError, SimError, \
++    AngrCFGError, SimSolverModeError, \
++    SimFastPathError, AngrExitError, SimEmptyCallStackError
++
+ from ..procedures import SIM_PROCEDURES
+ from ..state_plugins.callstack import CallStack
+ 
+ l = logging.getLogger(name=__name__)
++traverse_both_path_copy_state = None
++
++def simpkey(states, all_simp):
++    all_hashs = []
++    for state in states:
++        hash_for_state = None
++        if state.plugins['scratch'].sim_procedure is not None:
++            try:
++                sim_procedure = state.plugins['scratch'].sim_procedure
++                hash_for_state = hash(sim_procedure).to_bytes(64, 'big', signed=True)
++                all_simp.append((hash_for_state, sim_procedure))
++            except:
++                pass
++
++        all_hashs.append(hash_for_state)
++
++    return all_hashs
+ 
+ 
++def pagekey(states, all_pages):
++    all_hashs = []
++    for state in states:
++        hashs_for_state = []
++        try:
++            pages = state.plugins['memory']._regions['global']._pages
++            for key, page in pages.items():
++                _hash = hash(page).to_bytes(64, 'big', signed=True)
++                hashs_for_state.append(_hash)
++                all_pages.append((_hash, key, page))
++        except:
++            pass
++        all_hashs.append(hashs_for_state)
++
++    return all_hashs
++
+ class VFGJob(CFGJobBase):
+     """
+     A job descriptor that contains local variables used during VFG analysis.
+@@ -169,12 +208,46 @@ class CallAnalysis(AnalysisTask):
+         assert self._final_jobs
+ 
+         job = self._final_jobs[0]
+-
++        l.error(f" job merge # {len(self._final_jobs)} at {hex(job.addr)}")
++        #mjc pass merge
+         for other in self._final_jobs[1:]:
+             job.state = job.state.merge(other.state, plugin_whitelist=self._mergeable_plugins)[0]
+ 
+         return job
+ 
++class RECOVER:
++    @staticmethod
++    def _recover_pages(askey, _nodes_page_keys, _pages ):
++        hashkey_dict = _nodes_page_keys[askey]
++        pages_dict = {}
++        for key, entries in hashkey_dict.items():
++            page_states = []
++            for entry in entries:
++                pages = {}
++                for _hash in entry:
++                    pagekey, page = _pages[_hash]
++                    pages[pagekey] = page
++                page_states.append(pages)
++
++            pages_dict[key] = page_states
++        return pages_dict
++
++    @staticmethod
++    def _recover_simp(askey, _simp_keys, _sim_procedures ):
++        hashkey_dict = _simp_keys[askey]
++        simp_dict = {}
++        for key, entries in hashkey_dict.items():
++            simps = []
++            for _hash in entries: # 'name_states': [state1, state2]
++                if _hash is None:
++                    simps.append(None)
++                    continue
++                simp = _sim_procedures[_hash]
++                simps.append(simp)
++            simp_dict[key] = simps
++        return simp_dict
++
++
+ 
+ class VFGNode(object):
+     """
+@@ -203,6 +276,27 @@ class VFGNode(object):
+             self.all_states.append(state)
+             self.state = state
+ 
++    def recover_from_dump(self, proj, askey, _nodes_page_keys, _pages, _simp_keys, _sim_procedures, analysis=False):
++        
++        pages_dict = RECOVER._recover_pages(askey, _nodes_page_keys, _pages)
++        # to save time
++        if _simp_keys is not None:
++            simp_dict = RECOVER._recover_simp(askey, _simp_keys, _sim_procedures)
++            self.state.recover_from_dump(proj, pages_dict['state'][0], simp_dict['state'][0])
++            for idx, state in enumerate(self.final_states):
++                state.recover_from_dump(proj, pages_dict['final_states'][idx], simp_dict['final_states'][idx])
++        else:
++            if not analysis:
++                self.state.recover_from_dump(proj, pages_dict['state'][0], None)
++
++            for idx, state in enumerate(self.final_states):
++                state.recover_from_dump(proj, pages_dict['final_states'][idx], None)
++                if analysis:
++                    break #only take fisrt one
++
++        # for state in self.all_states:
++        #     state.recover_from_dump(proj)
++
+     def __hash__(self):
+         return hash(self.key)
+ 
+@@ -255,7 +349,12 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+     # TODO: access each node in the graph
+ 
+     def __init__(self,
++                 name=None,
+                  cfg=None,
++                 proj=None,
++                 dump_disk=None,
++                 FakeReturn= None,
++                 known_functions = None,
+                  context_sensitivity_level=2,
+                  start=None,
+                  function_start=None,
+@@ -269,7 +368,8 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                  widening_interval=3,
+                  final_state_callback=None,
+                  status_callback=None,
+-                 record_function_final_states=False
++                 record_function_final_states=False,
++                 loops=None
+                  ):
+         """
+         :param cfg: The control-flow graph to base this analysis on. If none is provided, we will
+@@ -286,13 +386,15 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         """
+ 
+         ForwardAnalysis.__init__(self, order_jobs=True, allow_merging=True, allow_widening=True,
+-                                 status_callback=status_callback
++                                 status_callback=status_callback,
+                                  )
+ 
+         # Related CFG.
+         # We can still perform analysis if you don't specify a CFG. But providing a CFG may give you better result.
+         self._cfg = cfg
++        self._loops = [ break_edge.addr for loop in loops for break_edge_tuple in loop.break_edges for break_edge in break_edge_tuple]
+ 
++        print(self._loops)
+         # Where to start the analysis
+         self._start = start if start is not None else self.project.entry
+         self._function_start = function_start if function_start is not None else self._start
+@@ -315,7 +417,30 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         self._record_function_final_states = record_function_final_states
+ 
+-        self._nodes = {}            # all the vfg nodes, keyed on block IDs
++
++        self.dump_disk = dump_disk # freq, cur
++        # self._nodes = {} #file_archive(f"{name}.nodes",serialized=True, cached=False)
++        print(name)
++        cache_large = 4*1024*1024 #in bytes
++        cache_small = 1024*1024 #in bytes
++
++        # self._nodes = db.btopen(f"{name}-nodes", cachesize=cache_large ) #shelve.open(f"{name}.nodes", writeback=True)
++        # self._nodes_keys = db.btopen(f"{name}-keys", cachesize= cache_small) #shelve.open(f"{name}.keys", writeback=True, loadback=True)
++
++        self._nodes = shelve.open(f"{name}-nodes", writeback=True, debug=False)
++        self._nodes_keys = shelve.open(f"{name}-keys", writeback=True, loadback=True)
++        self._nodes_page_keys = shelve.open(f"{name}-page-keys", writeback=True, loadback=True)
++       
++        self.gc_pages = {} # (hash, refcount)
++
++        self._pages = shelve.open(f"{name}-pages", writeback=True, debug=False)
++        self._simp_keys = shelve.open(f"{name}-simp-keys", writeback=True)
++        self._sim_procedures = shelve.open(f"{name}-sim-procedures", writeback=True, debug=False)
++        
++        self._callstacks = shelve.open(f"{name}-callstacks", writeback=True, debug=False)
++        self._not_going_to = set()
++        # self._nodes = {}            # all the vfg nodes, keyed on block IDs
++        
+         self._normal_states = { }   # Last available state for each program point without widening
+         self._widened_states = { }  # States on which widening has occurred
+ 
+@@ -346,18 +471,26 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         self._function_widening_points = {}
+         self._function_node_addrs = {}  # sorted in reverse post-order
+ 
+-        self._mergeable_plugins = ('memory', 'registers')
++        self._mergeable_plugins =()# ('memory', 'registers')
+ 
+         self._task_stack = [ ]
+ 
+         self._tracing_times = defaultdict(int)
+-
++        self._tracing_times_addr = defaultdict(int)
+         # counters for debugging
+         self._execution_counter = defaultdict(int)
+-
++        
++        self._traced_addr = defaultdict(lambda: defaultdict(int))
+         # Start analysis
++        self._known_functions = known_functions
++        self._proj = proj
++        self._FakeReturn = FakeReturn
+         self._analyze()
+ 
++        # self._nodes.close()
++        # self._nodes_keys.close()
++
++
+     #
+     # Internal properties
+     #
+@@ -482,6 +615,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         # Create the initial state
+         state = initial_state.copy()
++       
+ 
+         if self._start_at_function:
+             # set the return address to an address so we can catch it and terminate the VSA analysis
+@@ -523,13 +657,14 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         task_functions = list(reversed(
+             list(task.function_address for task in self._task_stack if isinstance(task, FunctionAnalysis))
+             ))
++
+         try:
+             function_pos = task_functions.index(job.func_addr)
+         except ValueError:
+             # not in the list
+             # it might be because we followed the wrong path, or there is a bug in the traversal algorithm
+             # anyways, do it first
+-            l.warning('Function address %#x is not found in task stack.', job.func_addr)
++            l.error('Function address %#x is not found in task stack.', job.func_addr)
+             return 0
+ 
+         try:
+@@ -537,6 +672,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         except ValueError:
+             # block not found. what?
+             block_in_function_pos = min(job.addr - job.func_addr, MAX_BLOCKS_PER_FUNCTION - 1)
++        # print("hell addr",  block_in_function_pos + MAX_BLOCKS_PER_FUNCTION * function_pos)
+ 
+         return block_in_function_pos + MAX_BLOCKS_PER_FUNCTION * function_pos
+ 
+@@ -553,6 +689,34 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         return job.block_id
+ 
++    def _save_dict(self, block_id, vfg_node):
++        self._nodes[block_id.askey] = vfg_node
++        self._callstacks[block_id.askey] = vfg_node.state.callstack
++        self._nodes_keys[block_id.askey] = block_id
++        all_pages = []
++        #decrement page ref
++        if block_id.askey in self._nodes_page_keys:
++            page_key_dict = self._nodes_page_keys[block_id.askey]
++            for _, states in page_key_dict.items():
++                for state in states:
++                    for _hash in state:
++                        if _hash is not None:
++                            self.gc_pages[_hash] -= 1
++
++        self._nodes_page_keys[block_id.askey] = {'state': pagekey([vfg_node.state], all_pages), 'final_states': pagekey(vfg_node.final_states, all_pages)}
++        for _hash, key, page in all_pages:
++            self._pages[_hash] = (key, page)
++            if _hash in self.gc_pages:
++                self.gc_pages[_hash] +=1
++            else:
++                self.gc_pages[_hash] = 1
++        
++        all_simp = []
++        self._simp_keys[block_id.askey] = {'state': simpkey([vfg_node.state], all_simp), 'final_states': simpkey(vfg_node.final_states, all_simp)}
++        for _hash, simp in all_simp:
++            self._sim_procedures[_hash] = simp
++
++
+     def _pre_job_handling(self, job):
+         """
+         Some code executed before actually processing the job.
+@@ -598,12 +762,12 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                             # ah there is
+                             # analyze it first
+                             self._trace_pending_job(pending_job_key)
+-                            l.debug("A pending job is found for function %#x. Delay %s.",
++                            l.error("A pending job is found for function %#x. Delay %s.",
+                                     self._top_task.function_address, job)
+                             raise AngrDelayJobNotice()
+ 
+                     task = self._task_stack.pop()
+-
++                    l.warning("Unwinding task %s", task)
+                     if not task.done:
+                         l.warning("Removing an unfinished task %s. Might be a bug.", task)
+ 
+@@ -628,30 +792,69 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         src_block_id = job.src_block_id
+         src_exit_stmt_idx = job.src_exit_stmt_idx
+ 
+-        addr = job.state.solver.eval(job.state.regs.ip)
++        #mjc
++        addr = job.addr #job.state.solver.eval(job.state.regs.ip)
++    
++        print("handle", hex(addr), job.call_stack_suffix )
++        
+         input_state = job.state
+         block_id = BlockID.new(addr, job.call_stack_suffix, job.jumpkind)
+ 
+-        if self._tracing_times[block_id] > self._max_iterations:
+-            l.debug('%s has been traced too many times. Skip', job)
+-            raise AngrSkipJobNotice()
++        if self._proj.is_hooked(job.addr):
++            self._not_going_to.add(job.addr)
++
++        
++        # if self._tracing_times_addr[block_id.addr] >= self._max_iterations:
++        #     l.error('%s has been traced too many times. Skip', job)
++            
++        #     if job.addr not in  self._not_going_to:
++        #         raise AngrSkipJobNotice()
++
++
++
++        if self._tracing_times_addr[block_id.addr] >= self._max_iterations:
++            l.error('%s has been traced too many times. Skip', job)
++            if job.addr in self._known_functions and not self._proj.is_hooked(job.addr):
++                l.error("hook with fake return %s", hex(job.addr))
++                self._proj.hook(job.addr, self._FakeReturn())
++                # self._not_going_to.add(job.addr)
++                # exit()
++            else:
++                if not self._proj.is_hooked(job.addr):
++                    raise AngrSkipJobNotice()
+ 
+         self._tracing_times[block_id] += 1
++        self._tracing_times_addr[block_id.addr] += 1
+ 
+-        if block_id not in self._nodes:
++        # if self._tracing_times_addr[block_id.addr] >= self._max_iterations:
++        #     if job.addr in self._known_functions and job.addr not in self._not_going_to :
++        #         l.error("Skip call forever %s", hex(job.addr))
++        #         # self._proj.hook(job.addr, self._FakeReturn())
++        #         self._not_going_to.add(job.addr)
++
++
++        if block_id.askey not in self._nodes:
+             vfg_node = VFGNode(addr, block_id, state=input_state)
+-            self._nodes[block_id] = vfg_node
++
+ 
+         else:
+-            vfg_node = self._nodes[block_id]
++            #klepto
++            l.error("this should never happen")
++            vfg_node = self._nodes[block_id.askey]
++            vfg_node.recover_from_dump(self.project, block_id.askey, self._nodes_page_keys, self._pages, self._simp_keys, self._sim_procedures)
+ 
+         job.vfg_node = vfg_node
+         # log the current state
++
++        # mjc
++        # vfg_node.final_states.append(vfg_node.state)
++        # vfg_node.state, _, _ = input_state.merge(vfg_node.state, plugin_whitelist=self._mergeable_plugins)
+         vfg_node.state = input_state
++        self._save_dict(block_id, vfg_node)
+ 
+         # Execute this basic block with input state, and get a new SimSuccessors instance
+         # unused result var is `error_occured`
+-        job.sim_successors, _, restart_analysis = self._get_simsuccessors(input_state, addr)
++        job.sim_successors, error_occured, restart_analysis = self._get_simsuccessors(input_state, addr)
+ 
+         if restart_analysis:
+             # We should restart the analysis because of something must be changed in the very initial state
+@@ -663,12 +866,13 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             l.debug('Cannot create SimSuccessors for %s. Skip.', job)
+             raise AngrSkipJobNotice()
+ 
+-        self._graph_add_edge(src_block_id,
+-                             block_id,
+-                             jumpkind=job.jumpkind,
+-                             src_exit_stmt_idx=src_exit_stmt_idx
+-                             )
++        # self._graph_add_edge(src_block_id,
++        #                      block_id,
++        #                      jumpkind=job.jumpkind,
++        #                      src_exit_stmt_idx=src_exit_stmt_idx
++        #                      )
+ 
++    
+     def _get_successors(self, job):
+         # Extract initial values
+         state = job.state
+@@ -676,12 +880,32 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         # Obtain successors
+         if addr not in self._avoid_runs:
+-            all_successors = job.sim_successors.flat_successors + job.sim_successors.unconstrained_successors
++            #mjc
++            # all_successors[-1] is addr of fakeret so put flat_successors at the end
++            if addr not in self._loops:
++                all_successors = job.sim_successors.unsat_successors + job.sim_successors.flat_successors 
++               
++            else:
++                all_successors =  job.sim_successors.unsat_successors + job.sim_successors.flat_successors 
++                # all_successors =  job.sim_successors.flat_successors + job.sim_successors.unconstrained_successors
++                if len(all_successors) == 0:
++                    all_successors = job.sim_successors.unsat_successors + job.sim_successors.flat_successors
++
++
+         else:
+             all_successors = []
+-
++        
+         # save those states
+-        job.vfg_node.final_states = all_successors[:]
++
++        #mjc successor states is before processed which equals to final_state of this node
++        #job.vfg_node.final_states = all_successors[:]
++        
++        #mjc
++        for _s in all_successors[:]:
++            job.vfg_node.final_states.append(_s)
++
++        # self._nodes[job._block_id.askey] = job.vfg_node
++        self._save_dict(job._block_id, job.vfg_node)
+ 
+         # Update thumb_addrs
+         if job.sim_successors.sort == 'IRSB' and state.thumb:
+@@ -708,8 +932,42 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         # If this is a call exit, we shouldn't put the default exit (which
+         # is artificial) into the CFG. The exits will be Ijk_Call and
+         # Ijk_FakeRet, and Ijk_Call always goes first
++        
+         job.is_call_jump = any([self._is_call_jumpkind(i.history.jumpkind) for i in all_successors])
++        
+         call_targets = [i.solver.eval_one(i.ip) for i in all_successors if self._is_call_jumpkind(i.history.jumpkind)]
++        
++        # if addr == 0x4012e5:
++        #     job.call_skipped = True
++        #     job.is_call_jump = True
++        # for i in all_successors:
++        #     print(i.history.jumpkind)
++        # if not job.is_call_jump:
++        #     for i in all_successors:
++        #         # print(i.history.jumpkind)
++        #         if i.history.jumpkind == 'Ijk_FakeRet':
++        #             job.call_skipped = True
++        #             job.is_call_jump = True
++        
++        # filter_successors = []
++        # call_targets = []
++        # for i in all_successors:
++        #     # print(i.history.jumpkind)
++        #     if self._is_call_jumpkind(i.history.jumpkind):
++        #         try:
++        #             call_targets.append(i.solver.eval_one(i.ip))
++        #             filter_successors.append(i)
++        #         except:
++        #             job.call_skipped = True
++        #             # job.call_task.skipped = True
++        #             l.error(f"call targets unsolvable at {hex(addr)}")
++
++        #     else:
++        #         filter_successors.append(i)
++        # all_successors = filter_successors
++
++        call_targets = None if len(call_targets) == 0 else call_targets
++
+         job.call_target = None if not call_targets else call_targets[0]
+ 
+         job.is_return_jump = len(all_successors) and all_successors[0].history.jumpkind == 'Ijk_Ret'
+@@ -725,6 +983,27 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         return all_successors
+ 
++    def _want_to_skip(self, call_addr):
++        
++        # if call_addr == 0:
++        #     l.error("call/jump to 0 abort")
++        #     return True
++        # return False
++        # l.error("want to skip ", hex(call_addr))
++        # if self._proj.is_hooked(call_addr):
++        #     l.error(f"skip all hooked calls, at {hex(call_addr)}")
++        #     return True
++
++        # if call_addr in self._not_going_to:
++        #     l.error(f"call/jump to hooked skip at {hex(call_addr)}")
++        #     return True
++        
++        # if call_addr not in self._known_functions:
++        #     l.error(f"unknown function call; probably due to SYMBOLIC JUMP; SKIP call  {call_addr}")
++        #     return None
++
++        return False
++
+     def _handle_successor(self, job, successor, all_successors):
+         """
+         Process each successor generated by the job, and return a new list of succeeding jobs.
+@@ -739,7 +1018,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         # Initialize parameters
+         addr = job.addr
+         jumpkind = successor.history.jumpkind
+-
++       
+         #
+         # Get instruction pointer
+         #
+@@ -761,7 +1040,8 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             # It cannot be concretized currently. Maybe we could handle
+             # it later, maybe it just cannot be concretized
+             return [ ]
+-
++        
++     
+         if len(successor_addrs) > 1:
+             # multiple concrete targets
+             if job.is_return_jump:
+@@ -774,6 +1054,16 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         # Now there should be one single target for the successor
+         successor_addr = successor.solver.eval_one(successor.ip)
++        
++        if successor_addr == 0 or successor_addr > 0x4fff0000 or successor_addr < 0x400000:
++            l.error(f"WEIRED : call/jump to {hex(successor_addr)} abort")
++            return None
++
++        if self._is_call_jumpkind(jumpkind):
++            if successor_addr not in self._known_functions:
++                l.error(f"unknown function call; probably due to SYMBOLIC JUMP; SKIP call  {successor_addr}")
++                return None
++
+ 
+         # Get the fake ret successor
+         fakeret_successor = None
+@@ -801,8 +1091,16 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             self._save_function_initial_state(new_function_key, successor_addr, successor.copy())
+ 
+             # bail out if we hit the interfunction_level cap
+-            if len(job.call_stack) >= self._interfunction_level:
+-                l.debug('We are not tracing into a new function %#08x as we hit interfunction_level limit', successor_addr)
++            if self._want_to_skip(successor_addr):
++                job.dbg_exit_status[successor] = "Skipped"
++                job.call_skipped = True
++                job.call_function_key = new_function_key
++
++                job.call_task.skipped = True
++
++                return [ ]
++            if len(job.call_stack) >= self._interfunction_level :
++                l.error('We are not tracing into a new function %#08x as we hit interfunction_level limit', successor_addr)
+ 
+                 # mark it as skipped
+                 job.dbg_exit_status[successor] = "Skipped"
+@@ -835,26 +1133,48 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         #
+ 
+         if jumpkind == "Ijk_Ret":
+-            assert not job.is_call_jump
++            if job.is_call_jump:
++                l.error("What the hell at successor %s after job %s; revert ", hex(successor_addr),hex(addr))
++                job.is_call_jump = False
++                job.is_return_jump = True
++            # assert not job.is_call_jump
+ 
+             # Record this return
+             self._return_target_sources[successor_addr].append(job.call_stack_suffix + (addr,))
+ 
+             # Check if this return is inside our pending returns list
++            #mjc mute
+             if new_block_id in self._pending_returns:
++                l.error("Delete from pending returns %s at func %s", new_block_id, new_block_id.func_addr)
+                 del self._pending_returns[new_block_id]
+ 
+         # Check if we have reached a fix-point
+         if jumpkind != 'Ijk_FakeRet' and \
+-                new_block_id in self._nodes:
+-            last_state = self._nodes[new_block_id].state
++                new_block_id.askey in self._nodes:
+ 
+-            _, _, merged = last_state.merge(successor, plugin_whitelist=self._mergeable_plugins)
++            
++            # _job = self._nodes[new_block_id.askey]
++            # _job.recover_from_dump(self.project)
++            # last_state = _job.state
+ 
++
++            # _job.state = successor.state
++            # self._nodes[new_block_id.askey] = _job
++            # last_state = self._nodes[new_block_id.askey].state
++            
++            # _, _, merged = last_state.merge(successor, plugin_whitelist=self._mergeable_plugins)
++            
++            merged = True
+             if merged:
++
++                #mjc
++                # successor, _, _ = successor.merge(last_state, plugin_whitelist=self._mergeable_plugins)
++                # self._nodes[new_block_id].state = merge_new 
++                
+                 l.debug("%s didn't reach a fix-point", new_block_id)
+             else:
+-                l.debug("%s reaches a fix-point.", new_block_id)
++                l.error("%s reaches a fix-point. addr %s", new_block_id, hex(successor.addr))
++
+                 job.dbg_exit_status[successor] = "Merged due to reaching a fix-point"
+                 return [ ]
+ 
+@@ -910,6 +1230,29 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         return new_jobs
+ 
++    def DB_LOG(self, name):
++        print(name, ": sync point cache size",\
++            "\n nodes cached -> ", len(self._nodes.cache), " total nodes ->", len(self._nodes),  \
++            "\n pages cached -> ", len(self._pages.cache), " total pages ->", len(self._pages), \
++            "\n sim_procedures cached -> ", len(self._sim_procedures.cache), " total sim_procedures ->", len(self._sim_procedures))
++    
++    def gc_clean(self):
++        sortedlist = sorted( self.gc_pages.items(), key=lambda item: (item[1] ) ) #ref 0 ---> increase
++        to_delete = []
++
++        for idx, (_hash, c) in enumerate(sortedlist):
++            if c > 0:
++                break
++            del self._pages[_hash]
++            to_delete.append(_hash)
++
++        for ele in to_delete:
++            del self.gc_pages[ele]
++
++        if idx > 0:
++            print("GC_CLEANED #", idx)
++            self.DB_LOG("GC_CLEANED")
++
+     def _post_job_handling(self, job, new_jobs, successors):  # pylint:disable=unused-argument
+ 
+         # Debugging output
+@@ -917,6 +1260,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             self._post_job_handling_debug(job, successors)
+ 
+         # pop all finished tasks from the task stack
++        err = 0
+ 
+         pending_task_func_addrs = set(k.func_addr for k in self._pending_returns.keys())
+         while True:
+@@ -935,9 +1279,14 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                 self._task_stack.pop()
+ 
+             else:
++                #mjc
+                 if not task.done or task.function_address in pending_task_func_addrs:
++                # if not task.done:
+                     break
+                 else:
++                   
++                    oldtask = task
++
+                     l.debug('%s is finished.', task)
+                     self._task_stack.pop()
+ 
+@@ -950,25 +1299,55 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                             self._task_stack.pop()
+ 
+                             if task._final_jobs:
++                                # err = 1
++                                # l.error("_final_jobs merge; Hate")
+                                 # merge all jobs, and create a new job
+                                 new_job = task.merge_jobs()
+ 
+                                 # register the job to the top task
+                                 self._top_task.jobs.append(new_job)
+-
++                              
++                                #mjc
++                                # if oldtask.function_address in pending_task_func_addrs:
++                                #     l.error("removing pending since it's done %s", new_job.block_id )
++                                #     del self._pending_returns[new_job.block_id]
+                                 # insert the job
+                                 self._insert_job(new_job)
+-
+-        #if not new_jobs:
++        # if err:
++        #     l.error("while end_final job")
++        #mjc
++        # if not new_jobs:
+         #    # task stack is empty
+         #    self.final_states.append(job.state)
++      
++        if len(self._nodes.cache) > self.dump_disk:
++            self.DB_LOG('NODES')
++            self._nodes.sync()
++            self._nodes_keys.sync()
++            self._callstacks.sync()
++
++        if len(self._pages.cache) > self.dump_disk:
++            self.DB_LOG('PAGES')       
++            self._nodes_page_keys.sync()
++            self._pages.sync()
++
++            #run gc
++            self.gc_clean()
++        
++        # if len(self._sim_procedures.cache) > self.dump_disk:
++        #     self.DB_LOG('SIMP')
++        #     self._simp_keys.sync()
++        #     self._sim_procedures.sync()
+ 
+     def _intra_analysis(self):
+         pass
+ 
+     def _merge_jobs(self, *jobs):
+ 
+-        l.debug("Merging jobs %s", jobs)
++        #mjc no merge
++        # return jobs[1]
++
++        l.error("Merging jobs %s", jobs)
+ 
+         # there should not be more than two jobs being merged at the same time
+         assert len(jobs) == 2
+@@ -1048,6 +1427,10 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         return new_job
+ 
+     def _job_queue_empty(self):
++        
++        #mjc
++        if len(self._task_stack) == 0:
++            return
+ 
+         if self._pending_returns:
+             # We don't have any paths remaining. Let's pop a previously-missing return to
+@@ -1055,9 +1438,9 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+             top_task = self._top_task  # type: FunctionAnalysis
+             func_addr = top_task.function_address
+-
++            
+             pending_ret_key = self._get_pending_job(func_addr)
+-
++           
+             if pending_ret_key is None:
+                 # analysis of the current function is somehow terminated
+                 # we have to rewind the stack, and try the function that calls the current function
+@@ -1066,16 +1449,28 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                     l.warning('The top function analysis task is not done yet. This might be a bug. '
+                               'Please report to Fish.')
+                 # stack unwinding
++ 
+                 while True:
+                     s = self._task_stack.pop()
++                    # l.error("unwinding task %s", s )
++
+                     if isinstance(s, CallAnalysis):
+                         break
+ 
++                    if  len(self._task_stack) == 0:
++                        # print("pending return", self._pending_returns, func_addr)
++
++                        # l.error(" End the world abnormally")
++                        return
++
+                 return self._job_queue_empty()
++            else:
++               l.error(" job empty resume from %s at %s", hex(func_addr), pending_ret_key.addr)
+ 
+             self._trace_pending_job(pending_ret_key)
+ 
+-            l.debug("Tracing a missing return %s", repr(pending_ret_key))
++            #mjc
++            # l.debug("Tracing a missing return %s", repr(pending_ret_key))
+ 
+     def _post_analysis(self):
+         pass
+@@ -1098,8 +1493,10 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         merged = states[0]
+         merging_occurred = False
+         for state in states[1:]:
++
+             merged, _, merging_occurred_ = merged.merge(state, plugin_whitelist=self._mergeable_plugins)
+-            merging_occurred |= merging_occurred
++             
++            merging_occurred |= merging_occurred_
+ 
+         # print "Merged: "
+         # print merged_state.dbg_print_stack()
+@@ -1162,27 +1559,31 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         """
+ 
+         if state is None:
+-            state = self.project.factory.blank_state(mode="static",
++            #mjc
++            state = self.project.factory.blank_state(
++                                                     mode="fastpath_static",
+                                                      remove_options=self._state_options_to_remove
+                                                      )
+ 
+         # make room for arguments passed to the function
+-        sp = state.regs.sp
+-        sp_val = state.solver.eval_one(sp)
+-        state.memory.set_stack_address_mapping(sp_val,
+-                                               state.memory.stack_id(function_start) + '_pre',
+-                                               0
+-                                               )
+-        state.registers.store('sp', sp - 0x100)
+-
+-        # Set the stack address mapping for the initial stack
+-        state.memory.set_stack_size(state.arch.stack_size)
+-        initial_sp = state.solver.eval(state.regs.sp) # FIXME: This is bad, as it may lose tracking of multiple sp values
+-        initial_sp -= state.arch.bytes
+-        state.memory.set_stack_address_mapping(initial_sp,
+-                                               state.memory.stack_id(function_start),
+-                                               function_start
+-                                               )
++        if 1: #sim_options.ABSTRACT_MEMORY in state.options:
++            sp = state.regs.sp
++            sp_val = state.solver.eval_one(sp)
++            state.memory.set_stack_address_mapping(sp_val,
++                                                    state.memory.stack_id(function_start) + '_pre',
++                                                    0
++                                                    )
++            state.registers.store('sp', sp - 0x100)
++
++            # Set the stack address mapping for the initial stack
++
++            state.memory.set_stack_size(state.arch.stack_size)
++            initial_sp = state.solver.eval(state.regs.sp) # FIXME: This is bad, as it may lose tracking of multiple sp values
++            initial_sp -= state.arch.bytes
++            state.memory.set_stack_address_mapping(initial_sp,
++                                                    state.memory.stack_id(function_start),
++                                                    function_start
++                                                    )
+ 
+         return state
+ 
+@@ -1224,7 +1625,8 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             # We set it to a defaultdict in order to be consistent with the
+             # actual parameter.
+             return_target_sources = defaultdict(list)
+-
++        print("Make sure never called ====== ")
++        exit()
+         cfg = networkx.DiGraph()
+         # The corner case: add a node to the graph if there is only one block
+         if len(self._nodes) == 1:
+@@ -1275,7 +1677,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         :return:                                     A node in the graph, or None.
+         :rtype:                                      VFGNode
+         """
+-
++        
+         if block_id not in self._nodes:
+             l.error("Trying to look up a node that we don't have yet. Is this okay????")
+             if not terminator_for_nonexistent_node:
+@@ -1289,6 +1691,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                 func_addr = addr
+ 
+             input_state = self.project.factory.entry_state()
++           
+             input_state.ip = addr
+             pt = VFGNode(addr, block_id, input_state)
+             self._nodes[block_id] = pt
+@@ -1300,6 +1703,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             l.debug("Block ID %s does not exist. Create a PathTerminator instead.",
+                     repr(block_id))
+ 
++        #klepto
+         return self._nodes[block_id]
+ 
+     def _graph_add_edge(self, src_block_id, dst_block_id, **kwargs):
+@@ -1339,6 +1743,12 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             node = self._cfg.model.get_any_node(addr)
+             num_inst = None if node is None else len(node.instruction_addrs)
+             sim_successors = self.project.factory.successors(state, jumpkind=jumpkind, num_inst=num_inst)
++        
++        # mjc
++        # except Exception:
++        #     error_occured = True
++        #     sim_successors = None
++            
+         except SimIRSBError as ex:
+             # It's a tragedy that we came across some instructions that VEX
+             # does not support. I'll create a terminating stub there
+@@ -1348,14 +1758,18 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                 state, self.project.arch)
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
+         except claripy.ClaripyError:
++
+             l.error("ClaripyError: ", exc_info=True)
+-            error_occured = True
++            
+             # Generate a PathTerminator to terminate the current path
+             inst = SIM_PROCEDURES["stubs"]["PathTerminator"](
+                 state, self.project.arch)
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
++
+         except SimError:
++
+             l.error("SimError: ", exc_info=True)
++            # l.error("SimError: ", exc_info=False)
+ 
+             error_occured = True
+             # Generate a PathTerminator to terminate the current path
+@@ -1363,6 +1777,7 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                     state, self.project.arch)
+             sim_successors = ProcedureEngine().process(state, procedure=inst)
+         except AngrError as ex:
++
+             #segment = self.project.loader.main_object.in_which_segment(addr)
+             l.error("AngrError %s when generating SimSuccessors at %#x",
+                     ex, addr, exc_info=True)
+@@ -1372,6 +1787,14 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+             error_occured = True
+             sim_successors = None
+ 
++        # remove = []
++        # for ele in sim_successors:
++        #     if ele.addr == 0:
++        #         l.error("terminate at 0")
++        #         remove.append(ele)
++        # for ele in remove:        
++        #     sim_successors.remove(ele)
++
+         return sim_successors, error_occured, restart_analysis
+ 
+     def _create_new_jobs(self, job, successor, new_block_id, new_call_stack):
+@@ -1397,8 +1820,10 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+ 
+         new_jobs = [ ]
+ 
+-        if jumpkind == "Ijk_FakeRet":
+-            assert job.is_call_jump
++        if jumpkind == "Ijk_FakeRet" and job.is_call_jump:
++
++            #mjc turn off this and move up to if statement if assert fails, the previous call is totally not possible;
++            # assert job.is_call_jump, print(hex(successor_addr))
+ 
+             # This is the default "fake" return successor generated at each call, if and only if the target function
+             # returns.
+@@ -1548,12 +1973,16 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+         call_stack_copy = job.call_stack_copy()
+         while call_stack_copy.current_return_target is not None:
+             ret_target = call_stack_copy.current_return_target
++            print("removing pending return:", hex(ret_target))
+             # Remove the current call stack frame
+             call_stack_copy = call_stack_copy.ret(ret_target)
+             call_stack_suffix = call_stack_copy.stack_suffix(self._context_sensitivity_level)
+             tpl = call_stack_suffix + (ret_target,)
+             tpls_to_remove.append(tpl)
+-
++        
++        if len(tpls_to_remove) > 0:
++            print("exit")
++            # exit()
+         # Remove those tuples from the dict
+         for tpl in tpls_to_remove:
+             if tpl in pending_returns:
+@@ -1678,7 +2107,9 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                 )
+         if function_key in self._function_initial_states[function_address]:
+             existing_state = self._function_initial_states[function_address][function_key]
+-            merged_state, _, _ = existing_state.merge(state)
++            # merged_state, _, _ = existing_state.merge(state)
++            #mjc
++            merged_state = state
+             self._function_initial_states[function_address][function_key] = merged_state
+ 
+         else:
+@@ -1729,6 +2160,8 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
+                      src_exit_stmt_idx=pending_job.src_stmt_idx,
+                      src_ins_addr=pending_job.src_ins_addr,
+                      )
++
++        
+         self._insert_job(job)
+         self._top_task.jobs.append(job)
+ 
+diff --git a/angr/engines/successors.py b/angr/engines/successors.py
+index abd118b..6799138 100644
+--- a/angr/engines/successors.py
++++ b/angr/engines/successors.py
+@@ -1,7 +1,7 @@
+ import claripy
+ 
+ from archinfo.arch_soot import ArchSoot
+-
++from ..errors import SimError
+ import logging
+ l = logging.getLogger(name=__name__)
+ 
+@@ -242,6 +242,8 @@ class SimSuccessors:
+         self.all_successors.append(state)
+         target = state.scratch.target
+ 
++        
++
+         # categorize the state
+         if o.APPROXIMATE_GUARDS in state.options and state.solver.is_false(state.scratch.guard, exact=False):
+             if o.VALIDATE_APPROXIMATIONS in state.options:
+@@ -258,7 +260,18 @@ class SimSuccessors:
+         elif o.LAZY_SOLVES not in state.options and not state.satisfiable():
+             self.unsat_successors.append(state)
+         elif o.NO_SYMBOLIC_JUMP_RESOLUTION in state.options and state.solver.symbolic(target):
++            print("No symblic jump resolution at ", hex(self.addr))
+             self.unconstrained_successors.append(state)
++        #mjc 
++        # elif state.solver.eval(target) == 0: #this terminates jump to 0
++        #     self.unconstrained_successors.append(state)
++        #     print("target is 0; put into unconstrained at ", hex(state.solver.eval(state.ip)))
++            # raise SimError("target is 0; put into unconstrained")
++        #     state.history.jumpkind = 'Ijk_Boring'
++        #     # self.unconstrained_successors.append(state)
++        #     self.successors.append(state)
++        #     self.flat_successors.append(state)
++
+         elif not state.solver.symbolic(target) and not state.history.jumpkind.startswith("Ijk_Sys"):
+             # a successor with a concrete IP, and it's not a syscall
+             self.successors.append(state)
+diff --git a/angr/engines/vex/claripy/ccall.py b/angr/engines/vex/claripy/ccall.py
+index d5d95ca..950ae94 100644
+--- a/angr/engines/vex/claripy/ccall.py
++++ b/angr/engines/vex/claripy/ccall.py
+@@ -42,9 +42,9 @@ def boolean_extend(O, a, b, size):
+ def op_concretize(op):
+     if type(op) is int:
+         return op
+-    op_e = op.ite_excavated
+-    if op_e.op == 'If':
+-        cases = list(claripy.reverse_ite_cases(op_e))
++    op = op.ite_excavated
++    if op.op == 'If':
++        cases = list(claripy.reverse_ite_cases(op))
+         if all(c.op == 'BVV' for _, c in cases):
+             raise CCallMultivaluedException(cases, op)
+     if op.op != 'BVV':
+@@ -1050,6 +1050,11 @@ def amd64g_calculate_condition(state, cond, cc_op, cc_dep1, cc_dep2, cc_ndep):
+             return pc_calculate_condition_simple(state, cond, cc_op, cc_dep1, cc_dep2, cc_ndep, platform='AMD64')
+         except KeyError:
+             pass
++
++        # #mjc
++        # except Exception:
++        #     pass
++        # #mjc end
+     return pc_calculate_condition(state, cond, cc_op, cc_dep1, cc_dep2, cc_ndep, platform='AMD64')
+ 
+ def amd64g_calculate_rflags_all(state, cc_op, cc_dep1, cc_dep2, cc_ndep):
+diff --git a/angr/engines/vex/lifter.py b/angr/engines/vex/lifter.py
+index 7084000..b7a0bc6 100644
+--- a/angr/engines/vex/lifter.py
++++ b/angr/engines/vex/lifter.py
+@@ -17,7 +17,7 @@ l = logging.getLogger(__name__)
+ 
+ VEX_IRSB_MAX_SIZE = 400
+ # VEX_IRSB_MAX_INST = 99
+-VEX_IRSB_MAX_INST = 1
++VEX_IRSB_MAX_INST = 99
+ 
+ class VEXLifter(SimEngineBase):
+     def __init__(self, project,
+@@ -248,7 +248,7 @@ class VEXLifter(SimEngineBase):
+                                   collect_data_refs=collect_data_refs,
+                                   cross_insn_opt=cross_insn_opt
+                                   )
+-
++                                  
+                 if subphase == 0 and irsb.statements is not None:
+                     # check for possible stop points
+                     stop_point = self._first_stoppoint(irsb, extra_stop_points)
+diff --git a/angr/engines/vex/light/light.py b/angr/engines/vex/light/light.py
+index a52265f..cf8d51d 100644
+--- a/angr/engines/vex/light/light.py
++++ b/angr/engines/vex/light/light.py
+@@ -443,7 +443,11 @@ class VEXMixin(SimEngineBase):
+ 
+         for stmt_idx, stmt in enumerate(irsb.statements):
+             self.stmt_idx = stmt_idx
+-            self._handle_vex_stmt(stmt)
++            try:
++                self._handle_vex_stmt(stmt)
++            except Exception as e:
++                print(e)
++                
+         self.stmt_idx = DEFAULT_STATEMENT
+         self._handle_vex_defaultexit(irsb.next, irsb.jumpkind)
+ 
+diff --git a/angr/procedures/libc/memcpy.py b/angr/procedures/libc/memcpy.py
+index 84bbef1..36bfdc3 100644
+--- a/angr/procedures/libc/memcpy.py
++++ b/angr/procedures/libc/memcpy.py
+@@ -22,6 +22,9 @@ class memcpy(angr.SimProcedure):
+ 
+         l.debug("Memcpy running with conditional_size %#x", conditional_size)
+ 
++        l.error("skip memcpy")
++        return dst_addr
++        
+         if conditional_size > 0:
+             src_mem = self.state.memory.load(src_addr, conditional_size, endness='Iend_BE')
+             if ABSTRACT_MEMORY in self.state.options:
+diff --git a/angr/sim_options.py b/angr/sim_options.py
+index bbe956e..1b86530 100644
+--- a/angr/sim_options.py
++++ b/angr/sim_options.py
+@@ -52,6 +52,8 @@ STRINGS_ANALYSIS = "STRINGS_ANALYSIS"
+ SYMBOLIC_INITIAL_VALUES = "SYMBOLIC_INITIAL_VALUES"
+ 
+ # this causes angr to use SimAbstractMemory for the memory region
++
++#mjc
+ ABSTRACT_MEMORY = "ABSTRACT_MEMORY"
+ 
+ # This causes symbolic memory to avoid performing symbolic reads and writes. Unconstrained results
+@@ -341,6 +343,17 @@ modes = {
+     'symbolic': common_options | symbolic | { TRACK_CONSTRAINT_ACTIONS }, #| approximation | { VALIDATE_APPROXIMATIONS }
+     'symbolic_approximating': common_options | symbolic | approximation | { TRACK_CONSTRAINT_ACTIONS },
+     'static': (common_options - simplification) | { REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, SYMBOLIC_INITIAL_VALUES, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, USE_SIMPLIFIED_CCALLS, REVERSE_MEMORY_NAME_MAP },
++    'fastpath_static': (common_options - simplification)|{ AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification)|{NO_SYMBOLIC_SYSCALL_RESOLUTION}|{ AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    
++    # 'fastpath_static': (common_options - simplification)| { SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification) | resilience | {TRACK_CONSTRAINTS} | {NO_SYMBOLIC_SYSCALL_RESOLUTION, AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification)| {TRACK_CONSTRAINTS, AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification) | {NO_SYMBOLIC_SYSCALL_RESOLUTION, AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification)|{ SYMBOL_FILL_UNCONSTRAINED_MEMORY, SYMBOL_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, REVERSE_MEMORY_NAME_MAP },
++    # USE_SIMPLIFIED_CCALLS
++    # 'fastpath_static': (common_options- simplification) | concrete|{ SYMBOLIC_INITIAL_VALUES, ZERO_FILL_UNCONSTRAINED_MEMORY, ZERO_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, USE_SIMPLIFIED_CCALLS, REVERSE_MEMORY_NAME_MAP },
++    # 'fastpath_static': (common_options - simplification) | resilience |{ ZERO_FILL_UNCONSTRAINED_MEMORY, ZERO_FILL_UNCONSTRAINED_REGISTERS, REGION_MAPPING, BEST_EFFORT_MEMORY_STORING, SYMBOLIC_INITIAL_VALUES, DO_CCALLS, DO_RET_EMULATION, TRUE_RET_EMULATION_GUARD, TRACK_CONSTRAINTS, ABSTRACT_MEMORY, ABSTRACT_SOLVER, USE_SIMPLIFIED_CCALLS, REVERSE_MEMORY_NAME_MAP },
+     'fastpath': (common_options - simplification ) | (symbolic - { SYMBOLIC, DO_CCALLS }) | resilience | { TRACK_OP_ACTIONS, BEST_EFFORT_MEMORY_STORING, AVOID_MULTIVALUED_READS, AVOID_MULTIVALUED_WRITES, SYMBOLIC_INITIAL_VALUES, DO_RET_EMULATION, NO_SYMBOLIC_JUMP_RESOLUTION, NO_SYMBOLIC_SYSCALL_RESOLUTION, FAST_REGISTERS },
+     'tracing': (common_options - simplification - {SUPPORT_FLOATING_POINT, ALL_FILES_EXIST}) | symbolic | resilience | (unicorn - { UNICORN_TRACK_STACK_POINTERS }) | { CGC_NO_SYMBOLIC_RECEIVE_LENGTH, REPLACEMENT_SOLVER, EXCEPTION_HANDLING, ZERO_FILL_UNCONSTRAINED_MEMORY, PRODUCE_ZERODIV_SUCCESSORS, ALLOW_SEND_FAILURES, SYMBOLIC_MEMORY_NO_SINGLEVALUE_OPTIMIZATIONS, MEMORY_FIND_STRICT_SIZE_LIMIT, CPUID_SYMBOLIC },
+ }
+diff --git a/angr/sim_state.py b/angr/sim_state.py
+index ed0751f..9dd5808 100644
+--- a/angr/sim_state.py
++++ b/angr/sim_state.py
+@@ -20,6 +20,8 @@ from .misc.plugins import PluginHub, PluginPreset
+ from .sim_state_options import SimStateOptions
+ from .state_plugins import SimStatePlugin
+ 
++import pickle 
++
+ def arch_overrideable(f):
+     @functools.wraps(f)
+     def wrapped_f(self, *args, **kwargs):
+@@ -70,6 +72,7 @@ class SimState(PluginHub):
+     mem: "SimMemView"
+     history: 'SimStateHistory'
+     inspect: 'SimInspector'
++    jni_references: "SimStateJNIReferences"
+     def __init__(
+             self,
+             project=None,
+@@ -96,6 +99,8 @@ class SimState(PluginHub):
+         super(SimState, self).__init__()
+         self.project = project
+ 
++        # import pickle
++        # print("project", len(pickle.dumps(project, -1)))
+         # Java & Java JNI
+         self._is_java_project = self.project and self.project.is_java_project
+         self._is_java_jni_project = self.project and self.project.is_java_jni_project
+@@ -179,6 +184,13 @@ class SimState(PluginHub):
+                 sim_memory_cls = self.plugin_preset.request_plugin('abs_memory')
+                 sim_memory = sim_memory_cls(cle_memory_backer=cle_memory_backer, dict_memory_backer=dict_memory_backer,
+                                             memory_id='mem', regioned_memory_cls=regioned_memory_cls)
++                # import pickle
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].all_elf_objects, -1)))
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].all_objects, -1)))
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].extern_object, -1)))
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].kernel_object, -1)))
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].main_object, -1)))
++                # print("cle_memory_backer", len(pickle.dumps(cle_memory_backer['global'].shared_objects, -1)))
+ 
+             elif o.FAST_MEMORY in self.options:
+                 sim_memory_cls = self.plugin_preset.request_plugin('fast_memory')
+@@ -190,6 +202,7 @@ class SimState(PluginHub):
+                                             permissions_map=permissions_map, default_permissions=default_permissions,
+                                             stack_perms=stack_perms, stack_end=stack_end, stack_size=stack_size)
+ 
++
+             # Add memory plugin
+             if not self._is_java_jni_project:
+                 self.register_plugin('memory', sim_memory, inhibit_init=True)
+@@ -244,8 +257,83 @@ class SimState(PluginHub):
+     def __getstate__(self):
+         # Don't pickle attributes for plugins. These will be pickled
+         # through self._active_plugins.
++    
+         s = { k:v for k,v in self.__dict__.items() if k not in self._active_plugins.keys() }
+         s['_active_plugins'] = { k:v for k,v in s['_active_plugins'].items() if k not in ('inspect', 'regs', 'mem') }
++        
++        # print('fs', len(pickle.dumps(s['_active_plugins']['fs'],-1)))
++        # # print('solver', len(pickle.dumps(s['_active_plugins']['solver'],-1)))
++        # print('history', len(pickle.dumps(s['_active_plugins']['history'],-1)))
++        # print('memory', len(pickle.dumps(s['_active_plugins']['memory'],-1)))
++        # print('registers', len(pickle.dumps(s['_active_plugins']['registers'],-1)))
++        # try:
++        #     print('solver', len(pickle.dumps(s['_active_plugins']['solver'],-1)))
++        # except:
++        #     pass
++        #mjc
++        try:
++            s['project'] = None
++        except:
++            pass
++
++        try:
++            s['_active_plugins']['memory']._cle_memory_backer = None
++            # s['_active_plugins']['memory']._regioned_memory_cls = None
++            # s['_active_plugins']['scratch'].tyenv = None
++            # s['_active_plugins']['scratch'].temps = None
++            # s['_active_plugins']['scratch'].state = None
++            # s['_active_plugins']['scratch'].irsb = None
++            # s['_active_plugins']['scratch'].guard = None
++            # s['_active_plugins']['scratch'].executed_pages_set = None
++            # s['_active_plugins']['scratch'].sim_procedure = None
++            
++        except:
++            pass
++
++        try:
++            # s['_active_plugins']['memory']._regions['global'] = None
++            s['_active_plugins']['memory']._regions['global']._cle_loader = None
++        except:
++            pass
++
++        try:
++            s['_active_plugins']['memory']._regions['global']._clemory_backer = None
++            # s['_active_plugins']['memory']._regions['global'].alocs = None
++        except :
++            pass
++
++        try:
++            s['_active_plugins']['memory']._regions['global']._pages = {}
++        except:
++            pass
++            
++        try:
++            s['_active_plugins']['scratch'].sim_procedure = None
++        
++        except:
++            pass
++            
++        # print('fs', len(pickle.dumps(s['_active_plugins']['fs'],-1)))
++        
++        # print('history', len(pickle.dumps(s['_active_plugins']['history'],-1)))
++        # print('memory', len(pickle.dumps(s['_active_plugins']['memory'],-1)))
++        # print('registers', len(pickle.dumps(s['_active_plugins']['registers'],-1)))
++        # print('scratch', len(pickle.dumps(s['_active_plugins']['scratch'],-1)))
++     
++        # print('executed_pages_set', len(pickle.dumps(s['_active_plugins']['scratch'].executed_pages_set,-1)))
++        # print('sim_procedure', len(pickle.dumps(s['_active_plugins']['scratch'].sim_procedure,-1)))
++       
++        # try:
++        #     print('global', len(pickle.dumps(s['_active_plugins']['memory']._regions['global'], -1)))
++        #     print('solver', len(pickle.dumps(s['_active_plugins']['solver'],-1)))
++        # except:
++        #     pass
++
++        # print('tyenv', len(pickle.dumps(s['_active_plugins']['scratch'].tyenv,-1)))
++        # print('temps', len(pickle.dumps(s['_active_plugins']['scratch'].temps,-1)))
++        # print('irsb', len(pickle.dumps(s['_active_plugins']['scratch'].irsb,-1)))
++        # print('guard', len(pickle.dumps(s['_active_plugins']['scratch'].guard,-1)))
++
+         return s
+ 
+     def __setstate__(self, s):
+@@ -255,6 +343,15 @@ class SimState(PluginHub):
+             if p.STRONGREF_STATE:
+                 p.set_strongref_state(self)
+ 
++    def recover_from_dump(self, project, pages, sim_procedure):
++        if self.plugins['memory']._cle_memory_backer is None:
++            self.project = project
++            self.plugins['memory']._cle_memory_backer = project.loader
++            self.plugins['memory']._regions['global']._cle_loader = project.loader
++            self.plugins['memory']._regions['global']._clemory_backer = project.loader.memory
++            self.plugins['memory']._regions['global']._pages = pages
++            self.plugins['scratch'].sim_procedure = sim_procedure
++
+     def _get_weakref(self):
+         return weakref.proxy(self)
+ 
+@@ -502,28 +599,56 @@ class SimState(PluginHub):
+ 
+         if o.ABSTRACT_SOLVER in self.options and len(args) > 0:
+             for arg in args:
+-                if self.solver.is_false(arg):
+-                    self._satisfiable = False
+-                    return
+-
+-                if self.solver.is_true(arg):
+-                    continue
++                err = 0
++                try:
++                    if self.solver.is_false(arg):
++                        self._satisfiable = False
++                        return
+ 
++                    if self.solver.is_true(arg):
++                        continue
++                
++                except Exception:
++                    l.error(" solver error condtion; pass to VSABackend")
++                    err = 1 
++                    pass
++                
++                # self._satisfiable = False
++                # return
++                
+                 # `is_true` and `is_false` does not use VSABackend currently (see commits 97a75366 and 2dfba73e in
+                 # claripy). There is a chance that VSA backend can in fact handle it.
+                 # Therefore we try to resolve it with VSABackend again
+-                if claripy.backends.vsa.is_false(arg):
++                
++                #mjc
++                if not err:
++                    l.error("Can't solve condtion; (possibly uninitialized comparison) Default to False")
+                     self._satisfiable = False
+                     return
++                    
++                try:
++                    if claripy.backends.vsa.is_false(arg):
++                        self._satisfiable = False
++                        return
+ 
+-                if claripy.backends.vsa.is_true(arg):
+-                    continue
++                    if claripy.backends.vsa.is_true(arg):
++                        continue
++                except Exception as e:
++
++                    l.error("clarity backends true/false evaluation error, likely due to unintialized comparison; return False")
+ 
++                    self._satisfiable = False
++                    return
++
++                # l.error("Can't solve condtion; probably unitialized comparison")
++                # self._satisfiable = False
++                # return
++                        
+                 # It's neither True or False. Let's try to apply the condition
+ 
+                 # We take the argument, extract a list of constrained SIs out of it (if we could, of course), and
+                 # then replace each original SI the intersection of original SI and the constrained one.
+-
++                
+                 _, converted = self.solver.constraint_to_si(arg)
+ 
+                 for original_expr, constrained_si in converted:
+@@ -633,6 +758,106 @@ class SimState(PluginHub):
+ 
+         return state
+ 
++    def custom_merge(self, *others, **kwargs):
++        """
++        Merges this state with the other states. Returns the merging result, merged state, and the merge flag.
++
++        :param states: the states to merge
++        :param merge_conditions: a tuple of the conditions under which each state holds
++        :param common_ancestor:  a state that represents the common history between the states being merged. Usually it
++                                 is only available when EFFICIENT_STATE_MERGING is enabled, otherwise weak-refed states
++                                 might be dropped from state history instances.
++        :param plugin_whitelist: a list of plugin names that will be merged. If this option is given and is not None,
++                                 any plugin that is not inside this list will not be merged, and will be created as a
++                                 fresh instance in the new state.
++        :param common_ancestor_history:
++                                 a SimStateHistory instance that represents the common history between the states being
++                                 merged. This is to allow optimal state merging when EFFICIENT_STATE_MERGING is
++                                 disabled.
++        :return: (merged state, merge flag, a bool indicating if any merging occurred)
++        """
++
++        merge_conditions = kwargs.pop('merge_conditions', None)
++        common_ancestor = kwargs.pop('common_ancestor', None)
++        plugin_whitelist = kwargs.pop('plugin_whitelist', None)
++        common_ancestor_history = kwargs.pop('common_ancestor_history', None)
++
++        if len(kwargs) != 0:
++            raise ValueError("invalid arguments: %s" % kwargs.keys())
++
++        if merge_conditions is None:
++            # TODO: maybe make the length of this smaller? Maybe: math.ceil(math.log(len(others)+1, 2))
++            merge_flag = self.solver.BVS("state_merge_%d" % next(merge_counter), 16)
++            merge_values = range(len(others)+1)
++            merge_conditions = [ merge_flag == b for b in merge_values ]
++        else:
++            merge_conditions = [
++                (self.solver.true if len(mc) == 0 else self.solver.And(*mc)) for mc in merge_conditions
++            ]
++
++        if len(set(o.arch.name for o in others)) != 1:
++            raise SimMergeError("Unable to merge due to different architectures.")
++
++        all_plugins = set(self.plugins.keys()) | set.union(*(set(o.plugins.keys()) for o in others))
++
++        if plugin_whitelist is not None:
++            all_plugins = all_plugins.intersection(set(plugin_whitelist))
++
++        merged = self.copy()
++        merging_occurred = False
++
++        # fix parent
++        merged.history.parent = self.history
++
++        # plugins
++        for p in all_plugins:
++            if p not in ['memory', 'registers', 'regs', 'mem']:
++                continue 
++            # if p in ['callstack', 'posix', 'history']:
++                # continue
++            our_plugin = merged.plugins[p] if p in merged.plugins else None
++            their_plugins = [ (pl.plugins[p] if p in pl.plugins else None) for pl in others ]
++
++            plugin_classes = (
++                set([our_plugin.__class__]) | set(pl.__class__ for pl in their_plugins)
++            ) - set([None.__class__])
++            if len(plugin_classes) != 1:
++                raise SimMergeError(
++                    "There are differing plugin classes (%s) for plugin %s" % (plugin_classes, p)
++                )
++            plugin_class = plugin_classes.pop()
++
++            our_filled_plugin = our_plugin if our_plugin is not None else merged.register_plugin(
++                p, plugin_class()
++            )
++            their_filled_plugins = [
++                (tp if tp is not None else t.register_plugin(p, plugin_class()))
++                for t,tp in zip(others, their_plugins)
++            ]
++
++            plugin_common_ancestor = (
++                common_ancestor.plugins[p] if
++                (common_ancestor is not None and p in common_ancestor.plugins) else
++                None
++            )
++
++            if plugin_common_ancestor is None and \
++                    plugin_class is SimStateHistory and \
++                    common_ancestor_history is not None:
++                plugin_common_ancestor = common_ancestor_history
++
++            plugin_state_merged = our_filled_plugin.merge(
++                their_filled_plugins, merge_conditions, common_ancestor=plugin_common_ancestor,
++            )
++
++            if plugin_state_merged:
++                l.debug('Merging occurred in %s', p)
++                merging_occurred = True
++
++        merged.add_constraints(merged.solver.Or(*merge_conditions))
++        return merged, merge_conditions, merging_occurred
++
++
+     def merge(self, *others, **kwargs):
+         """
+         Merges this state with the other states. Returns the merging result, merged state, and the merge flag.
+@@ -983,3 +1208,4 @@ if TYPE_CHECKING:
+     from .state_plugins.view import SimRegNameView, SimMemView
+     from .state_plugins.callstack import CallStack
+     from .state_plugins.inspect import SimInspector
++    from .state_plugins import SimStateJNIReferences
+diff --git a/angr/sim_state_options.py b/angr/sim_state_options.py
+index fad2251..f900d13 100644
+--- a/angr/sim_state_options.py
++++ b/angr/sim_state_options.py
+@@ -92,6 +92,10 @@ class SimStateOptions:
+         elif isinstance(thing, (set, list)):
+             boolean_switches = thing
+             for name in boolean_switches:
++                #mjc
++                # if name == "SYMBOL_FILL_UNCONSTRAINED_MEMORY" or name == 'SYMBOL_FILL_UNCONSTRAINED_REGISTERS':
++                #     self[name] = False
++                # else:
+                 self[name] = True
+         elif isinstance(thing, SimStateOptions):
+             ops = thing
+diff --git a/angr/state_plugins/callstack.py b/angr/state_plugins/callstack.py
+index 2d7ee77..9118c3e 100644
+--- a/angr/state_plugins/callstack.py
++++ b/angr/state_plugins/callstack.py
+@@ -14,7 +14,7 @@ class CallStack(SimStatePlugin):
+     Stores the address of the function you're in and the value of SP
+     at the VERY BOTTOM of the stack, i.e. points to the return address.
+     """
+-    def __init__(self, call_site_addr=0, func_addr=0, stack_ptr=0, ret_addr=0, jumpkind='Ijk_Call', next_frame: Optional['CallStack'] = None,
++    def __init__(self, call_site_addr=0, func_addr=0, stack_ptr=0, ret_addr=None, jumpkind='Ijk_Call', next_frame: Optional['CallStack'] = None,
+                  invoke_return_variable=None):
+         super().__init__()
+         self.state = None
+@@ -30,6 +30,9 @@ class CallStack(SimStatePlugin):
+         self.procedure_data = None
+         self.locals = {}
+ 
++        #mjc
++        self.cur_stack_suffix = (call_site_addr, func_addr)
++
+     #
+     # Public methods
+     #
+@@ -43,11 +46,16 @@ class CallStack(SimStatePlugin):
+         o.ret_addr = self.ret_addr
+         o.jumpkind = self.jumpkind
+         o.next = self.next if with_tail else None
++
++        #mjc
++        o.cur_stack_suffix = self.cur_stack_suffix
++
+         o.invoke_return_variable = self.invoke_return_variable
+ 
+         o.block_counter = collections.Counter(self.block_counter)
+         o.procedure_data = self.procedure_data
+         o.locals = dict(self.locals)
++
+         return o
+ 
+     def set_state(self, state):
+@@ -96,7 +104,6 @@ class CallStack(SimStatePlugin):
+         :return: Number of frames
+         :rtype: int
+         """
+-
+         o = 0
+         for _ in self:
+             o += 1
+@@ -227,6 +234,10 @@ class CallStack(SimStatePlugin):
+         Push the frame cf onto the stack. Return the new stack.
+         """
+         cf.next = self
++
++        #mjc
++        cf.cur_stack_suffix = self.cur_stack_suffix + (cf.call_site_addr, cf.func_addr)
++
+         if self.state is not None:
+             self.state.register_plugin('callstack', cf)
+             self.state.history.recent_stack_actions.append(CallStackAction(
+@@ -326,6 +337,9 @@ class CallStack(SimStatePlugin):
+         :return: A tuple of stack suffix.
+         :rtype: tuple
+         """
++        if context_sensitivity_level == 0:
++            return ()
++        return self.cur_stack_suffix[-context_sensitivity_level*2:]
+ 
+         ret = ()
+ 
+@@ -336,7 +350,7 @@ class CallStack(SimStatePlugin):
+ 
+         while len(ret) < context_sensitivity_level*2:
+             ret = (None, None) + ret
+-
++        # assert ret == self.cur_stack_suffix, print(ret, self.cur_stack_suffix)
+         return ret
+ 
+     #
+diff --git a/angr/state_plugins/history.py b/angr/state_plugins/history.py
+index 9913b81..d62792a 100644
+--- a/angr/state_plugins/history.py
++++ b/angr/state_plugins/history.py
+@@ -71,39 +71,68 @@ class SimStateHistory(SimStatePlugin):
+         # will traverse it recursively. If we provide it as a real list, it will not do any recursion.
+         # the nuance is in whether the list we provide has live parent links, in which case it matters
+         # what order pickle iterates the list, as it will suddenly be able to perform memoization.
+-        ancestry = []
+-        parent = self.parent
+-        self.parent = None
+-        while parent is not None:
+-            ancestry.append(parent)
+-            parent = parent.parent
+-            ancestry[-1].parent = None
+-
+-        rev_ancestry = list(reversed(ancestry))
++        
++        # ancestry = []
++        # parent = self.parent
++        # self.parent = None
++        # while parent is not None:
++        #     ancestry.append(parent)
++        #     parent = parent.parent
++        #     ancestry[-1].parent = None
++
++        # rev_ancestry = list(reversed(ancestry))
++        # d = super(SimStateHistory, self).__getstate__()
++        # d['strongref_state'] = None
++        # d['rev_ancestry'] = rev_ancestry
++        # d['successor_ip'] = self.successor_ip
++
++        # # reconstruct chain
++        # child = self
++        # for parent in ancestry:
++        #     child.parent = parent
++        #     child = parent
++
++        # d.pop('parent')
++
++        # return d
++
++
++
++        #mjc
++        # d.pop('state')
++        # try:
++        #     d.pop('events')
++        #     d.pop('solver')
++        #     d.pop('stack_actions')
++        #     d.pop('parents')
++        #     d.pop('ins_addrs')
++        #     d.pop('descriptions')
++        #     d.pop('bbl_addrs')
++        # except:
++        #     pass
++        #mjc end
++        # return None
++        
++        # do this
+         d = super(SimStateHistory, self).__getstate__()
+-        d['strongref_state'] = None
+-        d['rev_ancestry'] = rev_ancestry
+-        d['successor_ip'] = self.successor_ip
+-
+-        # reconstruct chain
+-        child = self
+-        for parent in ancestry:
+-            child.parent = parent
+-            child = parent
+-
+-        d.pop('parent')
+-        return d
++        newd = {}
++        newd['jumpkind'] = d['jumpkind']
++        # newd['rev_ancestry'] = d['rev_ancestry']
++        newd['recent_events'] = []
++        newd['successor_ip'] = self.successor_ip
++        return newd
+ 
+     def __setstate__(self, d):
+         child = self
+-        ancestry = list(reversed(d.pop('rev_ancestry')))
+-        for parent in ancestry:
+-            if hasattr(child, 'parent'):
+-                break
+-            child.parent = parent
+-            child = parent
+-        else:
+-            child.parent = None
++        # ancestry = list(reversed(d.pop('rev_ancestry')))
++        # for parent in ancestry:
++        #     if hasattr(child, 'parent'):
++        #         break
++        #     child.parent = parent
++        #     child = parent
++        # else:
++        #     child.parent = None
++
+         self.__dict__.update(d)
+ 
+     def __repr__(self):
+diff --git a/angr/state_plugins/solver.py b/angr/state_plugins/solver.py
+index 4de1981..619430b 100644
+--- a/angr/state_plugins/solver.py
++++ b/angr/state_plugins/solver.py
+@@ -10,7 +10,7 @@ from .plugin import SimStatePlugin
+ from .sim_action_object import ast_stripping_decorator, SimActionObject
+ 
+ l = logging.getLogger(name=__name__)
+-
++I_want_all_possible_case = dict()
+ #pylint:disable=unidiomatic-typecheck,isinstance-second-argument-not-valid-type
+ 
+ #
+@@ -90,6 +90,7 @@ def error_converter(f):
+         except claripy.UnsatError as e:
+             raise SimUnsatError("Got an unsat result") from e
+         except claripy.ClaripyFrontendError as e:
++            
+             raise SimSolverModeError("Claripy threw an error") from e
+     return wrapped_f
+ 
+@@ -187,6 +188,8 @@ class SimSolver(SimStatePlugin):
+         self.all_variables = [] if all_variables is None else all_variables
+         self.temporal_tracked_variables = {} if temporal_tracked_variables is None else temporal_tracked_variables
+         self.eternal_tracked_variables = {} if eternal_tracked_variables is None else eternal_tracked_variables
++      
++       
+ 
+     def reload_solver(self, constraints=None):
+         """
+@@ -589,6 +592,7 @@ class SimSolver(SimStatePlugin):
+         :param exact:               If False, return approximate solutions.
+         :return:                    True if `v` is definitely true, False otherwise
+         """
++
+         if exact is False and o.VALIDATE_APPROXIMATIONS in self.state.options:
+             ar = self._solver.is_true(e, extra_constraints=self._adjust_constraint_list(extra_constraints), exact=False)
+             er = self._solver.is_true(e, extra_constraints=self._adjust_constraint_list(extra_constraints))
+@@ -612,12 +616,14 @@ class SimSolver(SimStatePlugin):
+         :param exact:               If False, return approximate solutions.
+         :return:                    True if `v` is definitely false, False otherwise
+         """
++
+         if exact is False and o.VALIDATE_APPROXIMATIONS in self.state.options:
+             ar = self._solver.is_false(e, extra_constraints=self._adjust_constraint_list(extra_constraints), exact=False)
+             er = self._solver.is_false(e, extra_constraints=self._adjust_constraint_list(extra_constraints))
+             if er is False:
+                 assert ar is False
+             return ar
++        
+         return self._solver.is_false(e, extra_constraints=self._adjust_constraint_list(extra_constraints), exact=exact)
+ 
+     @timed_function
+@@ -669,7 +675,7 @@ class SimSolver(SimStatePlugin):
+     #
+     # And some convenience stuff
+     #
+-
++    
+     T = TypeVar('T', int, bytes)
+     @staticmethod
+     def _cast_to(e, solution, cast_to: Type[T]) -> T:
+@@ -684,8 +690,9 @@ class SimSolver(SimStatePlugin):
+         """
+         if cast_to is None:
+             return solution
+-
++        global I_want_all_possible_case
+         if type(solution) is bool:
++
+             if cast_to is bytes:
+                 return bytes([int(solution)])
+             elif cast_to is int:
+@@ -726,6 +733,7 @@ class SimSolver(SimStatePlugin):
+         :rtype: tuple
+         """
+         concrete_val = _concrete_value(e)
++       
+         if concrete_val is not None:
+             return [self._cast_to(e, concrete_val, cast_to)]
+ 
+diff --git a/angr/storage/memory_mixins/default_filler_mixin.py b/angr/storage/memory_mixins/default_filler_mixin.py
+index 306a630..7983b2f 100644
+--- a/angr/storage/memory_mixins/default_filler_mixin.py
++++ b/angr/storage/memory_mixins/default_filler_mixin.py
+@@ -56,7 +56,8 @@ class DefaultFillerMixin(MemoryMixin):
+                     refplace_str = self.state.project.loader.describe_addr(refplace_int)
+                 else:
+                     refplace_str = "unknown"
+-                l.warning("Filling memory at %#x with %d unconstrained bytes referenced from %#x (%s)", addr, size, refplace_int, refplace_str)
++                #mjc
++                # l.warning("Filling memory at %#x with %d unconstrained bytes referenced from %#x (%s)", addr, size, refplace_int, refplace_str)
+             else:
+                 if addr == self.state.arch.ip_offset:
+                     refplace_int = 0
+diff --git a/angr/storage/memory_mixins/paged_memory/pages/ultra_page.py b/angr/storage/memory_mixins/paged_memory/pages/ultra_page.py
+index 1be62e6..a35e5f3 100644
+--- a/angr/storage/memory_mixins/paged_memory/pages/ultra_page.py
++++ b/angr/storage/memory_mixins/paged_memory/pages/ultra_page.py
+@@ -233,6 +233,15 @@ class UltraPage(MemoryObjectMixin, PageBase):
+                 merged_to = b + list(mo_lengths)[0]
+ 
+                 merged_val = self._merge_values(to_merge, memory_objects[0][0].length, memory=memory)
++
++                # #mjc
++                # try:
++                #     merged_val = self._merge_values(to_merge, memory_objects[0][0].length, memory=memory)
++                
++                # except Exception:
++                #     l.error("self._merge_values(to_merge, memory_objects[0][0].length ... ERROR")
++                #     merged_val = None
++
+                 if merged_val is None:
+                     continue
+ 
+@@ -274,7 +283,14 @@ class UltraPage(MemoryObjectMixin, PageBase):
+                 ]
+                 to_merge = extracted + created
+ 
+-                merged_val = self._merge_values(to_merge, min_size, memory=memory)
++                merged_val = self._merge_values(to_merge, min_size, memory=memory)  
++
++                # try:
++                #     merged_val = self._merge_values(to_merge, min_size, memory=memory)                
++                # except Exception:
++                #     l.error("self._merge_values(to_merge,  min_size, memory=memory) ... ERROR")
++                #     merged_val = None
++               
+                 if merged_val is None:
+                     continue
+ 
+diff --git a/angr/storage/memory_mixins/regioned_memory/abstract_merger_mixin.py b/angr/storage/memory_mixins/regioned_memory/abstract_merger_mixin.py
+index e099494..22e57b3 100644
+--- a/angr/storage/memory_mixins/regioned_memory/abstract_merger_mixin.py
++++ b/angr/storage/memory_mixins/regioned_memory/abstract_merger_mixin.py
+@@ -5,7 +5,6 @@ from .. import MemoryMixin
+ 
+ l = logging.getLogger(name=__name__)
+ 
+-
+ class AbstractMergerMixin(MemoryMixin):
+ 
+     def _merge_values(self, values: Iterable[Tuple[Any,Any]], merged_size: int, **kwargs):
+@@ -19,7 +18,9 @@ class AbstractMergerMixin(MemoryMixin):
+ 
+         values = list(values)
+         merged_val = values[0][0]
+-
++        
++        #mjc 
++        primitive_val = values[0][0]
+         # if should_reverse: merged_val = merged_val.reversed
+ 
+         for tm, _ in values[1:]:
+@@ -33,9 +34,18 @@ class AbstractMergerMixin(MemoryMixin):
+ 
+         # if should_reverse:
+         #     merged_val = merged_val.reversed
+-
+-        if not values[0][0].uninitialized and self.state.solver.backends.vsa.identical(merged_val, values[0][0]):
+-            return None
++        
++        #mjc add try and None on exception
++        # if not values[0][0].uninitialized and self.state.solver.backends.vsa.identical(merged_val, values[0][0]):
++        #     return None
++
++        #mjc 
++        try:
++            if not values[0][0].uninitialized and self.state.solver.backends.vsa.identical(merged_val, values[0][0]):
++                return None
++        except Exception:
++            l.error(f"backends.vsa.identical error at {self.category} ")
++            return primitive_val
+ 
+         return merged_val
+ 
+diff --git a/angr/storage/memory_mixins/regioned_memory/regioned_memory_mixin.py b/angr/storage/memory_mixins/regioned_memory/regioned_memory_mixin.py
+index c560f92..fe105e3 100644
+--- a/angr/storage/memory_mixins/regioned_memory/regioned_memory_mixin.py
++++ b/angr/storage/memory_mixins/regioned_memory/regioned_memory_mixin.py
+@@ -101,7 +101,13 @@ class RegionedMemoryMixin(MemoryMixin):
+             return self.state.solver.Unconstrained(var_name, self.state.arch.bits)
+ 
+         val = None
+-        regioned_addrs_desc = self._normalize_address(addr, condition=condition)
++        # regioned_addrs_desc = self._normalize_address(addr, condition=condition)
++        try:
++            regioned_addrs_desc = self._normalize_address(addr, condition=condition)
++        except Exception as e:
++            _l.error(f"normalize address error load {addr}")
++            val = self.state.solver.Unconstrained('unconstrained_read', size * self.state.arch.byte_width)
++            return val
+ 
+         if (regioned_addrs_desc.cardinality > 1 and AVOID_MULTIVALUED_READS in self.state.options) or \
+                 (regioned_addrs_desc.cardinality >= self._read_targets_limit and CONSERVATIVE_READ_STRATEGY in self.state.options):
+@@ -133,7 +139,11 @@ class RegionedMemoryMixin(MemoryMixin):
+         return val
+ 
+     def store(self, addr, data, size: Optional[int]=None, endness=None, **kwargs):
+-        regioned_addrs_desc = self._normalize_address(addr)
++        try:
++            regioned_addrs_desc = self._normalize_address(addr)
++        except Exception:
++            _l.error(" store normalize address error {addr}")
++            return
+         if regioned_addrs_desc.cardinality >= self._write_targets_limit and CONSERVATIVE_WRITE_STRATEGY in self.state.options:
+             return
+ 
+@@ -403,10 +413,13 @@ class RegionedMemoryMixin(MemoryMixin):
+         if isinstance(addr_e, claripy.ast.Base):
+             if not isinstance(addr_e._model_vsa, ValueSet):
+                 # Convert it to a ValueSet first by annotating it
++                
+                 addr_e = addr_e.annotate(RegionAnnotation('global', 0, addr_e._model_vsa))
+-
+-            for region, offset in addr_e._model_vsa.items():
+-                yield region, offset
+-
++            try:
++                for region, offset in addr_e._model_vsa.items():
++                    yield region, offset
++            except Exception as e:
++                # print(e)
++                raise e
+         else:
+             raise SimAbstractMemoryError('Unsupported address type %s' % type(addr_e))
+diff --git a/angr/utils/algo.py b/angr/utils/algo.py
+index 3e817e8..b2923fe 100644
+--- a/angr/utils/algo.py
++++ b/angr/utils/algo.py
+@@ -22,6 +22,11 @@ def binary_insert(lst: List, elem: Any, key: Callable, lo: int=0, hi: Optional[i
+     if hi is None:
+         hi = len(lst)
+ 
++    #mjc
++    # if key(elem) == -1:
++    #     print("elem don't exist; skip")
++    #     raise ValueError("elem don't exist skip")
++
+     while lo < hi:
+         mid = (lo + hi) // 2
+         if key(lst[mid]) < key(elem):
+-- 
+2.7.4
+

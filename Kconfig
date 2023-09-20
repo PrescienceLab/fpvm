@@ -1,0 +1,47 @@
+mainmenu "FPVM Configuration"
+
+config NO_OUTPUT
+    bool "Disable output"
+    default n
+
+
+config DEBUG
+    bool "Debug output"
+    default n
+
+config PERF_STATS
+    bool "Performance measurement"
+    default n
+
+
+config MPFR_PRECISION
+    int "MPFR Precision"
+		default 200
+		depends on ALT_MATH_MPFR
+
+
+# Add your own alternative math here
+choice
+    prompt "Alternative number system"
+    default ALT_MATH_VANILLA
+
+    config ALT_MATH_VANILLA
+        bool "Vanilla"
+	help 
+            Simply emulate using a normal instruction
+            Vanilla is always included as a fallback
+
+    
+    config ALT_MATH_BOXED_IEEE
+        bool "Boxed IEEE"
+    
+    config ALT_MATH_POSIT
+        bool "POSIT"
+    
+    config ALT_MATH_MPFR
+        bool "GNU MPFR"
+
+    config ALT_MATH_RATIONAL
+        bool "Rationals"
+
+endchoice

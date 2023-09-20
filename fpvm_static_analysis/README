@@ -1,0 +1,8 @@
+run install_python_script
+then open new terminal and 
+conda activate python3
+pip install -r  env_python --no-cache-dir
+cd XMM_analysis
+python parse_vfg.py <binary> 1  #generate vfg
+python parse_vfg.py <binary> 0  #generate taint source
+python parse_vfg.py <binary> -1 #generate taint sink + e9patch file
