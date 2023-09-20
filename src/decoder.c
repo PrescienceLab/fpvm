@@ -2,16 +2,14 @@
 #include <signal.h>
 #include <ucontext.h>
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>
 
-#include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
+#include <fpvm/fpvm_common.h>
 
 #include <capstone/capstone.h>
-
-
 
 static csh handle;
 
@@ -20,256 +18,245 @@ static csh handle;
 // interface
 //
 fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
-  [0 ... X86_INS_ENDING-1 ] = { FPVM_OP_UNKNOWN, 0, 0, 0 },
-  
-  [X86_INS_ADDPD] = {FPVM_OP_ADD, 1, 0, 8, 0},
-  [X86_INS_ADDPS] = {FPVM_OP_ADD, 1, 0, 4, 0},
-  [X86_INS_ADDSD] = {FPVM_OP_ADD, 0, 0, 8, 0},
-  [X86_INS_ADDSS] = {FPVM_OP_ADD, 0, 0, 4, 0},
+    [0 ... X86_INS_ENDING - 1] = {FPVM_OP_UNKNOWN, 0, 0, 0},
 
-  [X86_INS_SUBPD] = {FPVM_OP_SUB, 1, 0, 8, 0},
-  [X86_INS_SUBPS] = {FPVM_OP_SUB, 1, 0, 4, 0},
-  [X86_INS_SUBSD] = {FPVM_OP_SUB, 0, 0, 8, 0},
-  [X86_INS_SUBSS] = {FPVM_OP_SUB, 0, 0, 4, 0}, 
-  
-  [X86_INS_MULPD] = {FPVM_OP_MUL, 1, 0, 8, 0},
-  [X86_INS_MULPS] = {FPVM_OP_MUL, 1, 0, 4, 0},
-  [X86_INS_MULSD] = {FPVM_OP_MUL, 0, 0, 8, 0},
-  [X86_INS_MULSS] = {FPVM_OP_MUL, 0, 0, 4, 0},
-  
-  [X86_INS_DIVPD] = {FPVM_OP_DIV, 1, 0, 8, 0},
-  [X86_INS_DIVPS] = {FPVM_OP_DIV, 1, 0, 4, 0},
-  [X86_INS_DIVSD] = {FPVM_OP_DIV, 0, 0, 8, 0},
-  [X86_INS_DIVSS] = {FPVM_OP_DIV, 0, 0, 4, 0}, 
+    [X86_INS_ADDPD] = {FPVM_OP_ADD, 1, 0, 8, 0},
+    [X86_INS_ADDPS] = {FPVM_OP_ADD, 1, 0, 4, 0},
+    [X86_INS_ADDSD] = {FPVM_OP_ADD, 0, 0, 8, 0},
+    [X86_INS_ADDSS] = {FPVM_OP_ADD, 0, 0, 4, 0},
 
-  [X86_INS_VADDPD] = {FPVM_OP_ADD, 1, 0, 8, 0},
-  [X86_INS_VADDPS] = {FPVM_OP_ADD, 1, 0, 4, 0},
-  [X86_INS_VADDSD] = {FPVM_OP_ADD, 0, 0, 8, 0},
-  [X86_INS_VADDSS] = {FPVM_OP_ADD, 0, 0, 4, 0},
-  
-  [X86_INS_VSUBPD] = {FPVM_OP_SUB, 1, 0, 8, 0},
-  [X86_INS_VSUBPS] = {FPVM_OP_SUB, 1, 0, 4, 0},
-  [X86_INS_VSUBSD] = {FPVM_OP_SUB, 0, 0, 8, 0},
-  [X86_INS_VSUBSS] = {FPVM_OP_SUB, 0, 0, 4, 0}, 
-  
-  [X86_INS_VMULPD] = {FPVM_OP_MUL, 1, 0, 8, 0},
-  [X86_INS_VMULPS] = {FPVM_OP_MUL, 1, 0, 4, 0},
-  [X86_INS_VMULSD] = {FPVM_OP_MUL, 0, 0, 8, 0},
-  [X86_INS_VMULSS] = {FPVM_OP_MUL, 0, 0, 4, 0},
-  
-  [X86_INS_VDIVPD] = {FPVM_OP_DIV, 1, 0, 8, 0},
-  [X86_INS_VDIVPS] = {FPVM_OP_DIV, 1, 0, 4, 0},
-  [X86_INS_VDIVSD] = {FPVM_OP_DIV, 0, 0, 8, 0},
-  [X86_INS_VDIVSS] = {FPVM_OP_DIV, 0, 0, 4, 0}, 
-  
-  [X86_INS_SQRTPD] = {FPVM_OP_SQRT, 1, 0, 8, 0},
-  [X86_INS_SQRTPS] = {FPVM_OP_SQRT, 1, 0, 4, 0},
-  [X86_INS_SQRTSD] = {FPVM_OP_SQRT, 0, 0, 8, 0},
-  [X86_INS_SQRTSS] = {FPVM_OP_SQRT, 0, 0, 4, 0}, 
-  
-  // note that FMA3 (Intel) allows various orderings
-  // like VFMADD213PD...
-  // Hopefully capstone does the operand ordering...
+    [X86_INS_SUBPD] = {FPVM_OP_SUB, 1, 0, 8, 0},
+    [X86_INS_SUBPS] = {FPVM_OP_SUB, 1, 0, 4, 0},
+    [X86_INS_SUBSD] = {FPVM_OP_SUB, 0, 0, 8, 0},
+    [X86_INS_SUBSS] = {FPVM_OP_SUB, 0, 0, 4, 0},
 
-  // these are FMA4 (AMD)
-  [X86_INS_VFMADDPD] = {FPVM_OP_MADD, 1, 0, 8, 0},
-  [X86_INS_VFMADDPS] = {FPVM_OP_MADD, 1, 0, 4, 0},
-  [X86_INS_VFMADDSD] = {FPVM_OP_MADD, 0, 0, 8, 0},
-  [X86_INS_VFMADDSS] = {FPVM_OP_MADD, 0, 0, 4, 0},
-  
-  [X86_INS_VFNMADDPD] = {FPVM_OP_NMADD, 1, 0, 8, 0},
-  [X86_INS_VFNMADDPS] = {FPVM_OP_NMADD, 1, 0, 4, 0},
-  [X86_INS_VFNMADDSD] = {FPVM_OP_NMADD, 0, 0, 8, 0},
-  [X86_INS_VFNMADDSS] = {FPVM_OP_NMADD, 0, 0, 4, 0},
+    [X86_INS_MULPD] = {FPVM_OP_MUL, 1, 0, 8, 0},
+    [X86_INS_MULPS] = {FPVM_OP_MUL, 1, 0, 4, 0},
+    [X86_INS_MULSD] = {FPVM_OP_MUL, 0, 0, 8, 0},
+    [X86_INS_MULSS] = {FPVM_OP_MUL, 0, 0, 4, 0},
 
-  [X86_INS_VFMSUBPD] = {FPVM_OP_MSUB, 1, 0, 8, 0},
-  [X86_INS_VFMSUBPS] = {FPVM_OP_MSUB, 1, 0, 4, 0},
-  [X86_INS_VFMSUBSD] = {FPVM_OP_MSUB, 0, 0, 8, 0},
-  [X86_INS_VFMSUBSS] = {FPVM_OP_MSUB, 0, 0, 4, 0},
-  
-  [X86_INS_VFNMSUBPD] = {FPVM_OP_NMSUB, 1, 0, 8, 0},
-  [X86_INS_VFNMSUBPS] = {FPVM_OP_NMSUB, 1, 0, 4, 0},
-  [X86_INS_VFNMSUBSD] = {FPVM_OP_NMSUB, 0, 0, 8, 0},
-  [X86_INS_VFNMSUBSS] = {FPVM_OP_NMSUB, 0, 0, 4, 0},
+    [X86_INS_DIVPD] = {FPVM_OP_DIV, 1, 0, 8, 0},
+    [X86_INS_DIVPS] = {FPVM_OP_DIV, 1, 0, 4, 0},
+    [X86_INS_DIVSD] = {FPVM_OP_DIV, 0, 0, 8, 0},
+    [X86_INS_DIVSS] = {FPVM_OP_DIV, 0, 0, 4, 0},
 
-  // min+max
-  [X86_INS_MAXPD] = {FPVM_OP_MAX,1,0,8,0},
-  [X86_INS_MAXPS] = {FPVM_OP_MAX,1,0,4,0},
-  [X86_INS_MAXSD] = {FPVM_OP_MAX,0,0,8,0},
-  [X86_INS_MAXSS] = {FPVM_OP_MAX,0,0,4,0},
-  [X86_INS_MINPD] = {FPVM_OP_MIN,1,0,8,0},
-  [X86_INS_MINPS] = {FPVM_OP_MIN,1,0,4,0},
-  [X86_INS_MINSD] = {FPVM_OP_MIN,0,0,8,0},
-  [X86_INS_MINSS] = {FPVM_OP_MIN,0,0,4,0},
-  
-  // comparisons
- 
-  [X86_INS_COMISD]  = {FPVM_OP_CMP, 0, 0, 8, 0},
-  [X86_INS_COMISS]  = {FPVM_OP_CMP, 0, 0, 4, 0},
+    [X86_INS_VADDPD] = {FPVM_OP_ADD, 1, 0, 8, 0},
+    [X86_INS_VADDPS] = {FPVM_OP_ADD, 1, 0, 4, 0},
+    [X86_INS_VADDSD] = {FPVM_OP_ADD, 0, 0, 8, 0},
+    [X86_INS_VADDSS] = {FPVM_OP_ADD, 0, 0, 4, 0},
 
-  [X86_INS_UCOMISD]  = {FPVM_OP_UCMP, 0, 0, 8, 0},
-  [X86_INS_UCOMISS]  = {FPVM_OP_UCMP, 0, 0, 4, 0},
-  
-  [X86_INS_VCOMISD]  = {FPVM_OP_CMP, 0, 0, 8, 0},
-  [X86_INS_VCOMISS]  = {FPVM_OP_CMP, 0, 0, 4, 0},
+    [X86_INS_VSUBPD] = {FPVM_OP_SUB, 1, 0, 8, 0},
+    [X86_INS_VSUBPS] = {FPVM_OP_SUB, 1, 0, 4, 0},
+    [X86_INS_VSUBSD] = {FPVM_OP_SUB, 0, 0, 8, 0},
+    [X86_INS_VSUBSS] = {FPVM_OP_SUB, 0, 0, 4, 0},
 
-  [X86_INS_VUCOMISD]  = {FPVM_OP_UCMP, 0, 0, 8, 0},
-  [X86_INS_VUCOMISS]  = {FPVM_OP_UCMP, 0, 0, 4, 0},
-  
-  [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
-  // [X86_INS_CMPSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
-  // [X86_INS_CMPLTSS] = {FPVM_OP_LTCMP, 0, 0, 4, 0},
-  
-  // X86_INS_CMPSD,
-	// X86_INS_CMPEQSD,
-	// X86_INS_CMPLESD,
-	// X86_INS_CMPUNORDSD,
-	// X86_INS_CMPNEQSD,
-	// X86_INS_CMPNLTSD,
-	// X86_INS_CMPNLESD,
-	// X86_INS_CMPORDSD,
+    [X86_INS_VMULPD] = {FPVM_OP_MUL, 1, 0, 8, 0},
+    [X86_INS_VMULPS] = {FPVM_OP_MUL, 1, 0, 4, 0},
+    [X86_INS_VMULSD] = {FPVM_OP_MUL, 0, 0, 8, 0},
+    [X86_INS_VMULSS] = {FPVM_OP_MUL, 0, 0, 4, 0},
 
+    [X86_INS_VDIVPD] = {FPVM_OP_DIV, 1, 0, 8, 0},
+    [X86_INS_VDIVPS] = {FPVM_OP_DIV, 1, 0, 4, 0},
+    [X86_INS_VDIVSD] = {FPVM_OP_DIV, 0, 0, 8, 0},
+    [X86_INS_VDIVSS] = {FPVM_OP_DIV, 0, 0, 4, 0},
 
+    [X86_INS_SQRTPD] = {FPVM_OP_SQRT, 1, 0, 8, 0},
+    [X86_INS_SQRTPS] = {FPVM_OP_SQRT, 1, 0, 4, 0},
+    [X86_INS_SQRTSD] = {FPVM_OP_SQRT, 0, 0, 8, 0},
+    [X86_INS_SQRTSS] = {FPVM_OP_SQRT, 0, 0, 4, 0},
 
-  
-  // float to integer conversion
+    // note that FMA3 (Intel) allows various orderings
+    // like VFMADD213PD...
+    // Hopefully capstone does the operand ordering...
 
-  [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
-  [X86_INS_VCVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4}, // rounding mode changed as side effect?
-  [X86_INS_VCVTSD2USI] = {FPVM_OP_F2U, 0, 0, 8, 4}, // rounding mode changed as side effect?
-  [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
-  [X86_INS_VCVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4}, // rounding mode?
-  [X86_INS_VCVTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4}, // rounding mode?
-  [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
-  [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
+    // these are FMA4 (AMD)
+    [X86_INS_VFMADDPD] = {FPVM_OP_MADD, 1, 0, 8, 0},
+    [X86_INS_VFMADDPS] = {FPVM_OP_MADD, 1, 0, 4, 0},
+    [X86_INS_VFMADDSD] = {FPVM_OP_MADD, 0, 0, 8, 0},
+    [X86_INS_VFMADDSS] = {FPVM_OP_MADD, 0, 0, 4, 0},
 
-  
-  [X86_INS_CVTPD2PI] = {FPVM_OP_F2I, 1, 0, 8, 4},
-  [X86_INS_CVTPS2PI] = {FPVM_OP_F2I, 1, 0, 4, 4},
-  
-  [X86_INS_CVTPD2DQ] = {FPVM_OP_F2I, 1, 0, 8, 8},
-  [X86_INS_VCVTPD2DQ] = {FPVM_OP_F2I, 1, 1, 8, 8},
-  [X86_INS_VCVTPD2UDQ] = {FPVM_OP_F2U, 1, 1, 8, 8},
-  // X86_INS_VCVTPD2DQX   ???? 
-  
-  [X86_INS_CVTPS2DQ] = {FPVM_OP_F2I, 1, 0, 4, 8},
-  [X86_INS_VCVTPS2DQ] = {FPVM_OP_F2I, 1, 1, 4, 8},
-  [X86_INS_VCVTPS2UDQ] = {FPVM_OP_F2U, 1, 1, 4, 8},
-  
+    [X86_INS_VFNMADDPD] = {FPVM_OP_NMADD, 1, 0, 8, 0},
+    [X86_INS_VFNMADDPS] = {FPVM_OP_NMADD, 1, 0, 4, 0},
+    [X86_INS_VFNMADDSD] = {FPVM_OP_NMADD, 0, 0, 8, 0},
+    [X86_INS_VFNMADDSS] = {FPVM_OP_NMADD, 0, 0, 4, 0},
 
-  [X86_INS_CVTTSD2SI] = {FPVM_OP_F2IT, 0, 0, 8, 4},
-  [X86_INS_CVTTSS2SI] = {FPVM_OP_F2IT, 0, 0, 4, 4},
+    [X86_INS_VFMSUBPD] = {FPVM_OP_MSUB, 1, 0, 8, 0},
+    [X86_INS_VFMSUBPS] = {FPVM_OP_MSUB, 1, 0, 4, 0},
+    [X86_INS_VFMSUBSD] = {FPVM_OP_MSUB, 0, 0, 8, 0},
+    [X86_INS_VFMSUBSS] = {FPVM_OP_MSUB, 0, 0, 4, 0},
 
-  [X86_INS_CVTTPS2PI] = {FPVM_OP_F2IT, 1, 0, 4, 4},
-  [X86_INS_CVTTPD2PI] = {FPVM_OP_F2IT, 1, 0, 8, 4},
-  
-  [X86_INS_CVTTPD2DQ] = {FPVM_OP_F2IT, 1, 0, 8, 8},
-  [X86_INS_VCVTTPD2DQ] = {FPVM_OP_F2IT, 1, 1, 8, 8},
-  // X86_INS_VCVTTPD2DQX ????
-  [X86_INS_CVTTPS2DQ] = {FPVM_OP_F2IT, 1, 0, 4, 8},
-  [X86_INS_VCVTTPS2DQ] = {FPVM_OP_F2IT, 1, 1, 4, 8},
-  [X86_INS_VCVTTPS2UDQ] = {FPVM_OP_F2UT, 1, 1, 4, 8},
+    [X86_INS_VFNMSUBPD] = {FPVM_OP_NMSUB, 1, 0, 8, 0},
+    [X86_INS_VFNMSUBPS] = {FPVM_OP_NMSUB, 1, 0, 4, 0},
+    [X86_INS_VFNMSUBSD] = {FPVM_OP_NMSUB, 0, 0, 8, 0},
+    [X86_INS_VFNMSUBSS] = {FPVM_OP_NMSUB, 0, 0, 4, 0},
 
-  
-  [X86_INS_VCVTTSD2SI] = {FPVM_OP_F2IT, 0, 0, 8, 4},
-  [X86_INS_VCVTTSD2USI] = {FPVM_OP_F2UT, 0, 0, 8, 4},
-  
-  [X86_INS_VCVTTSS2SI] = {FPVM_OP_F2IT, 0, 0, 4, 4},
-  [X86_INS_VCVTTSS2USI] = {FPVM_OP_F2UT, 0, 0, 4, 4},
+    // min+max
+    [X86_INS_MAXPD] = {FPVM_OP_MAX, 1, 0, 8, 0},
+    [X86_INS_MAXPS] = {FPVM_OP_MAX, 1, 0, 4, 0},
+    [X86_INS_MAXSD] = {FPVM_OP_MAX, 0, 0, 8, 0},
+    [X86_INS_MAXSS] = {FPVM_OP_MAX, 0, 0, 4, 0},
+    [X86_INS_MINPD] = {FPVM_OP_MIN, 1, 0, 8, 0},
+    [X86_INS_MINPS] = {FPVM_OP_MIN, 1, 0, 4, 0},
+    [X86_INS_MINSD] = {FPVM_OP_MIN, 0, 0, 8, 0},
+    [X86_INS_MINSS] = {FPVM_OP_MIN, 0, 0, 4, 0},
 
-  
-  
-  
-  // AVX
-  [X86_INS_VCVTTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
-  [X86_INS_VCVTTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
-  [X86_INS_VCVTTSD2USI] = {FPVM_OP_F2U, 0, 0, 8, 4},
-  [X86_INS_VCVTTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4},
-  
+    // comparisons
 
-  // integer to float conversion
+    [X86_INS_COMISD] = {FPVM_OP_CMP, 0, 0, 8, 0},
+    [X86_INS_COMISS] = {FPVM_OP_CMP, 0, 0, 4, 0},
 
-  [X86_INS_CVTSI2SD] = {FPVM_OP_I2F, 0, 0, 4, 8},
-  [X86_INS_CVTSI2SS] = {FPVM_OP_I2F, 0, 0, 4, 4},
+    [X86_INS_UCOMISD] = {FPVM_OP_UCMP, 0, 0, 8, 0},
+    [X86_INS_UCOMISS] = {FPVM_OP_UCMP, 0, 0, 4, 0},
 
-  [X86_INS_CVTPI2PD] = {FPVM_OP_I2F, 0, 0, 4, 8},
-  [X86_INS_CVTPI2PS] = {FPVM_OP_I2F, 0, 0, 4, 4},
+    [X86_INS_VCOMISD] = {FPVM_OP_CMP, 0, 0, 8, 0},
+    [X86_INS_VCOMISS] = {FPVM_OP_CMP, 0, 0, 4, 0},
 
-  [X86_INS_CVTDQ2PD] = {FPVM_OP_I2F, 1, 0, 8, 8},
-  [X86_INS_VCVTDQ2PD] = {FPVM_OP_I2F, 1, 1, 8, 8},
-  [X86_INS_VCVTUDQ2PD] = {FPVM_OP_U2F, 1, 1, 8, 8},
-  [X86_INS_CVTDQ2PS] = {FPVM_OP_I2F, 1, 0, 8, 4},
-  [X86_INS_VCVTDQ2PS] = {FPVM_OP_I2F, 1, 1, 8, 4},
-  [X86_INS_VCVTUDQ2PS] = {FPVM_OP_U2F, 1, 1, 8, 4},
+    [X86_INS_VUCOMISD] = {FPVM_OP_UCMP, 0, 0, 8, 0},
+    [X86_INS_VUCOMISS] = {FPVM_OP_UCMP, 0, 0, 4, 0},
 
-  [X86_INS_VCVTSI2SD] = {FPVM_OP_I2F, 0, 0, 4, 8},
-  [X86_INS_VCVTSI2SS] = {FPVM_OP_I2F, 0, 0, 4, 4},
-  
-  [X86_INS_VCVTUSI2SD] = {FPVM_OP_U2F, 0, 0, 4, 8},
-  [X86_INS_VCVTUSI2SS] = {FPVM_OP_U2F, 0, 0, 4, 4},
+    [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
+    // [X86_INS_CMPSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
+    // [X86_INS_CMPLTSS] = {FPVM_OP_LTCMP, 0, 0, 4, 0},
 
-  // float to float conversion
-  [X86_INS_CVTSS2SD] = {FPVM_OP_F2F, 0, 0, 4, 8},
-  [X86_INS_CVTPS2PD] = {FPVM_OP_F2F, 1, 0, 4, 8},
-  [X86_INS_VCVTPS2PD] = {FPVM_OP_F2F, 1, 1, 4, 8},
-  [X86_INS_CVTSD2SS] = {FPVM_OP_F2F, 0, 0, 8, 4},
-  [X86_INS_CVTPD2PS] = {FPVM_OP_F2F, 1, 0, 8, 4},
-  [X86_INS_VCVTPD2PS] = {FPVM_OP_F2F, 1, 1, 8, 4},
-  // X86_INS_VCVTPD2PSX ????
-  
-  [X86_INS_VCVTSS2SD] = {FPVM_OP_F2F, 0, 0, 4, 8},
-  [X86_INS_VCVTSD2SS] = {FPVM_OP_F2F, 0, 0, 8, 4},
+    // X86_INS_CMPSD,
+    // X86_INS_CMPEQSD,
+    // X86_INS_CMPLESD,
+    // X86_INS_CMPUNORDSD,
+    // X86_INS_CMPNEQSD,
+    // X86_INS_CMPNLTSD,
+    // X86_INS_CMPNLESD,
+    // X86_INS_CMPORDSD,
 
-  // half float conversions
-  [X86_INS_VCVTPH2PS] = {FPVM_OP_F2F, 1, 1, 2, 4},
-  [X86_INS_VCVTPS2PH] = {FPVM_OP_F2F, 1, 1, 4, 2},
-  
-  //New
+    // float to integer conversion
 
-  //Bit operations
-  // [X86_INS_PSRLDQ] = {FPVM_OP_SHIFT_RIGHT_BYTE, 0, 0, 8, 8},
-  // [X86_INS_PSLLDQ] = {FPVM_OP_SHIFT_LEFT_BYTE, 0, 0, 8, 8},
+    [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
+    [X86_INS_VCVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8,
+                           4}, // rounding mode changed as side effect?
+    [X86_INS_VCVTSD2USI] = {FPVM_OP_F2U, 0, 0, 8,
+                            4}, // rounding mode changed as side effect?
+    [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
+    [X86_INS_VCVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},  // rounding mode?
+    [X86_INS_VCVTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4}, // rounding mode?
+    [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
+    [X86_INS_CVTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
 
-  //Mov instructions which have nothing to do with fpvm but with angr patch.
-  
-  //warn me, mov 4bytes or 8bytes
-  [X86_INS_MOV] = {FPVM_OP_MOV,0, 0, 8, 8},
-  [X86_INS_MOVQ] = {FPVM_OP_MOV,0, 0, 8, 8},
-  [X86_INS_MOVSD] = {FPVM_OP_MOV,0, 0, 8, 8},
-  [X86_INS_MOVAPS] = {FPVM_OP_MOV,1, 0, 4, 4},
-  [X86_INS_MOVDDUP] = {FPVM_OP_WARN, 1, 0, 8, 8},
-  [X86_INS_MOVUPS] = {FPVM_OP_MOV, 1, 0, 4, 4},
-  [X86_INS_SHUFPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
-  [X86_INS_UNPCKHPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
- 
-  // [X86_INS_MOVQ] = {FPVM_OP_UNKNOWN,0, 0, 8, 0}
-  [X86_INS_PUSH] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JLE] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JL] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JNE] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JNO] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JNS] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JO] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JRCXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-  [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_CVTPD2PI] = {FPVM_OP_F2I, 1, 0, 8, 4},
+    [X86_INS_CVTPS2PI] = {FPVM_OP_F2I, 1, 0, 4, 4},
 
-  // rounding 
-  // [X86_INS_ROUNDSD] = {FPVM_OP_ROUND, 0, 0, 8, 8},
+    [X86_INS_CVTPD2DQ] = {FPVM_OP_F2I, 1, 0, 8, 8},
+    [X86_INS_VCVTPD2DQ] = {FPVM_OP_F2I, 1, 1, 8, 8},
+    [X86_INS_VCVTPD2UDQ] = {FPVM_OP_F2U, 1, 1, 8, 8},
+    // X86_INS_VCVTPD2DQX   ????
 
+    [X86_INS_CVTPS2DQ] = {FPVM_OP_F2I, 1, 0, 4, 8},
+    [X86_INS_VCVTPS2DQ] = {FPVM_OP_F2I, 1, 1, 4, 8},
+    [X86_INS_VCVTPS2UDQ] = {FPVM_OP_F2U, 1, 1, 4, 8},
+
+    [X86_INS_CVTTSD2SI] = {FPVM_OP_F2IT, 0, 0, 8, 4},
+    [X86_INS_CVTTSS2SI] = {FPVM_OP_F2IT, 0, 0, 4, 4},
+
+    [X86_INS_CVTTPS2PI] = {FPVM_OP_F2IT, 1, 0, 4, 4},
+    [X86_INS_CVTTPD2PI] = {FPVM_OP_F2IT, 1, 0, 8, 4},
+
+    [X86_INS_CVTTPD2DQ] = {FPVM_OP_F2IT, 1, 0, 8, 8},
+    [X86_INS_VCVTTPD2DQ] = {FPVM_OP_F2IT, 1, 1, 8, 8},
+    // X86_INS_VCVTTPD2DQX ????
+    [X86_INS_CVTTPS2DQ] = {FPVM_OP_F2IT, 1, 0, 4, 8},
+    [X86_INS_VCVTTPS2DQ] = {FPVM_OP_F2IT, 1, 1, 4, 8},
+    [X86_INS_VCVTTPS2UDQ] = {FPVM_OP_F2UT, 1, 1, 4, 8},
+
+    [X86_INS_VCVTTSD2SI] = {FPVM_OP_F2IT, 0, 0, 8, 4},
+    [X86_INS_VCVTTSD2USI] = {FPVM_OP_F2UT, 0, 0, 8, 4},
+
+    [X86_INS_VCVTTSS2SI] = {FPVM_OP_F2IT, 0, 0, 4, 4},
+    [X86_INS_VCVTTSS2USI] = {FPVM_OP_F2UT, 0, 0, 4, 4},
+
+    // AVX
+    [X86_INS_VCVTTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
+    [X86_INS_VCVTTSS2SI] = {FPVM_OP_F2I, 0, 0, 4, 4},
+    [X86_INS_VCVTTSD2USI] = {FPVM_OP_F2U, 0, 0, 8, 4},
+    [X86_INS_VCVTTSS2USI] = {FPVM_OP_F2U, 0, 0, 4, 4},
+
+    // integer to float conversion
+
+    [X86_INS_CVTSI2SD] = {FPVM_OP_I2F, 0, 0, 4, 8},
+    [X86_INS_CVTSI2SS] = {FPVM_OP_I2F, 0, 0, 4, 4},
+
+    [X86_INS_CVTPI2PD] = {FPVM_OP_I2F, 0, 0, 4, 8},
+    [X86_INS_CVTPI2PS] = {FPVM_OP_I2F, 0, 0, 4, 4},
+
+    [X86_INS_CVTDQ2PD] = {FPVM_OP_I2F, 1, 0, 8, 8},
+    [X86_INS_VCVTDQ2PD] = {FPVM_OP_I2F, 1, 1, 8, 8},
+    [X86_INS_VCVTUDQ2PD] = {FPVM_OP_U2F, 1, 1, 8, 8},
+    [X86_INS_CVTDQ2PS] = {FPVM_OP_I2F, 1, 0, 8, 4},
+    [X86_INS_VCVTDQ2PS] = {FPVM_OP_I2F, 1, 1, 8, 4},
+    [X86_INS_VCVTUDQ2PS] = {FPVM_OP_U2F, 1, 1, 8, 4},
+
+    [X86_INS_VCVTSI2SD] = {FPVM_OP_I2F, 0, 0, 4, 8},
+    [X86_INS_VCVTSI2SS] = {FPVM_OP_I2F, 0, 0, 4, 4},
+
+    [X86_INS_VCVTUSI2SD] = {FPVM_OP_U2F, 0, 0, 4, 8},
+    [X86_INS_VCVTUSI2SS] = {FPVM_OP_U2F, 0, 0, 4, 4},
+
+    // float to float conversion
+    [X86_INS_CVTSS2SD] = {FPVM_OP_F2F, 0, 0, 4, 8},
+    [X86_INS_CVTPS2PD] = {FPVM_OP_F2F, 1, 0, 4, 8},
+    [X86_INS_VCVTPS2PD] = {FPVM_OP_F2F, 1, 1, 4, 8},
+    [X86_INS_CVTSD2SS] = {FPVM_OP_F2F, 0, 0, 8, 4},
+    [X86_INS_CVTPD2PS] = {FPVM_OP_F2F, 1, 0, 8, 4},
+    [X86_INS_VCVTPD2PS] = {FPVM_OP_F2F, 1, 1, 8, 4},
+    // X86_INS_VCVTPD2PSX ????
+
+    [X86_INS_VCVTSS2SD] = {FPVM_OP_F2F, 0, 0, 4, 8},
+    [X86_INS_VCVTSD2SS] = {FPVM_OP_F2F, 0, 0, 8, 4},
+
+    // half float conversions
+    [X86_INS_VCVTPH2PS] = {FPVM_OP_F2F, 1, 1, 2, 4},
+    [X86_INS_VCVTPS2PH] = {FPVM_OP_F2F, 1, 1, 4, 2},
+
+    // New
+
+    // Bit operations
+    //  [X86_INS_PSRLDQ] = {FPVM_OP_SHIFT_RIGHT_BYTE, 0, 0, 8, 8},
+    //  [X86_INS_PSLLDQ] = {FPVM_OP_SHIFT_LEFT_BYTE, 0, 0, 8, 8},
+
+    // Mov instructions which have nothing to do with fpvm but with angr patch.
+
+    // warn me, mov 4bytes or 8bytes
+    [X86_INS_MOV] = {FPVM_OP_MOV, 0, 0, 8, 8},
+    [X86_INS_MOVQ] = {FPVM_OP_MOV, 0, 0, 8, 8},
+    [X86_INS_MOVSD] = {FPVM_OP_MOV, 0, 0, 8, 8},
+    [X86_INS_MOVAPS] = {FPVM_OP_MOV, 1, 0, 4, 4},
+    [X86_INS_MOVDDUP] = {FPVM_OP_WARN, 1, 0, 8, 8},
+    [X86_INS_MOVUPS] = {FPVM_OP_MOV, 1, 0, 4, 4},
+    [X86_INS_SHUFPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
+    [X86_INS_UNPCKHPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
+
+    // [X86_INS_MOVQ] = {FPVM_OP_UNKNOWN,0, 0, 8, 0}
+    [X86_INS_PUSH] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JLE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JL] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JNE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JNO] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JNS] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JO] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JRCXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+
+    // rounding
+    // [X86_INS_ROUNDSD] = {FPVM_OP_ROUND, 0, 0, 8, 8},
 
 };
-    
 
-static int decode_to_common(fpvm_inst_t *fi)
-{
-  cs_insn *inst = (cs_insn *) fi->internal;
+static int decode_to_common(fpvm_inst_t *fi) {
+  cs_insn *inst = (cs_insn *)fi->internal;
 
-  fi->addr = (void*) inst->address;
+  fi->addr = (void *)inst->address;
   fi->length = inst->size;
 
   fi->common = &capstone_to_common[inst->id];
@@ -280,11 +267,8 @@ static int decode_to_common(fpvm_inst_t *fi)
   return 0;
 }
 
-
-
-int fpvm_decoder_init(void)
-{
-  if (cs_open(CS_ARCH_X86,CS_MODE_64,&handle) != CS_ERR_OK) {
+int fpvm_decoder_init(void) {
+  if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
     ERROR("Failed to open decoder\n");
     return -1;
   }
@@ -294,35 +278,29 @@ int fpvm_decoder_init(void)
   }
   DEBUG("decoder initialized\n");
   return 0;
-
 }
 
-
-void fpvm_decoder_deinit(void)
-{
+void fpvm_decoder_deinit(void) {
   DEBUG("decoder deinit\n");
   cs_close(&handle);
 }
 
-void fpvm_decoder_free_inst(fpvm_inst_t *fi)
-{
-  DEBUG("decoder free inst at %p\n",fi);
-  cs_free(fi->internal,1);
+void fpvm_decoder_free_inst(fpvm_inst_t *fi) {
+  DEBUG("decoder free inst at %p\n", fi);
+  cs_free(fi->internal, 1);
   free(fi);
 }
 
-
-fpvm_inst_t *fpvm_decoder_decode_inst(void *addr)
-{
+fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   cs_insn *inst;
 
-  DEBUG("Decoding instruction at %p\n",addr);
-  
-  size_t count = cs_disasm(handle,addr,16,(uint64_t)addr,1,&inst);
+  DEBUG("Decoding instruction at %p\n", addr);
 
+  size_t count = cs_disasm(handle, addr, 16, (uint64_t)addr, 1, &inst);
 
-  if (count!=1) {
-    ERROR("Failed to decode instruction (return=%lu, errno=%d)\n",count,cs_errno(handle));
+  if (count != 1) {
+    ERROR("Failed to decode instruction (return=%lu, errno=%d)\n", count,
+          cs_errno(handle));
     return 0;
   }
 
@@ -331,10 +309,10 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr)
     ERROR("Can't allocate instruciton\n");
     return 0;
   }
-  memset(fi,0,sizeof(*fi));
+  memset(fi, 0, sizeof(*fi));
   fi->addr = addr;
   fi->internal = inst;
-  
+
   if (decode_to_common(fi)) {
     ERROR("Can't decode to common representation\n");
     fpvm_decoder_free_inst(fi);
@@ -349,108 +327,117 @@ static char *prefix_name(uint8_t reg);
 static char *inst_name(x86_insn inst);
 static char *reg_name(x86_reg reg);
 
-void fpvm_decoder_get_inst_str(fpvm_inst_t *fi, char *buf, int len)
-{
-  cs_insn *inst = (cs_insn *) fi->internal;
+void fpvm_decoder_get_inst_str(fpvm_inst_t *fi, char *buf, int len) {
+  cs_insn *inst = (cs_insn *)fi->internal;
 
-  snprintf(buf,len,"%s %s",inst->mnemonic,inst->op_str);
+  snprintf(buf, len, "%s %s", inst->mnemonic, inst->op_str);
 }
 
-
-void fpvm_decoder_print_inst(fpvm_inst_t *fi,FILE *out)
-{
-  cs_insn *inst = (cs_insn *) fi->internal;
+void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
+  cs_insn *inst = (cs_insn *)fi->internal;
   int i;
-  
-  fprintf(out, "0x%"PRIx64":\t%s\t\t%s (%u bytes)\n", inst->address, inst->mnemonic, inst->op_str, inst->size);
 
-  fprintf(out, " instruction: %x (%s)\n",inst->id, inst_name(inst->id));
+  fprintf(out, "0x%" PRIx64 ":\t%s\t\t%s (%u bytes)\n", inst->address,
+          inst->mnemonic, inst->op_str, inst->size);
+
+  fprintf(out, " instruction: %x (%s)\n", inst->id, inst_name(inst->id));
 
   fprintf(out, " op_type=%d is_vector=%d has_mask=%d op_size=%d\n",
-	  fi->common->op_type, fi->common->is_vector, fi->common->has_mask, fi->common->op_size);
-  
-  fprintf(out, " %d bound operands:\n",fi->operand_count);
-  for (i=0;i<fi->operand_count;i++) {
-    fprintf(out, "  %d -> (%p, %u)\n",i,fi->operand_addrs[i],fi->operand_sizes[i]);
+          fi->common->op_type, fi->common->is_vector, fi->common->has_mask,
+          fi->common->op_size);
+
+  fprintf(out, " %d bound operands:\n", fi->operand_count);
+  for (i = 0; i < fi->operand_count; i++) {
+    fprintf(out, "  %d -> (%p, %u)\n", i, fi->operand_addrs[i],
+            fi->operand_sizes[i]);
   }
 
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
 
-  fprintf(out, " %u implicit regs read %u implict regs written, instruction in %u groups\n",
-	  det->regs_read_count,det->regs_write_count,det->groups_count);
-  if (det->regs_read_count>0) {
-    for (i=0;i<det->regs_read_count;i++) {
-      fprintf(out, "  implicit read %02x - %s\n",det->regs_read[i],reg_name(det->regs_read[i]));
+  fprintf(out,
+          " %u implicit regs read %u implict regs written, instruction in %u "
+          "groups\n",
+          det->regs_read_count, det->regs_write_count, det->groups_count);
+  if (det->regs_read_count > 0) {
+    for (i = 0; i < det->regs_read_count; i++) {
+      fprintf(out, "  implicit read %02x - %s\n", det->regs_read[i],
+              reg_name(det->regs_read[i]));
     }
   }
-  if (det->regs_write_count>0) {
-    for (i=0;i<det->regs_write_count;i++) {
-      fprintf(out, "  implicit write %02x - %s\n",det->regs_write[i],reg_name(det->regs_write[i]));
+  if (det->regs_write_count > 0) {
+    for (i = 0; i < det->regs_write_count; i++) {
+      fprintf(out, "  implicit write %02x - %s\n", det->regs_write[i],
+              reg_name(det->regs_write[i]));
     }
   }
-  if (det->groups_count>0) {
-    for (i=0;i<det->groups_count;i++) {
-      fprintf(out, "  group %02x - %s \n",det->groups[i],group_name(det->groups[i]));
+  if (det->groups_count > 0) {
+    for (i = 0; i < det->groups_count; i++) {
+      fprintf(out, "  group %02x - %s \n", det->groups[i],
+              group_name(det->groups[i]));
     }
   }
-  fprintf(out, " prefixes: %02x (%s) %02x (%s) %02x (%s) %02x (%s) rex: %02x  baseaddrsize: %02x\n",
-	  x86->prefix[0],prefix_name(x86->prefix[0]),
-	  x86->prefix[1],prefix_name(x86->prefix[1]),
-	  x86->prefix[2],prefix_name(x86->prefix[2]),
-	  x86->prefix[3],prefix_name(x86->prefix[3]),
-	  x86->rex,x86->addr_size);
-  fprintf(out, " opcode: %02x %02x %02x %02x\n",x86->opcode[0],x86->opcode[1],x86->opcode[2],x86->opcode[3]);
-  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08lx\n",
-	  x86->modrm, x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale, x86->disp);
+  fprintf(out,
+          " prefixes: %02x (%s) %02x (%s) %02x (%s) %02x (%s) rex: %02x  "
+          "baseaddrsize: %02x\n",
+          x86->prefix[0], prefix_name(x86->prefix[0]), x86->prefix[1],
+          prefix_name(x86->prefix[1]), x86->prefix[2],
+          prefix_name(x86->prefix[2]), x86->prefix[3],
+          prefix_name(x86->prefix[3]), x86->rex, x86->addr_size);
+  fprintf(out, " opcode: %02x %02x %02x %02x\n", x86->opcode[0], x86->opcode[1],
+          x86->opcode[2], x86->opcode[3]);
+  fprintf(out,
+          " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08lx\n",
+          x86->modrm, x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale,
+          x86->disp);
 
-  fprintf(out, " operands: %02x\n",x86->op_count);
-  for (i=0;i<x86->op_count;i++) {
+  fprintf(out, " operands: %02x\n", x86->op_count);
+  for (i = 0; i < x86->op_count; i++) {
     cs_x86_op *o = &x86->operands[i];
     switch (o->type) {
     case X86_OP_REG:
-      fprintf(out,"  %d: register %d (%s)\n", i, o->reg, reg_name(o->reg));
+      fprintf(out, "  %d: register %d (%s)\n", i, o->reg, reg_name(o->reg));
       break;
     case X86_OP_IMM:
-      fprintf(out,"  %d: immediate %016lx\n", i, o->imm);
+      fprintf(out, "  %d: immediate %016lx\n", i, o->imm);
       break;
     // case X86_OP_FP:
-    //   fprintf(out,"  %d: float immediate %lf (%016lx)\n", i, o->fp, *(uint64_t*)&o->fp);
-    //   break;
+    //   fprintf(out,"  %d: float immediate %lf (%016lx)\n", i, o->fp,
+    //   *(uint64_t*)&o->fp); break;
     case X86_OP_MEM:
-      fprintf(out,"  %d: memory (seg=%d (%s) base=%d (%s) index=%d (%s), scale=%d, disp=016%lx)\n",
-	      i, o->mem.segment, reg_name(o->mem.segment),
-	      o->mem.base, reg_name(o->mem.base),
-	      o->mem.index, reg_name(o->mem.index),
-	      o->mem.scale, o->mem.disp);
+      fprintf(out,
+              "  %d: memory (seg=%d (%s) base=%d (%s) index=%d (%s), scale=%d, "
+              "disp=016%lx)\n",
+              i, o->mem.segment, reg_name(o->mem.segment), o->mem.base,
+              reg_name(o->mem.base), o->mem.index, reg_name(o->mem.index),
+              o->mem.scale, o->mem.disp);
       break;
     default:
-      fprintf(out,"  %d: UNKNOWN\n",i);
+      fprintf(out, "  %d: UNKNOWN\n", i);
       break;
     }
-    
   }
 }
 
 // original FP
-#define IS_X87(r) ((r)>=X86_REG_ST0 && (r)<=X86_REG_ST7)
+#define IS_X87(r) ((r) >= X86_REG_ST0 && (r) <= X86_REG_ST7)
 // internal 80 bit x87 register access
-#define IS_X87_80(r) ((r)>=X86_REG_FP0 && (r)<=X86_REG_FP7)
+#define IS_X87_80(r) ((r) >= X86_REG_FP0 && (r) <= X86_REG_FP7)
 // first vector featureset, overloading x87
-#define IS_MMX(r) ((r)>=X86_REG_MM0 && (r)<=X86_REG_MM7)
+#define IS_MMX(r) ((r) >= X86_REG_MM0 && (r) <= X86_REG_MM7)
 // second vector featureset (SSE+)
-#define IS_XMM(r) ((r)>=X86_REG_XMM0 && (r)<=X86_REG_XMM31)
-#define IS_YMM(r) ((r)>=X86_REG_YMM0 && (r)<=X86_REG_YMM31)
-#define IS_ZMM(r) ((r)>=X86_REG_ZMM0 && (r)<=X86_REG_ZMM31)
+#define IS_XMM(r) ((r) >= X86_REG_XMM0 && (r) <= X86_REG_XMM31)
+#define IS_YMM(r) ((r) >= X86_REG_YMM0 && (r) <= X86_REG_YMM31)
+#define IS_ZMM(r) ((r) >= X86_REG_ZMM0 && (r) <= X86_REG_ZMM31)
 // these registers allow masking of individual vector elements
 // in AVX512 instructions
-#define IS_AVX512_MASK(r) ((r)>=X86_REG_K0 && (r)<=X86_REG_K7)
+#define IS_AVX512_MASK(r) ((r) >= X86_REG_K0 && (r) <= X86_REG_K7)
 
 #define IS_NORMAL_FPR(r) (IS_XMM(r) || IS_YMM(r) || IS_ZMM(r))
 
-#define IS_FPR(r) (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) || IS_MMX(r))
-
-
+#define IS_FPR(r)                                                              \
+  (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) ||       \
+   IS_MMX(r))
 
 // the map is from capstone regnum to mcontext gpr, offset (assuming
 // little endian), size
@@ -461,85 +448,80 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
 #define REG_ZERO -1
 #define REG_NONE -2
 
-  // base (undefined)
-  [0 ... X86_REG_ENDING-1 ] = { REG_NONE,0,0},
+    // base (undefined)
+    [0 ... X86_REG_ENDING - 1] = {REG_NONE, 0, 0},
 
+    [X86_REG_AH] = {REG_RAX, 1, 1},
+    [X86_REG_AL] = {REG_RAX, 0, 1},
+    [X86_REG_AX] = {REG_RAX, 0, 2},
+    [X86_REG_EAX] = {REG_RAX, 0, 4},
+    [X86_REG_RAX] = {REG_RAX, 0, 8},
 
-  [X86_REG_AH]   = { REG_RAX, 1, 1 },
-  [X86_REG_AL]   = { REG_RAX, 0, 1 },
-  [X86_REG_AX]   = { REG_RAX, 0, 2 },
-  [X86_REG_EAX]  = { REG_RAX, 0, 4 },
-  [X86_REG_RAX]  = { REG_RAX, 0, 8 },
+    [X86_REG_BH] = {REG_RBX, 1, 1},
+    [X86_REG_BL] = {REG_RBX, 0, 1},
+    [X86_REG_BX] = {REG_RBX, 0, 2},
+    [X86_REG_EBX] = {REG_RBX, 0, 4},
+    [X86_REG_RBX] = {REG_RBX, 0, 8},
 
-  [X86_REG_BH]   = { REG_RBX, 1, 1 },
-  [X86_REG_BL]   = { REG_RBX, 0, 1 },
-  [X86_REG_BX]   = { REG_RBX, 0, 2 },
-  [X86_REG_EBX]  = { REG_RBX, 0, 4 },
-  [X86_REG_RBX]  = { REG_RBX, 0, 8 },
+    [X86_REG_CH] = {REG_RCX, 1, 1},
+    [X86_REG_CL] = {REG_RCX, 0, 1},
+    [X86_REG_CX] = {REG_RCX, 0, 2},
+    [X86_REG_ECX] = {REG_RCX, 0, 4},
+    [X86_REG_RCX] = {REG_RCX, 0, 8},
 
-  [X86_REG_CH]   = { REG_RCX, 1, 1 },
-  [X86_REG_CL]   = { REG_RCX, 0, 1 },
-  [X86_REG_CX]   = { REG_RCX, 0, 2 },
-  [X86_REG_ECX]  = { REG_RCX, 0, 4 },
-  [X86_REG_RCX]  = { REG_RCX, 0, 8 },
+    [X86_REG_DH] = {REG_RDX, 1, 1},
+    [X86_REG_DL] = {REG_RDX, 0, 1},
+    [X86_REG_DX] = {REG_RDX, 0, 2},
+    [X86_REG_EDX] = {REG_RDX, 0, 4},
+    [X86_REG_RDX] = {REG_RDX, 0, 8},
 
-  [X86_REG_DH]   = { REG_RDX, 1, 1 },
-  [X86_REG_DL]   = { REG_RDX, 0, 1 },
-  [X86_REG_DX]   = { REG_RDX, 0, 2 },
-  [X86_REG_EDX]  = { REG_RDX, 0, 4 },
-  [X86_REG_RDX]  = { REG_RDX, 0, 8 },
+    [X86_REG_SIL] = {REG_RSI, 0, 1},
+    [X86_REG_SI] = {REG_RSI, 0, 2},
+    [X86_REG_ESI] = {REG_RSI, 0, 4},
+    [X86_REG_RSI] = {REG_RSI, 0, 8},
 
-  [X86_REG_SIL]  = { REG_RSI, 0, 1 },
-  [X86_REG_SI]   = { REG_RSI, 0, 2 },
-  [X86_REG_ESI]  = { REG_RSI, 0, 4 },
-  [X86_REG_RSI]  = { REG_RSI, 0, 8 },
+    [X86_REG_DIL] = {REG_RDI, 0, 1},
+    [X86_REG_DI] = {REG_RDI, 0, 2},
+    [X86_REG_EDI] = {REG_RDI, 0, 4},
+    [X86_REG_RDI] = {REG_RDI, 0, 8},
 
-  [X86_REG_DIL]  = { REG_RDI, 0, 1 },
-  [X86_REG_DI]   = { REG_RDI, 0, 2 },
-  [X86_REG_EDI]  = { REG_RDI, 0, 4 },
-  [X86_REG_RDI]  = { REG_RDI, 0, 8 },
+    [X86_REG_SPL] = {REG_RSP, 0, 1},
+    [X86_REG_SP] = {REG_RSP, 0, 2},
+    [X86_REG_ESP] = {REG_RSP, 0, 4},
+    [X86_REG_RSP] = {REG_RSP, 0, 8},
 
-  [X86_REG_SPL]  = { REG_RSP, 0, 1 },
-  [X86_REG_SP]   = { REG_RSP, 0, 2 },
-  [X86_REG_ESP]  = { REG_RSP, 0, 4 },
-  [X86_REG_RSP]  = { REG_RSP, 0, 8 },
+    [X86_REG_BPL] = {REG_RBP, 0, 1},
+    [X86_REG_BP] = {REG_RBP, 0, 2},
+    [X86_REG_EBP] = {REG_RBP, 0, 4},
+    [X86_REG_RBP] = {REG_RBP, 0, 8},
 
-  [X86_REG_BPL]  = { REG_RBP, 0, 1 },
-  [X86_REG_BP]   = { REG_RBP, 0, 2 },
-  [X86_REG_EBP]  = { REG_RBP, 0, 4 },
-  [X86_REG_RBP]  = { REG_RBP, 0, 8 },
+#define SANE_GPR(x)                                                            \
+  [X86_REG_##x##B] = {REG_##x, 0, 1}, [X86_REG_##x##W] = {REG_##x, 0, 2},      \
+  [X86_REG_##x##D] = {REG_##x, 0, 4}, [X86_REG_##x] = {REG_##x, 0, 8}
 
-#define SANE_GPR(x)  \
-  [X86_REG_##x##B ] = { REG_##x, 0, 1 }, \
-  [X86_REG_##x##W ] = { REG_##x, 0, 2 }, \
-  [X86_REG_##x##D ] = { REG_##x, 0, 4 }, \
-  [X86_REG_##x ]    = { REG_##x, 0, 8 }
+    SANE_GPR(R8),
+    SANE_GPR(R9),
+    SANE_GPR(R10),
+    SANE_GPR(R11),
+    SANE_GPR(R12),
+    SANE_GPR(R13),
+    SANE_GPR(R14),
+    SANE_GPR(R15),
 
-  SANE_GPR(R8),
-  SANE_GPR(R9),
-  SANE_GPR(R10),
-  SANE_GPR(R11),
-  SANE_GPR(R12),
-  SANE_GPR(R13),
-  SANE_GPR(R14),
-  SANE_GPR(R15),
-  
-  [X86_REG_IP]   = { REG_RIP, 0, 2 },
-  [X86_REG_EIP]  = { REG_RIP, 0, 4 },
-  [X86_REG_RIP]  = { REG_RIP, 0, 8 },
+    [X86_REG_IP] = {REG_RIP, 0, 2},
+    [X86_REG_EIP] = {REG_RIP, 0, 4},
+    [X86_REG_RIP] = {REG_RIP, 0, 8},
 
-  [X86_REG_FS] = {REG_CSGSFS, 4, 2 },
-  [X86_REG_GS] = {REG_CSGSFS, 2, 2 },
-  
-  [X86_REG_EFLAGS] = { REG_EFL, 0, 4},
+    [X86_REG_FS] = {REG_CSGSFS, 4, 2},
+    [X86_REG_GS] = {REG_CSGSFS, 2, 2},
 
-  
-  // pseudo reg that is zero
-  [X86_REG_EIZ] = { REG_ZERO, 0, 4},
-  [X86_REG_RIZ] = { REG_ZERO, 0, 8},
-  
+    [X86_REG_EFLAGS] = {REG_EFL, 0, 4},
+
+    // pseudo reg that is zero
+    [X86_REG_EIZ] = {REG_ZERO, 0, 4},
+    [X86_REG_RIZ] = {REG_ZERO, 0, 8},
+
 };
-
 
 #define CAPSTONE_TO_MCONTEXT(r) (&(capstone_to_mcontext[r]))
 
@@ -547,173 +529,192 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
 #define MCOFF(m) ((*m)[1])
 #define MCSIZE(m) ((*m)[2])
 
-
 //   DO_REG(	X86_REG_FPSW);
 //      DO_REG( X86_REG_SS);
-
-
 
 // after this function is complete, every operand pointer in
 // fi will be pointing to the relavent memory location or a
 // a field (register snapshot) in fr.
-int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr)
-{
-  cs_insn *inst = (cs_insn *) fi->internal;
+int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
+  cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
-  
+
   int i;
 
   DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n",
-	fr->mcontext,fr->fprs,fr->fpr_size);
+        fr->mcontext, fr->fprs, fr->fpr_size);
 
-  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
-    fi->side_effect_addrs[0] = (void*)(uint64_t *)&fr->mcontext->gregs[REG_EFL];
+  if (fi->common->op_type == FPVM_OP_CMP ||
+      fi->common->op_type == FPVM_OP_UCMP) {
+    fi->side_effect_addrs[0] =
+        (void *)(uint64_t *)&fr->mcontext->gregs[REG_EFL];
     // PAD: DO WE HANDLE SIDE EFFECTS IN COMPARES CORRECTLY?
     // CMP/UCMP put their result in the rflags register
     // WHAT ABOUT OTEHR SIDE EFFECTING INSTRUCTIONS?
     //
     // PAD: WE DO NOT CURRENTLY HAVE THE EMULATED INSTRUCTION
-    // TOUCH THE MXCSR register (these are the condition codes for floating point
-    // We must eventually emulate these, but note that we must mask out
+    // TOUCH THE MXCSR register (these are the condition codes for floating
+    // point We must eventually emulate these, but note that we must mask out
     // any manipulation of the control bits since we use those to invoke FPVM
     // handle MXCSR LATER FIX FIX FIX
     //   fi->side_effect_addrs[1] = &fr->mcontext->gregs[REG_MXCSR];
   }
-  
-  fi->operand_count=0;
-  
-  for (i=0;i<x86->op_count;i++) {
+
+  fi->operand_count = 0;
+
+  for (i = 0; i < x86->op_count; i++) {
     cs_x86_op *o = &x86->operands[i];
     switch (o->type) {
-      
+
     case X86_OP_REG:
-      
+
       if (IS_FPR(o->reg)) {
-	// PAD: how FPRs beyond the classic x87 and 16 xmm registers are conveyed to a signal
-	// handler is a bit of a mystery, hence this assertion
-	// see /usr/include/x86_64-linux-gnu/sys/ucontext.h for why this is confusing
-	// that's the system-specific defn of an mcontext.
-	// it may be that we have to explicitly handle FPRs beyond these by a dump and
-	// restore chunk of assembly
-	ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) && ((o->reg - X86_REG_XMM0) < 16) && ((o->reg - X86_REG_XMM0) >= 0));
-	
-	if (IS_NORMAL_FPR(o->reg)) {
-	  if (IS_XMM(o->reg)) {
-	    // PAD: probably wrong for > xmm15
-	    fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
-	    if (fr->fpr_size>=16) { 
-	      fi->operand_sizes[fi->operand_count] = 16;
-	    } else {
-	      ERROR("incompatable fpr size for xmm\n");
-	      return -1;
-	    }
-	  } else if (IS_YMM(o->reg)) {
-	    // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery stashes these contents
-	    fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * (o->reg - X86_REG_YMM0);
-	    if (fr->fpr_size>=32) { 
-	      fi->operand_sizes[fi->operand_count] = 32;
-	    } else {
-	      ERROR("incompatable fpr size for ymm\n");
-	      return -1;
-	    }
-	    fi->operand_sizes[fi->operand_count] = 32;
-	  } else if (IS_ZMM(o->reg)) { 
-	    // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery stashes these contents
-	    fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * (o->reg - X86_REG_ZMM0);
-	    if (fr->fpr_size>=64) { 
-	      fi->operand_sizes[fi->operand_count] = 64;
-	    } else {
-	      ERROR("incompatable fpr size for zmm\n");
-	      return -1;
-	    }
-	  } else {
-	    // PAD: Should catch
-	    ERROR("unsupported normal fpr\n");
-	    ASSERT(0);
-	    return -1;
-	  }
-	} else {
-	  ERROR("unsupported whacko fpr %s\n",reg_name(o->reg));
-	  ASSERT(0);
-	  return -1;
-	}
-	DEBUG("Mapped FPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg), fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
+        // PAD: how FPRs beyond the classic x87 and 16 xmm registers are
+        // conveyed to a signal handler is a bit of a mystery, hence this
+        // assertion see /usr/include/x86_64-linux-gnu/sys/ucontext.h for why
+        // this is confusing that's the system-specific defn of an mcontext. it
+        // may be that we have to explicitly handle FPRs beyond these by a dump
+        // and restore chunk of assembly
+        ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) &&
+               ((o->reg - X86_REG_XMM0) < 16) &&
+               ((o->reg - X86_REG_XMM0) >= 0));
+
+        if (IS_NORMAL_FPR(o->reg)) {
+          if (IS_XMM(o->reg)) {
+            // PAD: probably wrong for > xmm15
+            fi->operand_addrs[fi->operand_count] =
+                fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
+            if (fr->fpr_size >= 16) {
+              fi->operand_sizes[fi->operand_count] = 16;
+            } else {
+              ERROR("incompatable fpr size for xmm\n");
+              return -1;
+            }
+          } else if (IS_YMM(o->reg)) {
+            // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
+            // stashes these contents
+            fi->operand_addrs[fi->operand_count] =
+                fr->fprs + fr->fpr_size * (o->reg - X86_REG_YMM0);
+            if (fr->fpr_size >= 32) {
+              fi->operand_sizes[fi->operand_count] = 32;
+            } else {
+              ERROR("incompatable fpr size for ymm\n");
+              return -1;
+            }
+            fi->operand_sizes[fi->operand_count] = 32;
+          } else if (IS_ZMM(o->reg)) {
+            // PAD: THIS IS PROBABLY BOGUS - unclear where the signal delivery
+            // stashes these contents
+            fi->operand_addrs[fi->operand_count] =
+                fr->fprs + fr->fpr_size * (o->reg - X86_REG_ZMM0);
+            if (fr->fpr_size >= 64) {
+              fi->operand_sizes[fi->operand_count] = 64;
+            } else {
+              ERROR("incompatable fpr size for zmm\n");
+              return -1;
+            }
+          } else {
+            // PAD: Should catch
+            ERROR("unsupported normal fpr\n");
+            ASSERT(0);
+            return -1;
+          }
+        } else {
+          ERROR("unsupported whacko fpr %s\n", reg_name(o->reg));
+          ASSERT(0);
+          return -1;
+        }
+        DEBUG("Mapped FPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count],
+              fi->operand_sizes[fi->operand_count]);
 
       } else { // GPR
 
-	// PAD: if we are handling a GPR, it should really only be because of a float<->int conversion
+        // PAD: if we are handling a GPR, it should really only be because of a
+        // float<->int conversion
 
-	// PAD: it is possible the capstone->mcontext mapping is wrong (see capstone_to_mcontext array)
-	
-	reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(o->reg);
+        // PAD: it is possible the capstone->mcontext mapping is wrong (see
+        // capstone_to_mcontext array)
 
-	if (MCREG(m)==REG_NONE || MCREG(m)==REG_ZERO) {
-	  ERROR("No mapping of %s!\n",reg_name(o->reg));
-	  ASSERT(0);
-	  return -1;
-	}
+        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(o->reg);
 
-	// PAD: the following should be sanity checked.   The idea is to generate addresses
-	// within the mcontext that correspond to the capstone register
-	fi->operand_addrs[fi->operand_count] = (void*)(((uint64_t)(&(fr->mcontext->gregs[MCREG(m)]))) + MCOFF(m));
-	fi->operand_sizes[fi->operand_count] = MCSIZE(m);
+        if (MCREG(m) == REG_NONE || MCREG(m) == REG_ZERO) {
+          ERROR("No mapping of %s!\n", reg_name(o->reg));
+          ASSERT(0);
+          return -1;
+        }
 
-	DEBUG("Mapped GPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg), fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
+        // PAD: the following should be sanity checked.   The idea is to
+        // generate addresses within the mcontext that correspond to the
+        // capstone register
+        fi->operand_addrs[fi->operand_count] =
+            (void *)(((uint64_t)(&(fr->mcontext->gregs[MCREG(m)]))) + MCOFF(m));
+        fi->operand_sizes[fi->operand_count] = MCSIZE(m);
+
+        DEBUG("Mapped GPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count],
+              fi->operand_sizes[fi->operand_count]);
       }
-	
+
       fi->operand_count++;
-      
+
       break;
 
     case X86_OP_IMM:
-      // PAD: I don't think any of the instructions we will see in SSE2 will include
-      // an immediate, so this is here for completeness
-      // ERROR("Huh - saw an immediate!\n");
+      // PAD: I don't think any of the instructions we will see in SSE2 will
+      // include an immediate, so this is here for completeness ERROR("Huh - saw
+      // an immediate!\n");
       fi->operand_addrs[fi->operand_count] = &o->imm;
       fi->operand_sizes[fi->operand_count] = 8;
-      DEBUG("Mapped immediate %016lx at %p (%u)\n",o->imm,fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count]);
+      DEBUG("Mapped immediate %016lx at %p (%u)\n", o->imm,
+            fi->operand_addrs[fi->operand_count],
+            fi->operand_sizes[fi->operand_count]);
       fi->operand_count++;
-      
+
       break;
 
       //
-      // PAD: I don't know what this operand type in capstone is supposed to represent
-      // My guess is that it's an FP immediate in some new encoding (probably after SSE2)
+      // PAD: I don't know what this operand type in capstone is supposed to
+      // represent My guess is that it's an FP immediate in some new encoding
+      // (probably after SSE2)
       //    case X86_OP_FP:
       // ERROR("X86_OP_FP\n");
       // ASSERT(0);
       /// return -1;
       /// break;
-    //   fi->operand_addrs[fi->operand_count] = &o->imm;
-    //   fi->operand_sizes[fi->operand_count] = 8;
-    //   DEBUG("Mapped FP immediate %016lx (%lf) at %p (%u)\n",*(uint64_t*)(double*)&(o->fp),o->fp, fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count]);
-    //   fi->operand_count++;
+      //   fi->operand_addrs[fi->operand_count] = &o->imm;
+      //   fi->operand_sizes[fi->operand_count] = 8;
+      //   DEBUG("Mapped FP immediate %016lx (%lf) at %p
+      //   (%u)\n",*(uint64_t*)(double*)&(o->fp),o->fp,
+      //   fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count]);
+      //   fi->operand_count++;
 
-    //   break;
-      
+      //   break;
+
     case X86_OP_MEM: {
 
       // PAD: We must handle memory operands, and in SSE2, these appear to only
-      // be generated in the traditional x86 manner (scaled base index diplacement mode),
-      // including the use of rip as the base
-      // This code computes the memory address and size.   if it gets it wrong
-      // any resulting read/write could corrupt memory
+      // be generated in the traditional x86 manner (scaled base index
+      // diplacement mode), including the use of rip as the base This code
+      // computes the memory address and size.   if it gets it wrong any
+      // resulting read/write could corrupt memory
       x86_op_mem *mo = &o->mem;
 
-      DEBUG("Decoding seg=%d (%s) disp=%016lx base=%d (%s) index=%d (%s) scale=%d\n",
-	    mo->segment, reg_name(mo->segment), mo->disp,
-	    mo->base, reg_name(mo->base), mo->index, reg_name(mo->index), mo->scale);
+      DEBUG("Decoding seg=%d (%s) disp=%016lx base=%d (%s) index=%d (%s) "
+            "scale=%d\n",
+            mo->segment, reg_name(mo->segment), mo->disp, mo->base,
+            reg_name(mo->base), mo->index, reg_name(mo->index), mo->scale);
 
-      if (mo->segment==X86_REG_FS || mo->segment==X86_REG_GS) {
-	// PAD: This is thread-local storage
-	// Note that all other segment overrides are ignored because
-	// other segments are all base 0 in 64 bit mode.   It could be that
-	// the segment descriptor can override the default size, though, but
-	// I don't believe that's the case
-	ERROR("Cannot currently handle FS/GS override (TLS)\n");
-	ASSERT(0);
-	return -1;
+      if (mo->segment == X86_REG_FS || mo->segment == X86_REG_GS) {
+        // PAD: This is thread-local storage
+        // Note that all other segment overrides are ignored because
+        // other segments are all base 0 in 64 bit mode.   It could be that
+        // the segment descriptor can override the default size, though, but
+        // I don't believe that's the case
+        ERROR("Cannot currently handle FS/GS override (TLS)\n");
+        ASSERT(0);
+        return -1;
       }
 
       // Now we ignore the segment assuming we are in 64 bit mode
@@ -722,39 +723,46 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr)
       uint64_t addr = mo->disp;
 
       if (mo->base != X86_REG_INVALID) {
-	//
-	// PAD: again these mappings into the mcontext must be correct
-	// for this to work.
-	// and capstone better not use some out of range psuedoregister
-	reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base);
-	addr += fr->mcontext->gregs[MCREG(m)];
-	// in rip-relative mode, rip is the address of the next instruction
-	// rip can only used for the base register, which is why this code
-	// does not exist elsewhere
-	if (MCREG(m)==REG_RIP) {
-	  addr += fi->length;
-	}
+        //
+        // PAD: again these mappings into the mcontext must be correct
+        // for this to work.
+        // and capstone better not use some out of range psuedoregister
+        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base);
+        addr += fr->mcontext->gregs[MCREG(m)];
+        // in rip-relative mode, rip is the address of the next instruction
+        // rip can only used for the base register, which is why this code
+        // does not exist elsewhere
+        if (MCREG(m) == REG_RIP) {
+          addr += fi->length;
+        }
       } else {
-	// PAD: this is probably OK, it just means there is no base register
+        // PAD: this is probably OK, it just means there is no base register
       }
 
       if (mo->index != X86_REG_INVALID) {
-	// PAD: again, assuming the mapping to mcontext are correct and no surprise pseudoregister
-	reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);
-	addr += fr->mcontext->gregs[MCREG(m)] * mo->scale ; // assuming scale is not shift amount
+        // PAD: again, assuming the mapping to mcontext are correct and no
+        // surprise pseudoregister
+        reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);
+        addr += fr->mcontext->gregs[MCREG(m)] *
+                mo->scale; // assuming scale is not shift amount
       } else {
-	// PAD: this is probably OK, it just means there is no index regiser
+        // PAD: this is probably OK, it just means there is no index regiser
       }
-      
-      fi->operand_addrs[fi->operand_count] = (void*) addr;;
-      // PAD: the following assumes there is no operand size override for integer
-      // and it assumes that for FP we are always talking about 8 byte quantities
-      fi->operand_sizes[fi->operand_count] = 8;   // PAD: THIS IS BOGUS
-      
-      DEBUG("Mapped memory operand to %p (%u) [SIZE BOGUS!] data %016lx (%lf)\n",fi->operand_addrs[fi->operand_count],fi->operand_sizes[fi->operand_count], *(uint64_t*)addr, *(double*)addr);
+
+      fi->operand_addrs[fi->operand_count] = (void *)addr;
+      ;
+      // PAD: the following assumes there is no operand size override for
+      // integer and it assumes that for FP we are always talking about 8 byte
+      // quantities
+      fi->operand_sizes[fi->operand_count] = 8; // PAD: THIS IS BOGUS
+
+      DEBUG(
+          "Mapped memory operand to %p (%u) [SIZE BOGUS!] data %016lx (%lf)\n",
+          fi->operand_addrs[fi->operand_count],
+          fi->operand_sizes[fi->operand_count], *(uint64_t *)addr,
+          *(double *)addr);
       fi->operand_count++;
-    }
-      break;
+    } break;
 
     default:
       ERROR("WTF? \n");
@@ -766,15 +774,13 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr)
 
   return 0;
 }
-			 
 
+static char *group_name(uint8_t group) {
+#define DO_GROUP(x)                                                            \
+  case x:                                                                      \
+    return #x;                                                                 \
+    break;
 
-
-
-static char *group_name(uint8_t group)
-{
-#define DO_GROUP(x) case x: return #x; break;
-  
   switch (group) {
     DO_GROUP(X86_GRP_INVALID);
     DO_GROUP(X86_GRP_JUMP);
@@ -828,273 +834,300 @@ static char *group_name(uint8_t group)
   }
 }
 
-static char *prefix_name(uint8_t prefix)
-{
+static char *prefix_name(uint8_t prefix) {
   switch (prefix) {
-  case X86_PREFIX_LOCK: return "LOCK"; break;
-  case X86_PREFIX_REP: return "REP"; break;
-  case X86_PREFIX_REPNE: return "REPNE"; break;
-  case X86_PREFIX_CS: return "CS"; break;
-  case X86_PREFIX_SS: return "SS"; break;
-  case X86_PREFIX_DS: return "DS"; break;
-  case X86_PREFIX_ES: return "ES"; break;
-  case X86_PREFIX_FS: return "FS"; break;
-  case X86_PREFIX_GS: return "GS"; break;
-  case X86_PREFIX_OPSIZE: return "OPSIZE"; break;
-  case X86_PREFIX_ADDRSIZE: return "ADDRSIZE"; break;
-  case 0: return "none"; break;
-  default: return "UNKNOWN"; break;
-  }
-}
-    
-     
-
-static char *reg_name(x86_reg reg)
-{
-#define DO_REG(x) case x: return #x; break;
-  switch(reg) {
-    DO_REG(	X86_REG_AH);
-      DO_REG( X86_REG_AL);
-      DO_REG( X86_REG_AX);
-      DO_REG( X86_REG_BH);
-      DO_REG( X86_REG_BL);
-      DO_REG(	X86_REG_BP);
-      DO_REG( X86_REG_BPL);
-      DO_REG( X86_REG_BX);
-      DO_REG( X86_REG_CH);
-      DO_REG( X86_REG_CL);
-      DO_REG(	X86_REG_CS);
-      DO_REG( X86_REG_CX);
-      DO_REG( X86_REG_DH);
-      DO_REG( X86_REG_DI);
-      DO_REG( X86_REG_DIL);
-      DO_REG(	X86_REG_DL);
-      DO_REG( X86_REG_DS);
-      DO_REG( X86_REG_DX);
-      DO_REG( X86_REG_EAX);
-      DO_REG( X86_REG_EBP);
-      DO_REG(	X86_REG_EBX);
-      DO_REG( X86_REG_ECX);
-      DO_REG( X86_REG_EDI);
-      DO_REG( X86_REG_EDX);
-      DO_REG( X86_REG_EFLAGS);
-      DO_REG(	X86_REG_EIP);
-      DO_REG( X86_REG_EIZ);
-      DO_REG( X86_REG_ES);
-      DO_REG( X86_REG_ESI);
-      DO_REG( X86_REG_ESP);
-      DO_REG(	X86_REG_FPSW);
-      DO_REG( X86_REG_FS);
-      DO_REG( X86_REG_GS);
-      DO_REG( X86_REG_IP);
-      DO_REG( X86_REG_RAX);
-      DO_REG(	X86_REG_RBP);
-      DO_REG( X86_REG_RBX);
-      DO_REG( X86_REG_RCX);
-      DO_REG( X86_REG_RDI);
-      DO_REG( X86_REG_RDX);
-      DO_REG(	X86_REG_RIP);
-      DO_REG( X86_REG_RIZ);
-      DO_REG( X86_REG_RSI);
-      DO_REG( X86_REG_RSP);
-      DO_REG( X86_REG_SI);
-      DO_REG(	X86_REG_SIL);
-      DO_REG( X86_REG_SP);
-      DO_REG( X86_REG_SPL);
-      DO_REG( X86_REG_SS);
-      DO_REG( X86_REG_CR0);
-      DO_REG(	X86_REG_CR1);
-      DO_REG( X86_REG_CR2);
-      DO_REG( X86_REG_CR3);
-      DO_REG( X86_REG_CR4);
-      DO_REG( X86_REG_CR5);
-      DO_REG(	X86_REG_CR6);
-      DO_REG( X86_REG_CR7);
-      DO_REG( X86_REG_CR8);
-      DO_REG( X86_REG_CR9);
-      DO_REG( X86_REG_CR10);
-      DO_REG(	X86_REG_CR11);
-      DO_REG( X86_REG_CR12);
-      DO_REG( X86_REG_CR13);
-      DO_REG( X86_REG_CR14);
-      DO_REG( X86_REG_CR15);
-      DO_REG(	X86_REG_DR0);
-      DO_REG( X86_REG_DR1);
-      DO_REG( X86_REG_DR2);
-      DO_REG( X86_REG_DR3);
-      DO_REG( X86_REG_DR4);
-      DO_REG(	X86_REG_DR5);
-      DO_REG( X86_REG_DR6);
-      DO_REG( X86_REG_DR7);
-      DO_REG( X86_REG_FP0);
-      DO_REG( X86_REG_FP1);
-      DO_REG(	X86_REG_FP2);
-      DO_REG( X86_REG_FP3);
-      DO_REG( X86_REG_FP4);
-      DO_REG( X86_REG_FP5);
-      DO_REG( X86_REG_FP6);
-      DO_REG( X86_REG_FP7);
-      DO_REG(	X86_REG_K0);
-      DO_REG( X86_REG_K1);
-      DO_REG( X86_REG_K2);
-      DO_REG( X86_REG_K3);
-      DO_REG( X86_REG_K4);
-      DO_REG(	X86_REG_K5);
-      DO_REG( X86_REG_K6);
-      DO_REG( X86_REG_K7);
-      DO_REG( X86_REG_MM0);
-      DO_REG( X86_REG_MM1);
-      DO_REG(	X86_REG_MM2);
-      DO_REG( X86_REG_MM3);
-      DO_REG( X86_REG_MM4);
-      DO_REG( X86_REG_MM5);
-      DO_REG( X86_REG_MM6);
-      DO_REG(	X86_REG_MM7);
-      DO_REG( X86_REG_R8);
-      DO_REG( X86_REG_R9);
-      DO_REG( X86_REG_R10);
-      DO_REG( X86_REG_R11);
-      DO_REG(	X86_REG_R12);
-      DO_REG( X86_REG_R13);
-      DO_REG( X86_REG_R14);
-      DO_REG( X86_REG_R15);
-      DO_REG(	X86_REG_ST0);
-      DO_REG( X86_REG_ST1);
-      DO_REG( X86_REG_ST2);
-      DO_REG( X86_REG_ST3);
-      DO_REG(	X86_REG_ST4);
-      DO_REG( X86_REG_ST5);
-      DO_REG( X86_REG_ST6);
-      DO_REG( X86_REG_ST7);
-      DO_REG(	X86_REG_XMM0);
-      DO_REG( X86_REG_XMM1);
-      DO_REG( X86_REG_XMM2);
-      DO_REG( X86_REG_XMM3);
-      DO_REG( X86_REG_XMM4);
-      DO_REG(	X86_REG_XMM5);
-      DO_REG( X86_REG_XMM6);
-      DO_REG( X86_REG_XMM7);
-      DO_REG( X86_REG_XMM8);
-      DO_REG( X86_REG_XMM9);
-      DO_REG(	X86_REG_XMM10);
-      DO_REG( X86_REG_XMM11);
-      DO_REG( X86_REG_XMM12);
-      DO_REG( X86_REG_XMM13);
-      DO_REG( X86_REG_XMM14);
-      DO_REG(	X86_REG_XMM15);
-      DO_REG( X86_REG_XMM16);
-      DO_REG( X86_REG_XMM17);
-      DO_REG( X86_REG_XMM18);
-      DO_REG( X86_REG_XMM19);
-      DO_REG(	X86_REG_XMM20);
-      DO_REG( X86_REG_XMM21);
-      DO_REG( X86_REG_XMM22);
-      DO_REG( X86_REG_XMM23);
-      DO_REG( X86_REG_XMM24);
-      DO_REG(	X86_REG_XMM25);
-      DO_REG( X86_REG_XMM26);
-      DO_REG( X86_REG_XMM27);
-      DO_REG( X86_REG_XMM28);
-      DO_REG( X86_REG_XMM29);
-      DO_REG(	X86_REG_XMM30);
-      DO_REG( X86_REG_XMM31);
-      DO_REG( X86_REG_YMM0);
-      DO_REG( X86_REG_YMM1);
-      DO_REG( X86_REG_YMM2);
-      DO_REG(	X86_REG_YMM3);
-      DO_REG( X86_REG_YMM4);
-      DO_REG( X86_REG_YMM5);
-      DO_REG( X86_REG_YMM6);
-      DO_REG( X86_REG_YMM7);
-      DO_REG(	X86_REG_YMM8);
-      DO_REG( X86_REG_YMM9);
-      DO_REG( X86_REG_YMM10);
-      DO_REG( X86_REG_YMM11);
-      DO_REG( X86_REG_YMM12);
-      DO_REG(	X86_REG_YMM13);
-      DO_REG( X86_REG_YMM14);
-      DO_REG( X86_REG_YMM15);
-      DO_REG( X86_REG_YMM16);
-      DO_REG( X86_REG_YMM17);
-      DO_REG(	X86_REG_YMM18);
-      DO_REG( X86_REG_YMM19);
-      DO_REG( X86_REG_YMM20);
-      DO_REG( X86_REG_YMM21);
-      DO_REG( X86_REG_YMM22);
-      DO_REG(	X86_REG_YMM23);
-      DO_REG( X86_REG_YMM24);
-      DO_REG( X86_REG_YMM25);
-      DO_REG( X86_REG_YMM26);
-      DO_REG( X86_REG_YMM27);
-      DO_REG(	X86_REG_YMM28);
-      DO_REG( X86_REG_YMM29);
-      DO_REG( X86_REG_YMM30);
-      DO_REG( X86_REG_YMM31);
-      DO_REG( X86_REG_ZMM0);
-      DO_REG(	X86_REG_ZMM1);
-      DO_REG( X86_REG_ZMM2);
-      DO_REG( X86_REG_ZMM3);
-      DO_REG( X86_REG_ZMM4);
-      DO_REG( X86_REG_ZMM5);
-      DO_REG(	X86_REG_ZMM6);
-      DO_REG( X86_REG_ZMM7);
-      DO_REG( X86_REG_ZMM8);
-      DO_REG( X86_REG_ZMM9);
-      DO_REG( X86_REG_ZMM10);
-      DO_REG(	X86_REG_ZMM11);
-      DO_REG( X86_REG_ZMM12);
-      DO_REG( X86_REG_ZMM13);
-      DO_REG( X86_REG_ZMM14);
-      DO_REG( X86_REG_ZMM15);
-      DO_REG(	X86_REG_ZMM16);
-      DO_REG( X86_REG_ZMM17);
-      DO_REG( X86_REG_ZMM18);
-      DO_REG( X86_REG_ZMM19);
-      DO_REG( X86_REG_ZMM20);
-      DO_REG(	X86_REG_ZMM21);
-      DO_REG( X86_REG_ZMM22);
-      DO_REG( X86_REG_ZMM23);
-      DO_REG( X86_REG_ZMM24);
-      DO_REG( X86_REG_ZMM25);
-      DO_REG(	X86_REG_ZMM26);
-      DO_REG( X86_REG_ZMM27);
-      DO_REG( X86_REG_ZMM28);
-      DO_REG( X86_REG_ZMM29);
-      DO_REG( X86_REG_ZMM30);
-      DO_REG(	X86_REG_ZMM31);
-      DO_REG( X86_REG_R8B);
-      DO_REG( X86_REG_R9B);
-      DO_REG( X86_REG_R10B);
-      DO_REG( X86_REG_R11B);
-      DO_REG(	X86_REG_R12B);
-      DO_REG( X86_REG_R13B);
-      DO_REG( X86_REG_R14B);
-      DO_REG( X86_REG_R15B);
-      DO_REG( X86_REG_R8D);
-      DO_REG(	X86_REG_R9D);
-      DO_REG( X86_REG_R10D);
-      DO_REG( X86_REG_R11D);
-      DO_REG( X86_REG_R12D);
-      DO_REG( X86_REG_R13D);
-      DO_REG(	X86_REG_R14D);
-      DO_REG( X86_REG_R15D);
-      DO_REG( X86_REG_R8W);
-      DO_REG( X86_REG_R9W);
-      DO_REG( X86_REG_R10W);
-      DO_REG(	X86_REG_R11W);
-      DO_REG( X86_REG_R12W);
-      DO_REG( X86_REG_R13W);
-      DO_REG( X86_REG_R14W);
-      DO_REG( X86_REG_R15W);
+  case X86_PREFIX_LOCK:
+    return "LOCK";
+    break;
+  case X86_PREFIX_REP:
+    return "REP";
+    break;
+  case X86_PREFIX_REPNE:
+    return "REPNE";
+    break;
+  case X86_PREFIX_CS:
+    return "CS";
+    break;
+  case X86_PREFIX_SS:
+    return "SS";
+    break;
+  case X86_PREFIX_DS:
+    return "DS";
+    break;
+  case X86_PREFIX_ES:
+    return "ES";
+    break;
+  case X86_PREFIX_FS:
+    return "FS";
+    break;
+  case X86_PREFIX_GS:
+    return "GS";
+    break;
+  case X86_PREFIX_OPSIZE:
+    return "OPSIZE";
+    break;
+  case X86_PREFIX_ADDRSIZE:
+    return "ADDRSIZE";
+    break;
+  case 0:
+    return "none";
+    break;
   default:
-    return "UNKNOWN"; break;
+    return "UNKNOWN";
+    break;
   }
- 
 }
 
-static char *inst_name(x86_insn inst)
-{
-#define DO_INST(x) case x: return #x; break;
+static char *reg_name(x86_reg reg) {
+#define DO_REG(x)                                                              \
+  case x:                                                                      \
+    return #x;                                                                 \
+    break;
+  switch (reg) {
+    DO_REG(X86_REG_AH);
+    DO_REG(X86_REG_AL);
+    DO_REG(X86_REG_AX);
+    DO_REG(X86_REG_BH);
+    DO_REG(X86_REG_BL);
+    DO_REG(X86_REG_BP);
+    DO_REG(X86_REG_BPL);
+    DO_REG(X86_REG_BX);
+    DO_REG(X86_REG_CH);
+    DO_REG(X86_REG_CL);
+    DO_REG(X86_REG_CS);
+    DO_REG(X86_REG_CX);
+    DO_REG(X86_REG_DH);
+    DO_REG(X86_REG_DI);
+    DO_REG(X86_REG_DIL);
+    DO_REG(X86_REG_DL);
+    DO_REG(X86_REG_DS);
+    DO_REG(X86_REG_DX);
+    DO_REG(X86_REG_EAX);
+    DO_REG(X86_REG_EBP);
+    DO_REG(X86_REG_EBX);
+    DO_REG(X86_REG_ECX);
+    DO_REG(X86_REG_EDI);
+    DO_REG(X86_REG_EDX);
+    DO_REG(X86_REG_EFLAGS);
+    DO_REG(X86_REG_EIP);
+    DO_REG(X86_REG_EIZ);
+    DO_REG(X86_REG_ES);
+    DO_REG(X86_REG_ESI);
+    DO_REG(X86_REG_ESP);
+    DO_REG(X86_REG_FPSW);
+    DO_REG(X86_REG_FS);
+    DO_REG(X86_REG_GS);
+    DO_REG(X86_REG_IP);
+    DO_REG(X86_REG_RAX);
+    DO_REG(X86_REG_RBP);
+    DO_REG(X86_REG_RBX);
+    DO_REG(X86_REG_RCX);
+    DO_REG(X86_REG_RDI);
+    DO_REG(X86_REG_RDX);
+    DO_REG(X86_REG_RIP);
+    DO_REG(X86_REG_RIZ);
+    DO_REG(X86_REG_RSI);
+    DO_REG(X86_REG_RSP);
+    DO_REG(X86_REG_SI);
+    DO_REG(X86_REG_SIL);
+    DO_REG(X86_REG_SP);
+    DO_REG(X86_REG_SPL);
+    DO_REG(X86_REG_SS);
+    DO_REG(X86_REG_CR0);
+    DO_REG(X86_REG_CR1);
+    DO_REG(X86_REG_CR2);
+    DO_REG(X86_REG_CR3);
+    DO_REG(X86_REG_CR4);
+    DO_REG(X86_REG_CR5);
+    DO_REG(X86_REG_CR6);
+    DO_REG(X86_REG_CR7);
+    DO_REG(X86_REG_CR8);
+    DO_REG(X86_REG_CR9);
+    DO_REG(X86_REG_CR10);
+    DO_REG(X86_REG_CR11);
+    DO_REG(X86_REG_CR12);
+    DO_REG(X86_REG_CR13);
+    DO_REG(X86_REG_CR14);
+    DO_REG(X86_REG_CR15);
+    DO_REG(X86_REG_DR0);
+    DO_REG(X86_REG_DR1);
+    DO_REG(X86_REG_DR2);
+    DO_REG(X86_REG_DR3);
+    DO_REG(X86_REG_DR4);
+    DO_REG(X86_REG_DR5);
+    DO_REG(X86_REG_DR6);
+    DO_REG(X86_REG_DR7);
+    DO_REG(X86_REG_FP0);
+    DO_REG(X86_REG_FP1);
+    DO_REG(X86_REG_FP2);
+    DO_REG(X86_REG_FP3);
+    DO_REG(X86_REG_FP4);
+    DO_REG(X86_REG_FP5);
+    DO_REG(X86_REG_FP6);
+    DO_REG(X86_REG_FP7);
+    DO_REG(X86_REG_K0);
+    DO_REG(X86_REG_K1);
+    DO_REG(X86_REG_K2);
+    DO_REG(X86_REG_K3);
+    DO_REG(X86_REG_K4);
+    DO_REG(X86_REG_K5);
+    DO_REG(X86_REG_K6);
+    DO_REG(X86_REG_K7);
+    DO_REG(X86_REG_MM0);
+    DO_REG(X86_REG_MM1);
+    DO_REG(X86_REG_MM2);
+    DO_REG(X86_REG_MM3);
+    DO_REG(X86_REG_MM4);
+    DO_REG(X86_REG_MM5);
+    DO_REG(X86_REG_MM6);
+    DO_REG(X86_REG_MM7);
+    DO_REG(X86_REG_R8);
+    DO_REG(X86_REG_R9);
+    DO_REG(X86_REG_R10);
+    DO_REG(X86_REG_R11);
+    DO_REG(X86_REG_R12);
+    DO_REG(X86_REG_R13);
+    DO_REG(X86_REG_R14);
+    DO_REG(X86_REG_R15);
+    DO_REG(X86_REG_ST0);
+    DO_REG(X86_REG_ST1);
+    DO_REG(X86_REG_ST2);
+    DO_REG(X86_REG_ST3);
+    DO_REG(X86_REG_ST4);
+    DO_REG(X86_REG_ST5);
+    DO_REG(X86_REG_ST6);
+    DO_REG(X86_REG_ST7);
+    DO_REG(X86_REG_XMM0);
+    DO_REG(X86_REG_XMM1);
+    DO_REG(X86_REG_XMM2);
+    DO_REG(X86_REG_XMM3);
+    DO_REG(X86_REG_XMM4);
+    DO_REG(X86_REG_XMM5);
+    DO_REG(X86_REG_XMM6);
+    DO_REG(X86_REG_XMM7);
+    DO_REG(X86_REG_XMM8);
+    DO_REG(X86_REG_XMM9);
+    DO_REG(X86_REG_XMM10);
+    DO_REG(X86_REG_XMM11);
+    DO_REG(X86_REG_XMM12);
+    DO_REG(X86_REG_XMM13);
+    DO_REG(X86_REG_XMM14);
+    DO_REG(X86_REG_XMM15);
+    DO_REG(X86_REG_XMM16);
+    DO_REG(X86_REG_XMM17);
+    DO_REG(X86_REG_XMM18);
+    DO_REG(X86_REG_XMM19);
+    DO_REG(X86_REG_XMM20);
+    DO_REG(X86_REG_XMM21);
+    DO_REG(X86_REG_XMM22);
+    DO_REG(X86_REG_XMM23);
+    DO_REG(X86_REG_XMM24);
+    DO_REG(X86_REG_XMM25);
+    DO_REG(X86_REG_XMM26);
+    DO_REG(X86_REG_XMM27);
+    DO_REG(X86_REG_XMM28);
+    DO_REG(X86_REG_XMM29);
+    DO_REG(X86_REG_XMM30);
+    DO_REG(X86_REG_XMM31);
+    DO_REG(X86_REG_YMM0);
+    DO_REG(X86_REG_YMM1);
+    DO_REG(X86_REG_YMM2);
+    DO_REG(X86_REG_YMM3);
+    DO_REG(X86_REG_YMM4);
+    DO_REG(X86_REG_YMM5);
+    DO_REG(X86_REG_YMM6);
+    DO_REG(X86_REG_YMM7);
+    DO_REG(X86_REG_YMM8);
+    DO_REG(X86_REG_YMM9);
+    DO_REG(X86_REG_YMM10);
+    DO_REG(X86_REG_YMM11);
+    DO_REG(X86_REG_YMM12);
+    DO_REG(X86_REG_YMM13);
+    DO_REG(X86_REG_YMM14);
+    DO_REG(X86_REG_YMM15);
+    DO_REG(X86_REG_YMM16);
+    DO_REG(X86_REG_YMM17);
+    DO_REG(X86_REG_YMM18);
+    DO_REG(X86_REG_YMM19);
+    DO_REG(X86_REG_YMM20);
+    DO_REG(X86_REG_YMM21);
+    DO_REG(X86_REG_YMM22);
+    DO_REG(X86_REG_YMM23);
+    DO_REG(X86_REG_YMM24);
+    DO_REG(X86_REG_YMM25);
+    DO_REG(X86_REG_YMM26);
+    DO_REG(X86_REG_YMM27);
+    DO_REG(X86_REG_YMM28);
+    DO_REG(X86_REG_YMM29);
+    DO_REG(X86_REG_YMM30);
+    DO_REG(X86_REG_YMM31);
+    DO_REG(X86_REG_ZMM0);
+    DO_REG(X86_REG_ZMM1);
+    DO_REG(X86_REG_ZMM2);
+    DO_REG(X86_REG_ZMM3);
+    DO_REG(X86_REG_ZMM4);
+    DO_REG(X86_REG_ZMM5);
+    DO_REG(X86_REG_ZMM6);
+    DO_REG(X86_REG_ZMM7);
+    DO_REG(X86_REG_ZMM8);
+    DO_REG(X86_REG_ZMM9);
+    DO_REG(X86_REG_ZMM10);
+    DO_REG(X86_REG_ZMM11);
+    DO_REG(X86_REG_ZMM12);
+    DO_REG(X86_REG_ZMM13);
+    DO_REG(X86_REG_ZMM14);
+    DO_REG(X86_REG_ZMM15);
+    DO_REG(X86_REG_ZMM16);
+    DO_REG(X86_REG_ZMM17);
+    DO_REG(X86_REG_ZMM18);
+    DO_REG(X86_REG_ZMM19);
+    DO_REG(X86_REG_ZMM20);
+    DO_REG(X86_REG_ZMM21);
+    DO_REG(X86_REG_ZMM22);
+    DO_REG(X86_REG_ZMM23);
+    DO_REG(X86_REG_ZMM24);
+    DO_REG(X86_REG_ZMM25);
+    DO_REG(X86_REG_ZMM26);
+    DO_REG(X86_REG_ZMM27);
+    DO_REG(X86_REG_ZMM28);
+    DO_REG(X86_REG_ZMM29);
+    DO_REG(X86_REG_ZMM30);
+    DO_REG(X86_REG_ZMM31);
+    DO_REG(X86_REG_R8B);
+    DO_REG(X86_REG_R9B);
+    DO_REG(X86_REG_R10B);
+    DO_REG(X86_REG_R11B);
+    DO_REG(X86_REG_R12B);
+    DO_REG(X86_REG_R13B);
+    DO_REG(X86_REG_R14B);
+    DO_REG(X86_REG_R15B);
+    DO_REG(X86_REG_R8D);
+    DO_REG(X86_REG_R9D);
+    DO_REG(X86_REG_R10D);
+    DO_REG(X86_REG_R11D);
+    DO_REG(X86_REG_R12D);
+    DO_REG(X86_REG_R13D);
+    DO_REG(X86_REG_R14D);
+    DO_REG(X86_REG_R15D);
+    DO_REG(X86_REG_R8W);
+    DO_REG(X86_REG_R9W);
+    DO_REG(X86_REG_R10W);
+    DO_REG(X86_REG_R11W);
+    DO_REG(X86_REG_R12W);
+    DO_REG(X86_REG_R13W);
+    DO_REG(X86_REG_R14W);
+    DO_REG(X86_REG_R15W);
+  default:
+    return "UNKNOWN";
+    break;
+  }
+}
+
+static char *inst_name(x86_insn inst) {
+#define DO_INST(x)                                                             \
+  case x:                                                                      \
+    return #x;                                                                 \
+    break;
 
   switch (inst) {
     DO_INST(X86_INS_AAA);
@@ -2392,7 +2425,7 @@ static char *inst_name(x86_insn inst)
     DO_INST(X86_INS_XSTORE);
     DO_INST(X86_INS_XTEST);
   default:
-    return "UNKNOWN"; break;
+    return "UNKNOWN";
+    break;
   }
 }
-

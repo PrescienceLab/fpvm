@@ -1,2 +1,0 @@
-source env.sh first
-./enzo_patched -d input 

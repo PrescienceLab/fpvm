@@ -13,17 +13,17 @@ BUILD=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ include/capstone/
+INC_DIRS := include/ # include/capstone/
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CC = gcc
 AS = gcc
 CXX = g++
-CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g -Wall -Wno-unused-function -fno-strict-aliasing
+CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
 TARGET=build/fpvm.so
-all: $(TARGET) build/test_fpvm
+all: $(TARGET) # build/test_fpvm
 
 .PHONY: foo test_lorenz
 foo:
@@ -49,7 +49,8 @@ $(BUILD)/%.cpp.o: %.cpp
 
 # $(CC) $(CFLAGS) -fPIC -shared $(OBJS) -lcapstone -lmpfr -lm -ldl -lstdc++ -o $@
 $(TARGET): $(BUILD) $(OBJS) 
-	$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++  -L./lib  -l:libposit.so  -l:libcapstone.so.5 -o $@	
+	@echo "Linking"
+	$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 	
 
 build/test_fpvm: test_fpvm.c
