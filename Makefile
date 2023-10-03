@@ -19,7 +19,7 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CC = gcc
 AS = gcc
 CXX = g++
-CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing
+CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
 TARGET=build/fpvm.so
