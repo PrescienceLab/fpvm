@@ -35,10 +35,13 @@ class FakeReturn(SimProcedure):
 
 import pickle
 def analyze(binary_path, restart_analysis):
-    proj = angr.Project(binary_path, use_sim_procedures=True, default_analysis_mode='symbolic', auto_load_libs=False, skip_libs={"libm.so.6","ld-linux-x86-64.so.2","libgcc_s.so.1"}
-                      )
+    proj = angr.Project(binary_path,
+                        use_sim_procedures=True,
+                        default_analysis_mode='symbolic',
+                        auto_load_libs=False,
+                        skip_libs={"libm.so.6","ld-linux-x86-64.so.2","libgcc_s.so.1"})
    
-    state = proj.factory.blank_state(mode="fastpath_static")
+    state = proj.factory.blank_state() # mode="fastpath_static")
     print( len(pickle.dumps(state, -1)) )
     print( len(pickle.dumps(proj.loader, -1)) )
     print( len(pickle.dumps(proj.loader.memory, -1)) )
@@ -127,7 +130,7 @@ def analyze(binary_path, restart_analysis):
     
     if restart_analysis == 1:
 
-        vfg = proj.analyses.VFG(name, cfg, proj=proj,  dump_disk=1000, FakeReturn= FakeReturn, known_functions=known_functions, loops=loops, 
+        vfg = proj.analyses.VFG(name, cfg, dump_disk=1000, FakeReturn= FakeReturn, known_functions=known_functions, loops=loops, 
             start = main.rebased_addr,
             # start = 0x737995,
             # start = 0x68fd0a, #_ZN4grid23ReadRandomForcingFieldsEP8_IO_FILEPc
