@@ -575,7 +575,7 @@ static void *trampoline(void *p) {
   // let our wrapper go - this must also be a software barrier
   __sync_fetch_and_or(&c->done, 1);
 
-  DEBUG("Setting up thread %d\n", gettid());
+  DEBUG("Setting up thread %ld\n", gettid());
 
   // clear exceptions just in case
   ORIG_IF_CAN(feclearexcept, exceptmask);
@@ -1110,62 +1110,93 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
   char instbuf[256];
-  long stream_index = 0;
+  int instindex = 0;
 
+  // repeat until we run out of instructions that
+  // need to be emulated
+  // instindex = index of current instruction in block
+  // rip = address of current instruction
+  for (instindex=0;;instindex++) {
 
+    DEBUG("Handling instruction %d (rip %p) of block\n",instindex,rip);
 
-  while (1) {
-    // Construct the fpvm register state.
-    fpvm_regs_t regs;
-    regs.mcontext = &uc->uc_mcontext;
-    // PAD: This stupidly just treats everything as SSE2
-    // and must be fixed
-    regs.fprs = uc->uc_mcontext.fpregs->_xmm;
-    regs.fpr_size = 16;
-
-    long ind = stream_index++;
     START_PERF(mc, decode_cache);
     fi = decode_cache_lookup(mc, rip);
     END_PERF(mc, decode_cache);
 
     if (!fi) {
-      if (ind != 0) break;
       DEBUG("Instruction is not in the decode cache\n");
       START_PERF(mc, decode);
       fi = fpvm_decoder_decode_inst(rip);
       END_PERF(mc, decode);
       do_insert = 1;
+    } else {
+      DEBUG("Instruction already found in the decode cache\n");
+      do_insert = 0;
     }
-    // fpvm_decoder_print_inst(fi, stderr);
+    
 
     if (!fi) {
-      if (ind != 0) break;
-
-      ERROR("Cannot decode instruction\n");
-      ASSERT(0);
-      // BAD
-      goto fail_do_trap;
+      // The first instruction of the block must be decodable...
+      if (instindex==0) {
+	ERROR("Cannot decode instruction %d (rip %p) of block\n",instindex,rip);
+	ASSERT(0);
+	// BAD
+	goto fail_do_trap;
+      } else {
+	DEBUG("Ending block as instruction %d (rip %p) is not emulatable\n", instindex,rip);
+	break; // done with the block
+      }
     }
-
+    
+    fpvm_decoder_print_inst(fi, stderr);
+    
+    
+    // acquire pointers to the GP and FP register state
+    // from the mcontext.
+    //
+    // Note that we update the mcontext each time we
+    // complete an instruction in the current block
+    // so this always reflects the current
+    fpvm_regs_t regs;
+    
+    regs.mcontext = &uc->uc_mcontext;
+    
+    // PAD: This stupidly just treats everything as SSE2
+    // and must be fixed
+    regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+    regs.fpr_size = 16;
+    
+    
     // bind operands
     START_PERF(mc, bind);
     if (fpvm_decoder_bind_operands(fi, &regs)) {
-      if (ind == 0) {
-        END_PERF(mc, bind);
-        ERROR("Cannot bind operands of instruction\n");
-        ASSERT(0);
-        goto fail_do_trap;
+      END_PERF(mc, bind);
+      if (instindex==0) { 
+	ERROR("Cannot bind operands of first (rip %p) of block\n",rip);
+	ASSERT(0);
+	goto fail_do_trap;
       } else {
-        break;
+	DEBUG("failed to bind operands of instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+	fpvm_decoder_free_inst(fi);
+	break;
       }
     }
     END_PERF(mc, bind);
 
+
+    
+    if (!fpvm_emulator_should_emulate_inst(fi)) {
+      DEBUG("Should not emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+      fpvm_decoder_free_inst(fi);
+      break;
+    }
+    
     // #if DEBUG_OUTPUT
     //   DEBUG("Detailed instruction dump:\n");
     //   fpvm_decoder_print_inst(fi, stderr);
     // #endif
-
+    
     //   DEBUG("About to emulate:\n");
     // #if DEBUG_OUTPUT
     //   fpvm_dump_xmms_double(stderr, regs.fprs);
@@ -1173,64 +1204,65 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     //   fpvm_dump_float_control(stderr, uc);
     //   fpvm_dump_gprs(stderr, uc);
     // #endif
-
+    
     START_PERF(mc, emulate);
     if (fpvm_emulator_emulate_inst(fi)) {
-      if (ind == 0) {
-        END_PERF(mc, emulate);
-        ERROR("Failed to emulate instruction\n");
+      END_PERF(mc, emulate);
+      if (instindex == 0) {
+        ERROR("Failed to emulate first instruction (rip %p) of block - doing trap\n",rip);
         ASSERT(0);
         goto fail_do_trap;
       } else {
+	DEBUG("Failed to emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
         break;
       }
     }
     END_PERF(mc, emulate);
-
+    
     rip += fi->length;
-    break;
+    
+    // DEBUG("Emulation done:\n");
+    // #if DEBUG_OUTPUT
+    //   fpvm_dump_xmms_double(stderr, regs.fprs);
+    //   fpvm_dump_xmms_float(stderr, regs.fprs);
+    //   fpvm_dump_float_control(stderr, uc);
+    //   fpvm_dump_gprs(stderr, uc);
+    // #endif
+    
+    // Skip those instructions we just emulated.
+    uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+    
+    if (do_insert) {
+      // put into the cache for next time
+      decode_cache_insert(mc, fi);
+    }
+    
+    // stay in state AWAIT_FPE
+    
+    mc->emulated_inst++;
+    
+    if (!(mc->total_inst % 1000000)) {
+      INFO(
+	   "%lu total instructions handled, %lu emulated successfully, %lu "
+	   "decode cache hits, %lu unique instructions\n",
+	   mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
+      PRINT_PERFS(mc);
+    }
+    
   }
-
-
-
-  // DEBUG("Emulation done:\n");
-  // #if DEBUG_OUTPUT
-  //   fpvm_dump_xmms_double(stderr, regs.fprs);
-  //   fpvm_dump_xmms_float(stderr, regs.fprs);
-  //   fpvm_dump_float_control(stderr, uc);
-  //   fpvm_dump_gprs(stderr, uc);
-  // #endif
-
-  // Skip those instructions we just emulated.
-  uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
-
-  if (do_insert) {
-    // put into the cache for next time
-    decode_cache_insert(mc, fi);
-  }
-
-  // stay in state AWAIT_FPE
-
-  mc->emulated_inst++;
-
-  if (!(mc->total_inst % 1000000)) {
-    INFO(
-        "%lu total instructions handled, %lu emulated successfully, %lu "
-        "decode cache hits, %lu unique instructions\n",
-        mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
-    PRINT_PERFS(mc);
-  }
-
-  DEBUG("FPE done\n");
-
+    
+  DEBUG("FPE succesfully done (emulated block of %d instructions)\n",instindex);
+  
   return;
-
+  
+  // we should only get here if the first instruction
+  // of a block, could not be decoded, bound, or emulated
 fail_do_trap:
 
   fpvm_decoder_get_inst_str(fi, instbuf, 256);
 
   ERROR(
-      "Unable to emulate instruction and starting single step - instr %s - "
+      "Unable to emulate first instruction of block and starting single step - instr %s - "
       "rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x "
       "%02x %02x %02x %02x %02x %02x\n",
       instbuf, rip, rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7], rip[8], rip[9],

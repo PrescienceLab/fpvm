@@ -3,7 +3,11 @@
 
 #include <fpvm/decoder.h>
 
-// takes a bound instruction
+// takes a bound instruction and tells you if
+// it should be emulated (i.e., it has nanboxed inputs
+// or would cause an exception that FPVM can handle)
+int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi);
+// takes a bound instruction and emulates it
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi);
 int fpvm_fp_restore(fpvm_inst_t *fi, fpvm_regs_t *fr);
 
