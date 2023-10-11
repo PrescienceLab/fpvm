@@ -82,6 +82,7 @@
 
 #define FPVM_WRITE(f, p) (f) = *((((double *)(&(p)))))
 #define FPVM_READ(p, f) (p) = *((((uint64_t *)(&(f)))))
+#define FPVM_READ_FROM_PTR(p, fp) (p) = *((((uint64_t *)((fp)))))
 
 #define FPVM_DOUBLE_TO_UINT(p) (*(uint64_t *)&(p))
 #define FPVM_FLOAT_TO_UINT(p) (*(uint32_t *)&(p))

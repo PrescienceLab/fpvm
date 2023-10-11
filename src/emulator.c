@@ -17,6 +17,8 @@
 
 #include <fpvm/fp_ops.h>
 #include <fpvm/number_system.h>
+#include <fpvm/nan_boxing.h>
+
 
 static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   ERROR("Cannot emulate instruction\n");
@@ -66,6 +68,59 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
     [FPVM_OP_F2F] = {vanilla_f2f_float, vanilla_f2f_double},
 };
+
+
+int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
+{
+  // PAD this is bogus - what this should do is interact
+  // with a model of the FP that determines if any input
+  // is a NaN box or if executing the instruction will
+  // produce an exception that FPVM handles.   Instead,
+  // it only checks the former.
+  if (!fi) {
+    return 0;
+  } else {
+    int i,j;
+    int count = 1;
+    // although src_step is not currently used, it is possible for 
+    // the src_step to be different from the dest_step
+    int dest_step = 0;
+    void *cur;
+    
+    if (fi->common->op_size != 8) {
+      // currently only can nanbox in doubles
+      // therefore, this is not an emulatable instruction
+      return 0;
+    }
+
+    if (fi->common->is_vector) {
+      count = fi->operand_sizes[0] / fi->common->op_size;
+      dest_step = fi->common->op_size;
+      // src_step = fi->common->op_size;
+      // PAD: these can technically be different - FIX FIX FIX
+      // ERROR("Doing vector instruction - this might break!\n");
+    }
+
+    // simply scan all operands to see if there is a nanbox
+    for (i=0;i<fi->operand_count;i++) {
+      for (j=0, cur=fi->operand_addrs[i];
+	   j<count;
+	   j++, cur += dest_step) {
+	uint64_t val;
+	FPVM_READ_FROM_PTR(val,cur);
+	if (ISNAN(val)) {
+	  DEBUG("operand[%d][%d] is a NAN\n", i,j);
+	  return 1;
+	}
+      }
+    }
+
+    // no nans found
+    DEBUG("None of the %d x %d operands are a NAN\n", fi->operand_count, count);
+    return 0;
+  }
+}
+
 
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
   DEBUG("Emulating instruction\n");

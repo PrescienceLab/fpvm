@@ -114,7 +114,8 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_VUCOMISD] = {FPVM_OP_UCMP, 0, 0, 8, 0},
     [X86_INS_VUCOMISS] = {FPVM_OP_UCMP, 0, 0, 4, 0},
 
-    [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
+    // PAD : WTF? 
+    //    [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
     // [X86_INS_CMPSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
     // [X86_INS_CMPLTSS] = {FPVM_OP_LTCMP, 0, 0, 4, 0},
 
@@ -380,7 +381,7 @@ void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
       x86->rex, x86->addr_size);
   fprintf(out, " opcode: %02x %02x %02x %02x\n", x86->opcode[0], x86->opcode[1], x86->opcode[2],
       x86->opcode[3]);
-  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08lx\n", x86->modrm,
+  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08x\n", x86->modrm,
       x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale, x86->disp);
 
   fprintf(out, " operands: %02x\n", x86->op_count);
