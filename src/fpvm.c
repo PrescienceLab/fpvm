@@ -1107,6 +1107,22 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   DEBUG("FPE exceptions: %s\n", buf);
 #endif
 
+#if 1 && DEBUG_OUTPUT
+#define DUMP_BLOCK_ENDING_INSTR()					\
+    if (instindex>0) {							\
+      DEBUG("Block of %d instructions broken by instruction at rip=%p: ",instindex,rip); \
+      fpvm_decoder_decode_and_print_any_inst(rip,stderr);		\
+    }
+#else
+#define DUMP_BLOCK_ENDING_INSTR()
+#endif
+
+#if 0 && DEBUG_OUTPUT
+#define DUMP_CUR_INSTR() fpvm_decoder_print_inst(fi, stderr);
+#else
+#define DUMP_CUR_INSTR()
+#endif
+    
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
   char instbuf[256];
@@ -1139,17 +1155,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     if (!fi) {
       // The first instruction of the block must be decodable...
       if (instindex==0) {
-	ERROR("Cannot decode instruction %d (rip %p) of block\n",instindex,rip);
+	ERROR("Cannot decode instruction %d (rip %p) of block: ",instindex,rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
 	ASSERT(0);
 	// BAD
 	goto fail_do_trap;
       } else {
 	DEBUG("Ending block as instruction %d (rip %p) is not emulatable\n", instindex,rip);
+	DUMP_BLOCK_ENDING_INSTR();
 	break; // done with the block
       }
     }
     
-    fpvm_decoder_print_inst(fi, stderr);
+    DUMP_CUR_INSTR();
     
     
     // acquire pointers to the GP and FP register state
@@ -1173,11 +1191,13 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     if (fpvm_decoder_bind_operands(fi, &regs)) {
       END_PERF(mc, bind);
       if (instindex==0) { 
-	ERROR("Cannot bind operands of first (rip %p) of block\n",rip);
+	ERROR("Cannot bind operands of first (rip %p) of block:",rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
 	ASSERT(0);
 	goto fail_do_trap;
       } else {
 	DEBUG("failed to bind operands of instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+	DUMP_BLOCK_ENDING_INSTR();
 	// only free if we didn't find it in the decode cache...
 	if (do_insert) {
 	  fpvm_decoder_free_inst(fi);
@@ -1191,6 +1211,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     
     if (instindex>0 && !fpvm_emulator_should_emulate_inst(fi)) {
       DEBUG("Should not emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+      DUMP_BLOCK_ENDING_INSTR();
       // only free if we didn't find it in the decode cache...
       if (do_insert) {
 	fpvm_decoder_free_inst(fi);
@@ -1215,11 +1236,13 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     if (fpvm_emulator_emulate_inst(fi)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
-        ERROR("Failed to emulate first instruction (rip %p) of block - doing trap\n",rip);
+        ERROR("Failed to emulate first instruction (rip %p) of block - doing trap: ",rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
         ASSERT(0);
         goto fail_do_trap;
       } else {
 	DEBUG("Failed to emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+	DUMP_BLOCK_ENDING_INSTR();
 	// only free if we didn't find it in the decode cache...
 	if (do_insert) {
 	  fpvm_decoder_free_inst(fi);
@@ -1262,6 +1285,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   }
     
   DEBUG("FPE succesfully done (emulated block of %d instructions)\n",instindex);
+
   
   return;
   
