@@ -1,0 +1,1 @@
+grep "broken" tmp.out | perl -e 'while (<STDIN>) { /rip=\S+:\s+(\S+)/; $c{$1}++; } map {print "$_ => ".$c{$_}."\n"} sort {$c{$b}<=>$c{$a}} keys  %c; '

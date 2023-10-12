@@ -1,0 +1,1 @@
+grep "block of " tmp.out | perl -e 'while (<STDIN>) { /block of (\d+) inst/; $c{$1}++; } map {print "$_ => ".$c{$_}."\n"} sort {$c{$b}<=>$c{$a}} keys  %c; '

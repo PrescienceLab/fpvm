@@ -321,6 +321,28 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   return fi;
 }
 
+int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out)
+{
+  cs_insn *inst;
+
+  //  DEBUG("Decoding instruction for print at %p\n", addr);
+
+  size_t count = cs_disasm(handle, addr, 16, (uint64_t)addr, 1, &inst);
+
+  if (count != 1) {
+    ERROR("Failed to decode instruction for print (return=%lu, errno=%d)\n", count, cs_errno(handle));
+    return -1;
+  }
+
+  fprintf(out, "%s\t\t%s (%u bytes)\n", inst->mnemonic, inst->op_str, inst->size);
+
+  cs_free(inst, 1);
+  
+  return 0;
+  
+}
+
+
 static char *group_name(uint8_t group);
 static char *prefix_name(uint8_t reg);
 static char *inst_name(x86_insn inst);
