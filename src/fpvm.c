@@ -1111,7 +1111,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   int do_insert = 0;
   char instbuf[256];
   int instindex = 0;
-
+  
   // repeat until we run out of instructions that
   // need to be emulated
   // instindex = index of current instruction in block
@@ -1178,7 +1178,10 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 	goto fail_do_trap;
       } else {
 	DEBUG("failed to bind operands of instruction %d (rip %p) of block - terminating block\n",instindex,rip);
-	fpvm_decoder_free_inst(fi);
+	// only free if we didn't find it in the decode cache...
+	if (do_insert) {
+	  fpvm_decoder_free_inst(fi);
+	}
 	break;
       }
     }
@@ -1186,9 +1189,12 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
 
     
-    if (!fpvm_emulator_should_emulate_inst(fi)) {
+    if (instindex>0 && !fpvm_emulator_should_emulate_inst(fi)) {
       DEBUG("Should not emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
-      fpvm_decoder_free_inst(fi);
+      // only free if we didn't find it in the decode cache...
+      if (do_insert) {
+	fpvm_decoder_free_inst(fi);
+      }
       break;
     }
     
@@ -1214,6 +1220,10 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
         goto fail_do_trap;
       } else {
 	DEBUG("Failed to emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
+	// only free if we didn't find it in the decode cache...
+	if (do_insert) {
+	  fpvm_decoder_free_inst(fi);
+	}
         break;
       }
     }
@@ -1269,7 +1279,10 @@ fail_do_trap:
       rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
 
   if (fi) {
-    fpvm_decoder_free_inst(fi);
+    // only free if we didn't find it in the decode cache...
+    if (do_insert) {
+      fpvm_decoder_free_inst(fi);
+    }
   }
 
   if (!(mc->total_inst % 1000000)) {
