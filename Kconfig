@@ -19,6 +19,9 @@ config MPFR_PRECISION
 		default 200
 		depends on ALT_MATH_MPFR
 
+config KERNEL_MODULE
+    bool "Kernel Module Acceleration"
+    default n
 
 # Add your own alternative math here
 choice

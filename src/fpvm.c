@@ -73,6 +73,11 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
 
+#ifdef CONFIG_KERNEL_MODULE
+#include <sys/ioctl.h>
+#include <kmod/fpvm_ioctl.h>
+#endif
+
 volatile static int inited = 0;
 volatile static int aborted = 0;  // set if the target is doing its own FPE processing
 
@@ -1054,7 +1059,242 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 
   DEBUG("Instruction %p inserted in the decode cache bin %lu chain 0\n", inst->addr, bin);
 }
+#ifdef CONFIG_KERNEL_MODULE
+siginfo_t fake_siginfo = {0};       // Doing this to mod less code rn
+struct _libc_fpstate fpvm_fpregs;   // Save and restore fp state here
+ucontext_t fake_ucontext;
 
+void sigfpe_handler(void *priv)
+{
+  // ORIG_IF_CAN(fedisableexcept,FE_ALL_EXCEPT);
+  uint32_t old;
+  mxcsr_disable_save(&old);
+  __asm__ __volatile__("fxsave (%0)" :: "r"(&fpvm_fpregs));
+  
+  // puts("[+] Hit sigfpe!");
+  execution_context_t *mc = find_execution_context(gettid());
+
+  uint32_t err = ~(old >> 7) & old;
+  if (err & 0x001) {	/* Invalid op*/
+		fake_siginfo.si_code = FPE_FLTINV;
+	} else if (err & 0x004) { /* Divide by Zero */
+		fake_siginfo.si_code = FPE_FLTDIV;
+	} else if (err & 0x008) { /* Overflow */
+		fake_siginfo.si_code = FPE_FLTOVF;
+	} else if (err & 0x012) { /* Denormal, Underflow */
+		fake_siginfo.si_code = FPE_FLTUND;
+	} else if (err & 0x020) { /* Precision */
+		fake_siginfo.si_code = FPE_FLTRES;
+	}
+  
+  siginfo_t * si = (siginfo_t *)&fake_siginfo;
+  // greg_t * gregs = (greg_t *) priv;       // Pointer to saved regs on stack
+
+  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
+
+  for (int i = 0; i < 18; i++) {
+    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
+  }
+
+  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+ 
+  uint8_t *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  /* End mod */
+
+  // fpvm_gc_run();
+
+  START_PERF(mc,gc);
+  fpvm_gc_run();
+  END_PERF(mc,gc);
+  
+  DEBUG("FPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+        si->si_signo, si->si_errno, si->si_code, si->si_addr,
+	rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7],
+	rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG("FPE RIP=%p RSP=%p\n",
+        rip, (void*)  uc->uc_mcontext.gregs[REG_RSP]);
+
+  if (!mc) {
+    clear_fp_exceptions_context(uc);     // exceptions cleared
+    set_mask_fp_exceptions_context(uc,1);// exceptions masked
+    set_mxcsr_round_daz_ftz(uc,orig_mxcsr_round_daz_ftz_mask);
+    set_trap_flag_context(uc,0);         // traps disabled
+    abort_operation("Cannot find execution context during sigfpvm_handler exec");
+    ASSERT(0);
+    return;
+  }
+
+  mc->total_inst++;
+
+  
+#if DEBUG_OUTPUT
+  char buf[80];
+#define CASE(X) case X : strcpy(buf, #X); break; 
+  switch (si->si_code) {
+    CASE(FPE_FLTDIV);
+    CASE(FPE_FLTINV);
+    CASE(FPE_FLTOVF);
+    CASE(FPE_FLTUND);
+    CASE(FPE_FLTRES);
+    CASE(FPE_FLTSUB);
+    CASE(FPE_INTDIV);
+    CASE(FPE_INTOVF);
+  default:
+    sprintf(buf,"UNKNOWN(0x%x)\n",si->si_code);
+    break;
+  }
+  DEBUG("FPE exceptions: %s\n", buf);
+#endif
+
+  fpvm_inst_t *fi=0;
+  int do_insert = 0;
+  char instbuf[256];
+
+  START_PERF(mc,decode_cache);
+  fi = decode_cache_lookup(mc,rip);
+  END_PERF(mc,decode_cache);
+
+  if (!fi) {
+    DEBUG("Instruction is not in the decode cache\n");
+    START_PERF(mc,decode);
+    fi = fpvm_decoder_decode_inst(rip);
+    END_PERF(mc,decode);
+    do_insert = 1;
+  }
+  // usleep(10000);
+  // fpvm_decoder_print_inst(fi, stderr);
+  
+  if (!fi) {
+    ERROR("Cannot decode instruction\n");
+    ASSERT(0);
+    // BAD
+    goto fail_do_trap;
+  }
+
+  fpvm_regs_t regs;
+
+  regs.mcontext = &uc->uc_mcontext;
+
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;
+
+  // bind operands
+  START_PERF(mc,bind);
+  if (fpvm_decoder_bind_operands(fi,&regs)) {
+    END_PERF(mc,bind);
+    ERROR("Cannot bind operands of instruction\n");
+    ASSERT(0);
+    goto fail_do_trap;
+  }
+  END_PERF(mc,bind);
+
+#if DEBUG_OUTPUT
+  DEBUG("Detailed instruction dump:\n");
+  fpvm_decoder_print_inst(fi,stderr);
+#endif
+
+  DEBUG("About to emulate:\n");
+#if DEBUG_OUTPUT
+  fpvm_dump_xmms_double(stderr,regs.fprs);
+  fpvm_dump_xmms_float(stderr,regs.fprs);
+  fpvm_dump_float_control(stderr,uc);
+  fpvm_dump_gprs(stderr,uc);
+#endif
+
+  START_PERF(mc,emulate);
+  if (fpvm_emulator_emulate_inst(fi)) {
+    END_PERF(mc,emulate);
+    ERROR("Failed to emulate instruction\n");
+    ASSERT(0);
+    goto fail_do_trap;;
+  }
+  END_PERF(mc,emulate);
+
+  DEBUG("Emulation done:\n");
+#if DEBUG_OUTPUT
+  fpvm_dump_xmms_double(stderr,regs.fprs);
+  fpvm_dump_xmms_float(stderr,regs.fprs);
+  fpvm_dump_float_control(stderr,uc);
+  fpvm_dump_gprs(stderr,uc);
+#endif
+  
+  // skip instruction
+  /* Start mod */
+  // printf("Old RIP: %llx\n", *((greg_t*)priv + 19));
+  // *((greg_t*)priv + 19) += fi->length;
+  // printf("New RIP: %llx\n", *((greg_t*)priv + 19));
+
+  // printf("Old RIP: %llx\n", fake_ucontext.uc_mcontext.gregs[REG_RIP]);
+  fake_ucontext.uc_mcontext.gregs[REG_RIP] += fi->length;
+  // printf("New RIP: %llx\n", fake_ucontext.uc_mcontext.gregs[REG_RIP]);
+  /* End mod */
+
+  if (do_insert) {
+    // put into the cache for next time
+    decode_cache_insert(mc,fi);
+  }
+  
+  //stay in state AWAIT_FPE
+
+  mc->emulated_inst++;
+
+  if (!(mc->total_inst % 1000000)) {
+    INFO("%lu total instructions handled, %lu emulated successfully, %lu decode cache hits, %lu unique instructions\n",
+	 mc->total_inst, mc->emulated_inst, mc->decode_cache_hits,mc->decode_cache_unique);
+    PRINT_PERFS(mc);
+  }
+  
+  DEBUG("FPE done\n");
+
+  /* Start mod */
+  for (int i = 0; i < 18; i++) {
+    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
+  }
+  __asm__ __volatile__("fxrstor (%0)" :: "r"(&fpvm_fpregs));
+  // puts("[*] Leaving sigfpe_handler, returning to user program\n\n");
+  // feenableexcept(FE_ALL_EXCEPT);
+  // ORIG_IF_CAN(feenableexcept,FE_ALL_EXCEPT);
+  mxcsr_restore(old);
+  /* End mod */
+  return;
+
+
+  
+fail_do_trap:
+
+  fpvm_decoder_get_inst_str(fi,instbuf,256);
+  
+  ERROR("Unable to emulate instruction and starting single step - instr %s - rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+        instbuf, rip,
+        rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7],
+        rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+
+  if (fi) {
+    fpvm_decoder_free_inst(fi);
+  }
+
+  if (!(mc->total_inst % 1000000)) {
+    INFO("%lu total instructions handled, %lu emulated successfully\n",
+	 mc->total_inst, mc->emulated_inst);
+  }
+
+
+  // switch to trap mode, so we can re-enable FP traps after this instruction is done
+  clear_fp_exceptions_context(uc);      // exceptions cleared
+  set_mask_fp_exceptions_context(uc,1); // exceptions masked
+  set_mxcsr_round_daz_ftz(uc,our_mxcsr_round_daz_ftz_mask);
+  set_trap_flag_context(uc,1);          // traps disabled
+
+
+  
+  // our next stop should be the instruction, and then, immediately afterwards, the sigtrap handler
+  
+  return;	
+}
+
+#else
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
@@ -1257,6 +1497,7 @@ fail_do_trap:
 
   return;
 }
+#endif
 
 static __attribute__((destructor)) void fpvm_deinit(void);
 
@@ -1355,6 +1596,25 @@ static int bringup() {
 
   struct sigaction sa;
 
+#ifdef CONFIG_KERNEL_MODULE
+
+  // Open
+  int file_desc = open("/dev/fpvm_dev", O_RDWR);
+  
+  if (file_desc < 0) {
+      puts("[x] Failed to open /dev/fpvm_dev");
+      exit(-1);
+  }
+
+  if (ioctl(file_desc, FPVM_IOCTL_REG, &_user_fpvm_entry)) {
+      puts("[x] FPVM_IOCTL_REG");
+      exit(-1);
+  }
+
+
+#else
+
+
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = sigfpe_handler;
   sa.sa_flags |= SA_SIGINFO;
@@ -1362,6 +1622,8 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGINT);
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction, SIGFPE, &sa, &oldsa_fpe);
+
+#endif
 
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = sigtrap_handler;
