@@ -76,6 +76,8 @@
 #ifdef CONFIG_KERNEL_MODULE
 #include <sys/ioctl.h>
 #include <kmod/fpvm_ioctl.h>
+
+extern void * _user_fpvm_entry;
 #endif
 
 volatile static int inited = 0;
