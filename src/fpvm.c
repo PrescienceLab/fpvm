@@ -947,6 +947,7 @@ out:
 static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
+  printf("TRAP REALLY HAPPNEND\n");
   DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
       si->si_addr);
 
@@ -1056,6 +1057,8 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 }
 
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
+  printf("FPE REALLY HAPPNEND\n");
+  
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
@@ -1110,8 +1113,13 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #if 1 && DEBUG_OUTPUT
 #define DUMP_BLOCK_ENDING_INSTR()					\
     if (instindex>0) {							\
-      DEBUG("Block of %d instructions broken by instruction at rip=%p: ",instindex,rip); \
-      fpvm_decoder_decode_and_print_any_inst(rip,stderr);		\
+      void *_currip=rip;                                                \
+      DEBUG("Block of %d instructions broken by instruction at rip=%p: (next 5 instructions)\n ",instindex,_currip); \
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
     }
 #else
 #define DUMP_BLOCK_ENDING_INSTR()
@@ -1330,6 +1338,7 @@ fail_do_trap:
 static __attribute__((destructor)) void fpvm_deinit(void);
 
 static void sigint_handler(int sig, siginfo_t *si, void *priv) {
+  printf("SIGINT HAPPENED\n");
   DEBUG("Handling break\n");
 
   if (oldsa_int.sa_sigaction) {

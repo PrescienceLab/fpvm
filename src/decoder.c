@@ -324,6 +324,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
 int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out)
 {
   cs_insn *inst;
+  int len;
 
   //  DEBUG("Decoding instruction for print at %p\n", addr);
 
@@ -336,9 +337,11 @@ int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out)
 
   fprintf(out, "%s\t\t%s (%u bytes)\n", inst->mnemonic, inst->op_str, inst->size);
 
+  len = inst->size;
+  
   cs_free(inst, 1);
   
-  return 0;
+  return len;
   
 }
 
