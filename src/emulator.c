@@ -78,6 +78,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
   // produce an exception that FPVM handles.   Instead,
   // it only checks the former.
   if (!fi) {
+    DEBUG("should not emulate - no instruction\n");
     return 0;
   } else {
     int i,j;
@@ -90,12 +91,14 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
     if (fi->common->op_size != 8) {
       // currently only can nanbox in doubles
       // therefore, this is not an emulatable instruction
+      DEBUG("should not emulate - not a double\n");
       return 0;
     }
 
     if (fi->common->is_vector) {
       count = fi->operand_sizes[0] / fi->common->op_size;
       dest_step = fi->common->op_size;
+      DEBUG("should not emulate - is vector instruction\n");
       // src_step = fi->common->op_size;
       // PAD: these can technically be different - FIX FIX FIX
       // ERROR("Doing vector instruction - this might break!\n");
