@@ -1,0 +1,7 @@
+handle SIGUSR2 nostop pass noprint
+set cwd /home/pdinda/fpvm
+set env LD_PRELOAD=./build/fpvm.so
+set env FPVM_DISABLE_PTHREADS=y
+set env FPVM_AGGRESSIVE=y
+b exit
+
