@@ -4,7 +4,6 @@ config NO_OUTPUT
     bool "Disable output"
     default n
 
-
 config DEBUG
     bool "Debug output"
     default n
@@ -13,6 +12,42 @@ config PERF_STATS
     bool "Performance measurement"
     default n
 
+config PERF_STATS_PERIOD
+    depends on PERF_STATS
+    int "Reporting period"
+    default 1000000
+    help
+        Number of emulated instructions between performance statistics reports
+
+config INSTR_TRACES
+    bool "Instruction tracing and analysis"
+    default n
+
+config INSTR_TRACES_PERIOD
+    depends on INSTR_TRACES
+    int "Reporting period"
+    default 100
+    help
+        Number of emulated instructions between trace reports
+
+
+config TRAP_SHORT_CIRCUITING
+    bool "Trap short-circuiting (kernel support)"
+    default n
+    help
+       Use the FPVM kernel support to do much faster trap delivery
+
+config INSTR_SEQ_EMULATION
+    bool "Instruction sequence emulation"
+    default n
+    help
+       Emulate as many instructions as possible per trap
+
+config KERNEL_SHORT_CIRCUITING
+    bool "Kernel short-circuiting (currently a nop)"
+    default n
+    help
+       Use user-level trap handling if possible
 
 config MPFR_PRECISION
     int "MPFR Precision"
