@@ -79,7 +79,7 @@ test/lorenz_attractor: test/lorenz_attractor.cpp
 	wget -O test/boost.tar.gz https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.gz && \
 	tar -C test/ -xvf test/boost.tar.gz && mv test/boost_1_78_0 test/boost \
 	)
-	g++ -std=c++11 -pthread -lm -I ./test/boost/ -O3  test/lorenz_attractor.cpp -o test/lorenz_attractor
+	g++ -std=c++11 -fno-PIC -no-pie -pthread -lm -I ./test/boost/ -O3 test/lorenz_attractor.cpp -o test/lorenz_attractor
 
 test/lorenz_attractor.patched: test/lorenz_attractor
 	./patch.sh test/lorenz_attractor
@@ -91,7 +91,7 @@ test_lorenz: $(TARGET) test/lorenz_attractor.patched
 
 
 test/double_pendulum: test/double_pendulum.cpp
-	g++ -std=c++11 -lm -O3 test/double_pendulum.cpp -o test/double_pendulum
+	g++ -std=c++11 -fno-PIC -no-pie -lm -O3 test/double_pendulum.cpp -o test/double_pendulum
 test/double_pendulum.patched: test/double_pendulum
 	./patch.sh test/double_pendulum
 

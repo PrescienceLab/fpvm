@@ -30,12 +30,12 @@ def bridge_e9patch(binary_path, binary, sinks, func_sinks, file):
         writer = csv.writer(f)
         for addr in func_sinks.keys():
             print("to patch call", hex(addr))
-            writer.writerow([int(hex(addr-0x400000), base=16)])
+            writer.writerow([int(hex(addr), base=16)])
     
     with open(f'{binary}_mem_patches.csv', 'w', encoding='UTF8', newline='') as f:
         writer = csv.writer(f)
         for addr in set(mem_reg):
-            writer.writerow([int(hex(addr-0x400000), base=16)])
+            writer.writerow([int(hex(addr), base=16)])
     
     import subprocess
     p = subprocess.Popen(['../dep/e9patch/e9tool', \

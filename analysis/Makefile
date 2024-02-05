@@ -1,3 +1,7 @@
+.PHONY: all
+
+all: deps
+
 dep/angr:
 	mkdir -p $@
 	git clone https://github.com/angr/angr.git $@
