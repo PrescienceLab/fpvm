@@ -321,7 +321,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   return fi;
 }
 
-int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out)
+int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix)
 {
   cs_insn *inst;
   int len;
@@ -335,7 +335,7 @@ int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out)
     return -1;
   }
 
-  fprintf(out, "%s\t\t%s (%u bytes)\n", inst->mnemonic, inst->op_str, inst->size);
+  fprintf(out, "%s%s\t\t%s (%u bytes)\n", prefix, inst->mnemonic, inst->op_str, inst->size);
 
   len = inst->size;
   
@@ -406,7 +406,7 @@ void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out) {
       x86->rex, x86->addr_size);
   fprintf(out, " opcode: %02x %02x %02x %02x\n", x86->opcode[0], x86->opcode[1], x86->opcode[2],
       x86->opcode[3]);
-  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %08x\n", x86->modrm,
+  fprintf(out, " modrm: %02x sib: %02x (base=%u index=%u scale=%u)  disp: %016lx\n", x86->modrm,
       x86->sib, x86->sib_base, x86->sib_index, x86->sib_scale, x86->disp);
 
   fprintf(out, " operands: %02x\n", x86->op_count);
