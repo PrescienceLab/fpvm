@@ -41,7 +41,9 @@ def analyze(binary_path, restart_analysis):
                         auto_load_libs=False,
                         skip_libs={"libm.so.6","ld-linux-x86-64.so.2","libgcc_s.so.1"})
    
-    state = proj.factory.blank_state() # mode="fastpath_static")
+    print("proj inited", proj)
+    #state = proj.factory.blank_state() # mode="fastpath_static")
+    state = proj.factory.blank_state(mode="fastpath_static")
     print( len(pickle.dumps(state, -1)) )
     print( len(pickle.dumps(proj.loader, -1)) )
     print( len(pickle.dumps(proj.loader.memory, -1)) )
@@ -130,7 +132,7 @@ def analyze(binary_path, restart_analysis):
     
     if restart_analysis == 1:
 
-        vfg = proj.analyses.VFG(name, cfg, dump_disk=1000, FakeReturn= FakeReturn, known_functions=known_functions, loops=loops, 
+        vfg = proj.analyses.VFG(name, cfg, proj=proj, dump_disk=1000, FakeReturn=FakeReturn, known_functions=known_functions, loops=loops, 
             start = main.rebased_addr,
             # start = 0x737995,
             # start = 0x68fd0a, #_ZN4grid23ReadRandomForcingFieldsEP8_IO_FILEPc
@@ -238,16 +240,18 @@ if __name__ == '__main__':
 
 
     print(" begin source analysis")
+    import os
+    filename = os.path.basename(sys.argv[1])
 
     # sys.stdout = DevNull()
     if int(sys.argv[2]) == 0:
         sources = taint_source(proj, infos)
         import pickle
-        with open( f"sources-{sys.argv[1]}", 'wb') as f: 
+        with open( f"sources-{filename}", 'wb') as f: 
             pickle.dump(sources,f, protocol=4)
         exit()
     
-    with open( f"sources-{sys.argv[1]}", 'rb') as f: 
+    with open( f"sources-{filename}", 'rb') as f: 
         sources = pickle.load(f)
     #remove 0 which is apparently an initialize value
     print(sources)
@@ -280,7 +284,7 @@ if __name__ == '__main__':
 
     binary_path = sys.argv[1].split('/')[-1]
     binary = str(binary_path).split('.')[0]
-    bridge_e9patch(sys.argv[1], sinks, func_sinks, f'e9patch-{sys.argv[1]}')
+    bridge_e9patch(sys.argv[1], filename,sinks, func_sinks, f'e9patch-{filename}')
     
     for _, toclose in infos.items():
         try:

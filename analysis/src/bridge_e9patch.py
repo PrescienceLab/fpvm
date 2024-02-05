@@ -2,7 +2,7 @@
 from capstone.x86 import X86_OP_IMM, X86_OP_MEM, X86_OP_REG
 import csv
 
-def bridge_e9patch(binary, sinks, func_sinks, file):
+def bridge_e9patch(binary_path, binary, sinks, func_sinks, file):
     
     mem_mem = []
     reg_mem = []
@@ -29,21 +29,30 @@ def bridge_e9patch(binary, sinks, func_sinks, file):
     with open(f'{binary}_call_patches.csv', 'w', encoding='UTF8', newline='') as f:
         writer = csv.writer(f)
         for addr in func_sinks.keys():
-            writer.writerow([int(hex(addr), base=16)])
+            print("to patch call", hex(addr))
+            writer.writerow([int(hex(addr-0x400000), base=16)])
     
     with open(f'{binary}_mem_patches.csv', 'w', encoding='UTF8', newline='') as f:
         writer = csv.writer(f)
         for addr in set(mem_reg):
-            writer.writerow([int(hex(addr), base=16)])
+            writer.writerow([int(hex(addr-0x400000), base=16)])
     
-
-    with open(file, 'w') as file:
-        # file.write(f"memaddr={','.join( hex(addr) for addr in set(mem_reg))}")
-        # file.write('\n')
-        # file.write(f"calladdr={','.join( hex(addr) for addr in func_sinks.keys())}")
-        # file.write('\n')
-        file.write("e9tool ")
-        file.write(f"-M \"addr={binary}_call_patches[0]\" -P \'before trap\' ")
-        file.write(f"-M \"addr={binary}_mem_patches[0]\" -P \'before trap\' ")
-        file.write(binary)
-        file.write('\n')
+    import subprocess
+    p = subprocess.Popen(['../dep/e9patch/e9tool', \
+    '-M', f"addr={binary}_call_patches[0]", "-P", "before trap", \
+    '-M', f"addr={binary}_mem_patches[0]", "-P", "before trap", \
+    f'{binary_path}'\
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = p.communicate()
+    print(stdout, stderr)
+    print("e9tool done")
+    # with open(file, 'w') as file:
+    #     # file.write(f"memaddr={','.join( hex(addr) for addr in set(mem_reg))}")
+    #     # file.write('\n')
+    #     # file.write(f"calladdr={','.join( hex(addr) for addr in func_sinks.keys())}")
+    #     # file.write('\n')
+    #     file.write("e9tool ")
+    #     file.write(f"-M \"addr={binary}_call_patches[0]\" -P \'before trap\' ")
+    #     file.write(f"-M \"addr={binary}_mem_patches[0]\" -P \'before trap\' ")
+    #     file.write(binary)
+    #     file.write('\n')
