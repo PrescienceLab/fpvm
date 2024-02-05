@@ -99,7 +99,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr);
 int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr);
 void fpvm_decoder_print_inst(fpvm_inst_t *fi, FILE *out);
 // returns negative on failure, otherwise, the length of the instruction
-int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out);
+int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix);
 void fpvm_decoder_get_inst_str(fpvm_inst_t *fi, char *buf, int len);
 void fpvm_decoder_free_inst(fpvm_inst_t *fi);
 

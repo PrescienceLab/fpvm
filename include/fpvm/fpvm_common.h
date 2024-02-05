@@ -17,6 +17,7 @@
 #define NO_OUTPUT CONFIG_NO_OUTPUT
 
 #define DEFAULT_DECODE_CACHE_SIZE 65537  // ideally a prime number
+#define DEFAULT_TRACE_STORE_SIZE  (DEFAULT_DECODE_CACHE_SIZE*13)
 
 #ifndef gettid
 #define gettid() syscall(SYS_gettid)

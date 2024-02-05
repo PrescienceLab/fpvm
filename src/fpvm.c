@@ -68,6 +68,7 @@
 #include <fpvm/util.h>
 
 #include <fpvm/perf.h>
+#include <fpvm/trace.h>
 
 #include <fpvm/fpvm_fenv.h>
 #include <fpvm/fpvm_math.h>
@@ -197,6 +198,19 @@ typedef struct execution_context {
   uint64_t decode_cache_hits;
   uint64_t decode_cache_unique;
 
+#ifdef CONFIG_INSTR_TRACES
+  fpvm_instr_trace_context_t *trace_context;
+#define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
+#define DEINIT_TRACER(c) fpvm_instr_tracer_destroy((c)->trace_context)
+#define RECORD_TRACE(c,ec,sa,ic) fpvm_instr_tracer_record((c)->trace_context,TRACE_START_NORMAL,sa,ec,ic)
+#define PRINT_TRACES(c) fpvm_instr_tracer_print(stderr,"trace: ",(c)->trace_context,4)
+#else
+#define INIT_TRACER(c)
+#define DEINIT_TRACER(c)
+#define RECORD_TRACE(c,ec,sa,ic)
+#define PRINT_TRACES(c)
+#endif
+  
 #ifdef CONFIG_PERF_STATS
   perf_stat_t gc_stat;
   perf_stat_t decode_cache_stat;
@@ -324,6 +338,7 @@ static execution_context_t *alloc_execution_context(int tid) {
     if (!context[i].tid) {
       context[i].tid = tid;
       unlock_contexts();
+      INIT_TRACER(&context[i]);
 #ifdef CONFIG_PERF_STATS
       perf_stat_init(&context[i].gc_stat, "garbage collector");
       perf_stat_init(&context[i].decode_cache_stat, "decode cache");
@@ -344,6 +359,7 @@ static void free_execution_context(int tid) {
   lock_contexts();
   for (i = 0; i < MAX_CONTEXTS; i++) {
     if (context[i].tid == tid) {
+      DEINIT_TRACER(&context[i]);
       context[i].tid = 0;
       unlock_contexts();
     }
@@ -947,7 +963,7 @@ out:
 static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
-  printf("TRAP REALLY HAPPNEND\n");
+
   DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
       si->si_addr);
 
@@ -1057,11 +1073,11 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 }
 
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-  printf("FPE REALLY HAPPNEND\n");
   
   execution_context_t *mc = find_execution_context(gettid());
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *start_rip = rip;
 
   // fpvm_gc_run();
 
@@ -1110,19 +1126,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   DEBUG("FPE exceptions: %s\n", buf);
 #endif
 
-#if 1 && DEBUG_OUTPUT
-#define DUMP_BLOCK_ENDING_INSTR()					\
+#if 1 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
+#define DUMP_SEQUENCE_ENDING_INSTR()					\
     if (instindex>0) {							\
       void *_currip=rip;                                                \
-      DEBUG("Block of %d instructions broken by instruction at rip=%p: (next 5 instructions)\n ",instindex,_currip); \
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr);		\
+      DEBUG("sequence of %d instructions broken by instruction at rip=%p: (next 5 instructions)\n",instindex,_currip); \
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
+      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
     }
 #else
-#define DUMP_BLOCK_ENDING_INSTR()
+#define DUMP_SEQUENCE_ENDING_INSTR()
 #endif
 
 #if 0 && DEBUG_OUTPUT
@@ -1135,14 +1151,17 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   int do_insert = 0;
   char instbuf[256];
   int instindex = 0;
+  int end_reason = TRACE_END_INSTR_SEQUENCE_MAX;
+  
   
   // repeat until we run out of instructions that
   // need to be emulated
-  // instindex = index of current instruction in block
+  // instindex = index of current instruction in sequence
   // rip = address of current instruction
-  for (instindex=0;;instindex++) {
+  
+  for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) {
 
-    DEBUG("Handling instruction %d (rip %p) of block\n",instindex,rip);
+    DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
 
     START_PERF(mc, decode_cache);
     fi = decode_cache_lookup(mc, rip);
@@ -1161,17 +1180,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     
 
     if (!fi) {
-      // The first instruction of the block must be decodable...
+      // The first instruction of the sequence must be decodable...
       if (instindex==0) {
-	ERROR("Cannot decode instruction %d (rip %p) of block: ",instindex,rip);
-	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
+	ERROR("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	ASSERT(0);
+	end_reason = TRACE_END_INSTR_UNDECODABLE;
 	// BAD
 	goto fail_do_trap;
       } else {
-	DEBUG("Ending block as instruction %d (rip %p) is not emulatable\n", instindex,rip);
-	DUMP_BLOCK_ENDING_INSTR();
-	break; // done with the block
+	DEBUG("Ending sequence as instruction %d (rip %p) is not decodable\n", instindex,rip);
+	end_reason = TRACE_END_INSTR_UNDECODABLE;
+	DUMP_SEQUENCE_ENDING_INSTR();
+	break; // done with the sequence
       }
     }
     
@@ -1182,7 +1203,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     // from the mcontext.
     //
     // Note that we update the mcontext each time we
-    // complete an instruction in the current block
+    // complete an instruction in the current sequence
     // so this always reflects the current
     fpvm_regs_t regs;
     
@@ -1199,17 +1220,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     if (fpvm_decoder_bind_operands(fi, &regs)) {
       END_PERF(mc, bind);
       if (instindex==0) { 
-	ERROR("Cannot bind operands of first (rip %p) of block:",rip);
-	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
+	ERROR("Cannot bind operands of first (rip %p) of sequence:",rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
+	end_reason = TRACE_END_INSTR_UNBINDABLE;
 	ASSERT(0);
 	goto fail_do_trap;
       } else {
-	DEBUG("failed to bind operands of instruction %d (rip %p) of block - terminating block\n",instindex,rip);
-	DUMP_BLOCK_ENDING_INSTR();
+	DEBUG("failed to bind operands of instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
+	DUMP_SEQUENCE_ENDING_INSTR();
 	// only free if we didn't find it in the decode cache...
 	if (do_insert) {
 	  fpvm_decoder_free_inst(fi);
 	}
+	end_reason = TRACE_END_INSTR_UNBINDABLE;
 	break;
       }
     }
@@ -1218,12 +1241,13 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
     
     if (instindex>0 && !fpvm_emulator_should_emulate_inst(fi)) {
-      DEBUG("Should not emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
-      DUMP_BLOCK_ENDING_INSTR();
+      DEBUG("Should not emulate instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
+      DUMP_SEQUENCE_ENDING_INSTR();
       // only free if we didn't find it in the decode cache...
       if (do_insert) {
 	fpvm_decoder_free_inst(fi);
       }
+      end_reason = TRACE_END_INSTR_SHOULDNOT;
       break;
     }
     
@@ -1244,17 +1268,19 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
     if (fpvm_emulator_emulate_inst(fi)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
-        ERROR("Failed to emulate first instruction (rip %p) of block - doing trap: ",rip);
-	fpvm_decoder_decode_and_print_any_inst(rip,stderr);
+        ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
+	end_reason = TRACE_END_INSTR_UNEMULATABLE;
         ASSERT(0);
         goto fail_do_trap;
       } else {
-	DEBUG("Failed to emulate instruction %d (rip %p) of block - terminating block\n",instindex,rip);
-	DUMP_BLOCK_ENDING_INSTR();
+	DEBUG("Failed to emulate instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
+	DUMP_SEQUENCE_ENDING_INSTR();
 	// only free if we didn't find it in the decode cache...
 	if (do_insert) {
 	  fpvm_decoder_free_inst(fi);
 	}
+	end_reason = TRACE_END_INSTR_UNEMULATABLE;
         break;
       }
     }
@@ -1287,24 +1313,36 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 	   "%lu total instructions handled, %lu emulated successfully, %lu "
 	   "decode cache hits, %lu unique instructions\n",
 	   mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
+    }
+#ifdef CONFIG_PERF_STATS
+    if (!(mc->total_inst % CONFIG_PERF_STATS_PERIOD)) {
       PRINT_PERFS(mc);
     }
+#endif
+#ifdef CONFIG_INSTR_TRACES
+    if (!(mc->total_inst % CONFIG_INSTR_TRACES_PERIOD)) {
+      PRINT_TRACES(mc);
+    }
+#endif
     
   }
+
+  // At this point, we have successfully finished at least one instruction
+  RECORD_TRACE(mc,end_reason,(uint64_t)start_rip,instindex);
     
-  DEBUG("FPE succesfully done (emulated block of %d instructions)\n",instindex);
+  DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
   
   return;
   
   // we should only get here if the first instruction
-  // of a block, could not be decoded, bound, or emulated
+  // of a sequence could not be decoded, bound, or emulated
 fail_do_trap:
 
   fpvm_decoder_get_inst_str(fi, instbuf, 256);
 
   ERROR(
-      "Unable to emulate first instruction of block and starting single step - instr %s - "
+      "Unable to emulate first instruction of sequence and starting single step - instr %s - "
       "rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x "
       "%02x %02x %02x %02x %02x %02x\n",
       instbuf, rip, rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7], rip[8], rip[9],
@@ -1338,7 +1376,6 @@ fail_do_trap:
 static __attribute__((destructor)) void fpvm_deinit(void);
 
 static void sigint_handler(int sig, siginfo_t *si, void *priv) {
-  printf("SIGINT HAPPENED\n");
   DEBUG("Handling break\n");
 
   if (oldsa_int.sa_sigaction) {
