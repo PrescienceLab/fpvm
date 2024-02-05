@@ -1,4 +1,4 @@
-name: python3
+name: fpvm_static_analysis_env
 channels:
   - defaults
 dependencies:
@@ -27,7 +27,6 @@ dependencies:
   - zlib=1.2.11=h7f8727e_4
   - pip:
     - ailment==9.1.10913
-    - angr==9.0.gitrolling
     - archinfo==9.1.10913
     - attrs==21.4.0
     - beautifulsoup4==4.6.3
