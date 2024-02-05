@@ -13,4 +13,23 @@ gc.log
 /bench/
 
 __pycache__
+
+test/boost
+test/boost.tar.gz
+
+
+# Static analysis temporary data
+*-storage-simp*
+*-storage-sim*
+*-storage-pages*
+*-storage-page*
+*-storage-nodes*
+*-storage-keys*
+*-storage-page-keys*
+*-storage-callstacks*
+*-storage-extern-keys*
+analysis/src/*_*_patches.csv
+analysis/src/sources-*
+analysis/src/a.out
 analysis/dep
+analysis/src/angr
