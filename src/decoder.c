@@ -114,7 +114,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_VUCOMISD] = {FPVM_OP_UCMP, 0, 0, 8, 0},
     [X86_INS_VUCOMISS] = {FPVM_OP_UCMP, 0, 0, 4, 0},
 
-    [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
+    // [X86_INS_CMPLTSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
     // [X86_INS_CMPSD] = {FPVM_OP_LTCMP, 0, 0, 8, 0},
     // [X86_INS_CMPLTSS] = {FPVM_OP_LTCMP, 0, 0, 4, 0},
 
