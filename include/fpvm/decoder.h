@@ -34,14 +34,24 @@ typedef enum {
   // float to float conversion
   FPVM_OP_F2F,
 
+  // moves are handled during sequence emulation to lengthen sequence length
+  // they are also needed for correctness traps
+  FPVM_OP_MOVE,
+
+
+  // unknown why we have these - PAD
   // FPVM_OP_SHIFT_RIGHT_BYTE,
   // FPVM_OP_SHIFT_LEFT_BYTE,
   // FPVM_OP_RESOTRE,
   // FPVM_OP_ROUND,
-  FPVM_OP_MOV,
+
+
+  // These are used for correctness traps
   FPVM_OP_WARN,
   FPVM_OP_CALL,
   FPVM_OP_UNKNOWN,
+
+  // marker
   FPVM_OP_LAST,
 } fpvm_op_t;
 

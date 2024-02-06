@@ -32,6 +32,10 @@
     return 0;                                                                                   \
   }
 
+#define identity(x) (x)
+
+#define MOVE_OP(TYPE, ITYPE, SPEC, ISPEC) UN_FUNC(TYPE,ITYPE,move,identity,SPEC,ISPEC)
+
 #define BIN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                     \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
@@ -78,6 +82,7 @@ FUSED_OP(float, uint32_t, nmsub, *, -, -, "%f", "%08x");
 
 UN_FUNC(double, uint64_t, sqrt, sqrt, "%lf", "%016lx");
 UN_FUNC(float, uint32_t, sqrt, sqrtf, "%f", "%08x");
+
 
 static inline double maxd(double a, double b) {
   if (a > b) {
@@ -347,6 +352,11 @@ int vanilla_f2f_float(
       break;
   }
 }
+
+
+MOVE_OP(double,uint64_t,"%lf", "%016lx");
+MOVE_OP(float,uint32_t,"%f", "%08x");
+
 
 // masks for rflags condition code bits
 #define RFLAGS_CF 0x1UL

@@ -1130,7 +1130,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #define DUMP_SEQUENCE_ENDING_INSTR()					\
     if (instindex>0) {							\
       void *_currip=rip;                                                \
-      DEBUG("sequence of %d instructions broken by instruction at rip=%p: (next 5 instructions)\n",instindex,_currip); \
+      DEBUG("sequence of %d instructions broken by instruction at rip=%p: (plus next 4 instructions)\n",instindex,_currip); \
       _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
       _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
       _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
