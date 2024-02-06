@@ -102,6 +102,10 @@ FPVM_MATH_DECL_VANILLA_ALT(cmp, float);
 FPVM_MATH_DECL_VANILLA_ALT(ltcmp, double);
 FPVM_MATH_DECL_VANILLA_ALT(ltcmp, float);
 
+// moves
+FPVM_MATH_DECL_VANILLA_ALT(move, double);
+FPVM_MATH_DECL_VANILLA_ALT(move, float);
+
 
 
 // restore from nanbox

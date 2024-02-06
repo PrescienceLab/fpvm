@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <dlfcn.h>
 #include <signal.h>
 #include <ucontext.h>
 
@@ -67,6 +68,8 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
     [FPVM_OP_U2FT] = {vanilla_u2f_float, vanilla_u2f_double},  // PROBABLY BOGUS
 
     [FPVM_OP_F2F] = {vanilla_f2f_float, vanilla_f2f_double},
+
+    [FPVM_OP_MOVE] = {vanilla_move_float, vanilla_move_double},
 };
 
 
@@ -81,6 +84,13 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
     DEBUG("should not emulate - no instruction\n");
     return 0;
   } else {
+
+    // always allow moves
+    if (fi->common->op_type == FPVM_OP_MOVE) {
+      DEBUG("should emulate - is a move\n");
+      return 1;
+    }
+    
     int i,j;
     int count = 1;
     // although src_step is not currently used, it is possible for 
@@ -97,11 +107,9 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 
     if (fi->common->is_vector) {
       count = fi->operand_sizes[0] / fi->common->op_size;
-      dest_step = fi->common->op_size;
-      DEBUG("should not emulate - is vector instruction\n");
-      // src_step = fi->common->op_size;
-      // PAD: these can technically be different - FIX FIX FIX
-      // ERROR("Doing vector instruction - this might break!\n");
+      if (count<2) { 
+	DEBUG("may allow emulation for suspicious vector instr count=%d\n", count);
+      }
     }
 
     // simply scan all operands to see if there is a nanbox
@@ -112,7 +120,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 	uint64_t val;
 	FPVM_READ_FROM_PTR(val,cur);
 	if (ISNAN(val)) {
-	  DEBUG("operand[%d][%d] is a NAN\n", i,j);
+	  DEBUG("operand[%d][%d] is a NAN - should emulate\n", i,j);
 	  return 1;
 	}
       }
@@ -120,6 +128,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 
     // no nans found
     DEBUG("None of the %d x %d operands are a NAN\n", fi->operand_count, count);
+
     return 0;
   }
 }
@@ -357,6 +366,26 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
 
       break;
 
+    case FPVM_OP_MOVE:
+      dest = fi->operand_addrs[0];
+      src1 = fi->operand_addrs[1];
+
+      // use the vanilla operation in all cases
+      // since we do not need to inspect a nanboxed value
+      if (fi->common->op_size == 4) {
+	DEBUG("handling 4 byte move\n");
+        func = vanilla_op_map[fi->common->op_type][0];
+      } else if (fi->common->op_size == 8) {
+	DEBUG("handling 8 byte move\n");
+        func = vanilla_op_map[fi->common->op_type][1];
+      } else {
+        ERROR("Cannot handle move instruction with op_size = %d\n", fi->common->op_size);
+        // ASSERT(0);
+        return -1;
+      }
+
+      break;
+      
     default:
       // ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
       return -1;
@@ -383,12 +412,22 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
 
   for (i = 0; i < count; i++, dest += dest_step, src1 += src_step, src2 += src_step,
       src3 += src_step, src4 += src_step) {
+#ifdef CONFIG_DEBUG
+    Dl_info dli;
+    dladdr(func,&dli);
+    char buf[256];
+    if (dli.dli_sname) {
+      snprintf(buf,255,"%s",dli.dli_sname);
+    } else {
+      snprintf(buf,255,"%p",func);
+    }
     DEBUG(
-        "calling %p((byte_width=%d,truncate=%d,unordered=%d), "
-        "%p,%p,%p,%p,%p)\n",
-        func, special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
+        "calling %s((byte_width=%d,truncate=%d,unordered=%d), "
+        "%p,%p,%p,%p,%p)\n", buf, 
+	special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
         src4);
-
+#endif
+    
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
     //            If this begins to cause problems, we will have to fix that
     if (special.byte_width > 8) special.byte_width = 8;
