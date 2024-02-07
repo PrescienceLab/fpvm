@@ -74,6 +74,14 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
 
+
+// support for kernel module
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#include <sys/ioctl.h>
+#include "fpvm/fpvm_ioctl.h"
+#endif
+
+
 volatile static int inited = 0;
 volatile static int aborted = 0;  // set if the target is doing its own FPE processing
 
@@ -93,6 +101,7 @@ static uint32_t orig_mxcsr_round_daz_ftz_mask;  // captured at start
 static uint32_t our_mxcsr_round_daz_ftz_mask =
     0;  // as we want to run 0 = round to nearest, no FAZ, no DAZ (IEEE default)
 
+volatile static int kernel = 0;
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
 
@@ -303,6 +312,32 @@ static uint32_t get_mxcsr() {
 static void set_mxcsr(uint32_t val) {
   __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
 }
+
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+
+static void mxcsr_disable_save(uint32_t* old) {
+  uint32_t tmp = get_mxcsr();
+  *old = tmp;
+  tmp |= MXCSR_MASK_MASK;
+  set_mxcsr(tmp);
+}
+
+static void mxcsr_restore(uint32_t old) {
+  set_mxcsr(old);
+}
+
+static inline void fxsave(struct _libc_fpstate *fpvm_fpregs)
+{
+  __asm__ __volatile__("fxsave (%0)" :: "r"(fpvm_fpregs));
+}
+
+static inline void fxrstor(const struct _libc_fpstate *fpvm_fpregs)
+{
+  __asm__ __volatile__("fxrstor (%0)" :: "r"(fpvm_fpregs));
+}
+
+#endif
+
 
 static void init_execution_contexts() {
   memset(context, 0, sizeof(context));
@@ -1072,25 +1107,20 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
   DEBUG("Instruction %p inserted in the decode cache bin %lu chain 0\n", inst->addr, bin);
 }
 
-static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-  
+
+//
+// Shared, common FP trap handling, regardless of how the
+// trap is delivered
+//
+static void fp_trap_handler(ucontext_t *uc)
+{
   execution_context_t *mc = find_execution_context(gettid());
-  ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
   uint8_t *start_rip = rip;
-
-  // fpvm_gc_run();
 
   START_PERF(mc, gc);
   fpvm_gc_run();
   END_PERF(mc, gc);
-
-  DEBUG(
-      "FPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
-      "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-      si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
-      rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
-  DEBUG("FPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
 
   if (!mc) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
@@ -1104,27 +1134,6 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
   mc->total_inst++;
 
-#if DEBUG_OUTPUT
-  char buf[80];
-#define CASE(X)      \
-  case X:            \
-    strcpy(buf, #X); \
-    break;
-  switch (si->si_code) {
-    CASE(FPE_FLTDIV);
-    CASE(FPE_FLTINV);
-    CASE(FPE_FLTOVF);
-    CASE(FPE_FLTUND);
-    CASE(FPE_FLTRES);
-    CASE(FPE_FLTSUB);
-    CASE(FPE_INTDIV);
-    CASE(FPE_INTOVF);
-    default:
-      sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
-      break;
-  }
-  DEBUG("FPE exceptions: %s\n", buf);
-#endif
 
 #if 1 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
 #define DUMP_SEQUENCE_ENDING_INSTR()					\
@@ -1373,6 +1382,145 @@ fail_do_trap:
   return;
 }
 
+
+//
+// Entry point for FP Trap for trap short circuiting (kernel module)
+// is used
+//
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+void fpvm_short_circuit_handler(void *priv)
+{
+  // Build up a sufficiently detailed ucontext_t and
+  // call the shared handler.  Copy in/out the FP and GP
+  // state 
+  
+  siginfo_t fake_siginfo = {0};     
+  struct _libc_fpstate fpvm_fpregs; 
+  ucontext_t fake_ucontext;
+  uint32_t old;
+  
+  // capture FP state (note that this eventually needs to do xsave)
+  fxsave(&fpvm_fpregs);
+
+  // disable FP traps during our handler execution
+  mxcsr_disable_save(&old);
+
+  
+  uint32_t err = ~(old >> 7) & old;
+  if (err & 0x001) {	/* Invalid op*/
+    fake_siginfo.si_code = FPE_FLTINV;
+  } else if (err & 0x004) { /* Divide by Zero */
+    fake_siginfo.si_code = FPE_FLTDIV;
+  } else if (err & 0x008) { /* Overflow */
+    fake_siginfo.si_code = FPE_FLTOVF;
+  } else if (err & 0x012) { /* Denormal, Underflow */
+    fake_siginfo.si_code = FPE_FLTUND;
+  } else if (err & 0x020) { /* Precision */
+    fake_siginfo.si_code = FPE_FLTRES;
+  }
+  
+  siginfo_t * si = (siginfo_t *)&fake_siginfo;
+
+  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
+
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
+  }
+
+  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+ 
+  uint8_t *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+
+  DEBUG(
+	"SCFPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
+	"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+	si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
+	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG("SCFPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
+  
+#if DEBUG_OUTPUT
+  char buf[80];
+#define CASE(X)      \
+  case X:            \
+    strcpy(buf, #X); \
+    break;
+  switch (si->si_code) {
+    CASE(FPE_FLTDIV);
+    CASE(FPE_FLTINV);
+    CASE(FPE_FLTOVF);
+    CASE(FPE_FLTUND);
+    CASE(FPE_FLTRES);
+    CASE(FPE_FLTSUB);
+    CASE(FPE_INTDIV);
+    CASE(FPE_INTOVF);
+  default:
+    sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
+    break;
+  }
+  DEBUG("FPE exceptions: %s\n", buf);
+#endif
+  
+  fp_trap_handler(uc);
+  
+  DEBUG("SCFPE  done\n");
+
+  // restore GP state
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
+  }
+  // restore FP state (note that this eventually needs to do xsave)
+  // note that this is also doing the mxcsr restore for however
+  // fp_trap_handler modified it
+  fxrstor(&fpvm_fpregs);
+  
+  return;
+}
+#endif
+  
+
+//
+// Entry point for FP Trap when the SIGFPE (normal kernel delivery)
+// mechanism is used
+//
+static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
+  
+  ucontext_t *uc = (ucontext_t *)priv;
+  uint8_t *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+
+  DEBUG(
+      "SIGFPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
+      "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+      si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
+      rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG("FPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
+
+#if DEBUG_OUTPUT
+  char buf[80];
+#define CASE(X)      \
+  case X:            \
+    strcpy(buf, #X); \
+    break;
+  switch (si->si_code) {
+    CASE(FPE_FLTDIV);
+    CASE(FPE_FLTINV);
+    CASE(FPE_FLTOVF);
+    CASE(FPE_FLTUND);
+    CASE(FPE_FLTRES);
+    CASE(FPE_FLTSUB);
+    CASE(FPE_INTDIV);
+    CASE(FPE_INTOVF);
+    default:
+      sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
+      break;
+  }
+  DEBUG("FPE exceptions: %s\n", buf);
+#endif
+
+  fp_trap_handler(uc);
+}
+
 static __attribute__((destructor)) void fpvm_deinit(void);
 
 static void sigint_handler(int sig, siginfo_t *si, void *priv) {
@@ -1445,6 +1593,12 @@ static int teardown_execution_context(int tid) {
   return 0;
 }
 
+
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+// trampoline entry stub - from the assembly code
+extern void * _user_fpvm_entry;
+#endif
+
 static int bringup() {
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
@@ -1470,13 +1624,42 @@ static int bringup() {
 
   struct sigaction sa;
 
-  memset(&sa, 0, sizeof(sa));
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+  if (kernel) { 
+    int file_desc = open("/dev/fpvm_dev", O_RDWR);
+    
+    if (file_desc < 0) {
+      ERROR("SC failed to open FPVM kernel support (/dev/fpvm_dev), falling back to signal handler\n");
+      goto setup_sigfpe;
+    } else {
+	if (ioctl(file_desc, FPVM_IOCTL_REG, &_user_fpvm_entry)) {
+	  ERROR("SC failed to ioctl FPVM kernel support (/dev/fpvm_dev), falling back to signal handler\n");
+	  goto setup_sigfpe;
+	} else {
+	  DEBUG(":) FPVM kernel support setup successful\n");
+	  goto skip_setup_sigfpe;
+	} 
+      }
+  }else {
+    DEBUG("skipping FPVM kernel support, even though it is enabled\n");
+    goto setup_sigfpe;
+  }
+
+ setup_sigfpe:
+
+#endif
+    
+  memset(&sa,0,sizeof(sa));
   sa.sa_sigaction = sigfpe_handler;
   sa.sa_flags |= SA_SIGINFO;
   sigemptyset(&sa.sa_mask);
   sigaddset(&sa.sa_mask, SIGINT);
   sigaddset(&sa.sa_mask, SIGTRAP);
-  ORIG_IF_CAN(sigaction, SIGFPE, &sa, &oldsa_fpe);
+  ORIG_IF_CAN(sigaction,SIGFPE,&sa,&oldsa_fpe);
+
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+ skip_setup_sigfpe:
+#endif
 
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = sigtrap_handler;
@@ -1577,6 +1760,10 @@ static void config_round_daz_ftz(char *buf) {
 static __attribute__((constructor)) void fpvm_init(void) {
   INFO("init\n");
   if (!inited) {
+    if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
+      DEBUG("Attempting to use FPVM kernel suppport\n");
+      kernel = 1;
+    }
     if (getenv("FPVM_AGGRESSIVE") && tolower(getenv("FPVM_AGGRESSIVE")[0]) == 'y') {
       DEBUG("Setting AGGRESSIVE\n");
       aggressive = 1;
