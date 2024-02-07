@@ -4,8 +4,8 @@
 
 _user_fpvm_entry:
   pushf
-  pushq 16(%rsp) // RIP
-  pushq 16(%rsp) // RSP
+  pushq 16(%rsp)  		
+  pushq 16(%rsp) 		
   pushq %rcx
   pushq %rax
   pushq %rdx
@@ -23,7 +23,7 @@ _user_fpvm_entry:
   pushq %r8
   movq %rsp, %rdi
 
-  call sigfpe_handler@GOTPCREL(%rip)
+  call fpvm_short_circuit_handler@GOTPCREL(%rip)
   
   popq %r8
   popq %r9
