@@ -76,7 +76,7 @@
 
 
 // support for kernel module
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING
 #include <sys/ioctl.h>
 #include "fpvm/fpvm_ioctl.h"
 #endif
@@ -1323,12 +1323,12 @@ static void fp_trap_handler(ucontext_t *uc)
 	   "decode cache hits, %lu unique instructions\n",
 	   mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
     }
-#ifdef CONFIG_PERF_STATS
+#if CONFIG_PERF_STATS
     if (!(mc->total_inst % CONFIG_PERF_STATS_PERIOD)) {
       PRINT_PERFS(mc);
     }
 #endif
-#ifdef CONFIG_INSTR_TRACES
+#if CONFIG_INSTR_TRACES
     if (!(mc->total_inst % CONFIG_INSTR_TRACES_PERIOD)) {
       PRINT_TRACES(mc);
     }
@@ -1387,7 +1387,7 @@ fail_do_trap:
 // Entry point for FP Trap for trap short circuiting (kernel module)
 // is used
 //
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING
 void fpvm_short_circuit_handler(void *priv)
 {
   // Build up a sufficiently detailed ucontext_t and
@@ -1594,7 +1594,7 @@ static int teardown_execution_context(int tid) {
 }
 
 
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING
 // trampoline entry stub - from the assembly code
 extern void * _user_fpvm_entry;
 #endif
@@ -1624,7 +1624,7 @@ static int bringup() {
 
   struct sigaction sa;
 
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING
   if (kernel) { 
     int file_desc = open("/dev/fpvm_dev", O_RDWR);
     
@@ -1657,7 +1657,7 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction,SIGFPE,&sa,&oldsa_fpe);
 
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING
  skip_setup_sigfpe:
 #endif
 

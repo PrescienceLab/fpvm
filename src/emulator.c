@@ -412,7 +412,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
 
   for (i = 0; i < count; i++, dest += dest_step, src1 += src_step, src2 += src_step,
       src3 += src_step, src4 += src_step) {
-#ifdef CONFIG_DEBUG
+#if CONFIG_DEBUG
     Dl_info dli;
     dladdr(func,&dli);
     char buf[256];
