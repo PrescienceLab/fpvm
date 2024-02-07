@@ -27,6 +27,17 @@ To test:
    $ make test
 
 
+To build kernel support:
+
+   $ cd kernel
+   $ ./kmod_build.sh
+
+To insert kernel support:
+
+   $ cd kernel
+   $ ./kmod_setup.sh
+   
+
 Running
 -------
 
@@ -34,6 +45,32 @@ To run against a binary:
 
    $ LD_PRELOAD=build/fpvm.so exec.exe
 
+or
+
+   $ scripts/fpvm_run.sh exec.exe
+
+
+The following environment variables configure FPVM:
+
+FPVM_AGGRESSIVE=y|n
+    Aggressive interposition (you almost always want this)
+
+FPVM_KERNEL=y|n
+    Use kernel support if it is available (FPVM kernel module)
+
+FPVM_DISABLE_PTHREADS=y|n
+    Turn off pthread support (do not attempt to interpose on pthreads)
+    You will want to set this if there is a link failure involving pthreads
+    
+FPVM_EXCEPT_LIST=inv;den;div;over;under;prec
+    Exceptions that will invoke FPVM
+    You almost certainly do not want to set this variable so that
+    it can configure given the defaults
+
+FPVM_FORCE_ROUNDING=pos|neg|zer|nea;daz;ftz
+    Force rounding mode and subnormal handling on the hardware
+    You almost certainly do not want to set this variable
+    
 
 Testing with pre-patched benchmarks
 -----------------------------------
