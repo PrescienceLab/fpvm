@@ -53,6 +53,7 @@
 #include <sys/types.h>
 #include <sys/user.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <ucontext.h>
 #include <unistd.h>
@@ -73,6 +74,7 @@
 #include <fpvm/fpvm_fenv.h>
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
+#include <fpvm/fpvm_magic.h>
 
 
 // support for kernel module
@@ -1072,6 +1074,14 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   DEBUG("TRAP done\n");
 }
 
+static void *magic_page=0;
+
+static void magic_trap_entry(void)
+{
+  DEBUG("invoked magic_trap_entry!\n");
+}
+
+
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
 }
@@ -1679,6 +1689,36 @@ static int bringup() {
 
   ORIG_IF_CAN(feenableexcept, exceptmask);
 
+  // see if the binary has magic trap support
+  fpvm_magic_trap_entry_t *f;
+
+  f = dlsym(RTLD_NEXT, FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
+
+  if (f) {
+    *f = magic_trap_entry;
+    DEBUG("airdropped magic trap location\n");
+  } else {
+    DEBUG("no airdrop of magic trap is possible, can't find %s\n",FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
+    DEBUG("setting up magic page\n");
+    magic_page=mmap(FPVM_MAGIC_ADDR,
+		    4096,
+		    PROT_READ | PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
+		    0,0);
+    if (magic_page!=FPVM_MAGIC_ADDR) {
+      DEBUG("unable to allocate magic_page at %p\n",FPVM_MAGIC_ADDR);
+      perror("failed to mmap");
+      if (magic_page!=MAP_FAILED) {
+	munmap(magic_page,4096);
+      }
+      magic_page = 0;
+    } else {
+      *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
+      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = magic_trap_entry;
+      DEBUG("magic page intialized\n");
+    }
+  }
+  
   // now kick ourselves to set the sse bits; we are currently in state INIT
 
   kill(getpid(), SIGTRAP);
