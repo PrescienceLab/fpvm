@@ -1079,6 +1079,7 @@ static void *magic_page=0;
 static void magic_trap_entry(void)
 {
   DEBUG("invoked magic_trap_entry!\n");
+  ERROR("magic_trap_entry runtime support is NOT IMPLEMENTED\n");
 }
 
 
@@ -1689,6 +1690,7 @@ static int bringup() {
 
   ORIG_IF_CAN(feenableexcept, exceptmask);
 
+#if CONFIG_MAGIC_CORRECTNESS_TRAP
   // see if the binary has magic trap support
   fpvm_magic_trap_entry_t *f;
 
@@ -1699,15 +1701,14 @@ static int bringup() {
     DEBUG("airdropped magic trap location\n");
   } else {
     DEBUG("no airdrop of magic trap is possible, can't find %s\n",FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
-    DEBUG("setting up magic page\n");
+    DEBUG("setting up magic page instead\n");
     magic_page=mmap(FPVM_MAGIC_ADDR,
 		    4096,
 		    PROT_READ | PROT_READ | PROT_WRITE,
 		    MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
 		    0,0);
     if (magic_page!=FPVM_MAGIC_ADDR) {
-      DEBUG("unable to allocate magic_page at %p\n",FPVM_MAGIC_ADDR);
-      perror("failed to mmap");
+      DEBUG("unable to allocate magic page at %p\n",FPVM_MAGIC_ADDR);
       if (magic_page!=MAP_FAILED) {
 	munmap(magic_page,4096);
       }
@@ -1715,9 +1716,10 @@ static int bringup() {
     } else {
       *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
       *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = magic_trap_entry;
-      DEBUG("magic page intialized\n");
+      DEBUG("magic page initialized\n");
     }
   }
+#endif
   
   // now kick ourselves to set the sse bits; we are currently in state INIT
 

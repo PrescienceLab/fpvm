@@ -43,6 +43,14 @@ config INSTR_SEQ_EMULATION
     help
        Emulate as many instructions as possible per trap
 
+config MAGIC_CORRECTNESS_TRAP
+    bool "Correctness traps via calls"
+    default n
+    help
+       Add support to deliver correctness traps via
+       calls.  The static binary analysis must also
+       be configured to use this feature
+
 config KERNEL_SHORT_CIRCUITING
     bool "Kernel short-circuiting (currently a nop)"
     default n
