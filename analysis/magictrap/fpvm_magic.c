@@ -1,9 +1,12 @@
 #include "fpvm_magic.h"
 
+
+#define uint64_t unsigned long
+
 static int checked_for_magic=0;
 static int have_magic=0;
 
-#define uint64_t unsigned long
+fpvm_magic_trap_entry_t FPVM_MAGIC_TRAP_ENTRY_NAME = 0;
 
 // We assume a 64 bit kernel with syscall support
 static inline uint64_t Syscall(uint64_t num,
@@ -45,20 +48,29 @@ int Mlock(void *addr, uint64_t len)
 void fpvm_correctness_trap(void)
 {
   if (!checked_for_magic) {  // branch hint unlikely
-    // check to see the magic page is mapped
-    if (Mlock(FPVM_MAGIC_ADDR,0x1000)) {
-      // page not mapped, no magic
-      have_magic=0;
-      Write(2,"no page\n",8);
+    // check to see if FPVM RT has already air-dropped
+    // the entry
+    if (FPVM_MAGIC_TRAP_ENTRY_NAME) {
+      // already airdropped, we are done
+      have_magic = 1;
+      Write(2,"AIRDROP\n",8);
     } else {
-      unsigned long *p = FPVM_MAGIC_ADDR;
-      if (*p == FPVM_MAGIC_COOKIE) {
-	// not our magic page
+      // check to see the magic page is mapped
+      if (Mlock(FPVM_MAGIC_ADDR,0x1000)) {
+	// page not mapped, no magic
 	have_magic=0;
-	Write(2,"no cookie\n",10);
+	Write(2,"no page\n",8);
       } else {
-	have_magic=1;
-	Write(2,"FOUND\n",6);
+	unsigned long *p = FPVM_MAGIC_ADDR;
+	if (*p == FPVM_MAGIC_COOKIE) {
+	  // not our magic page
+	  have_magic=0;
+	  Write(2,"no cookie\n",10);
+	} else {
+	  have_magic=1;
+	  FPVM_MAGIC_TRAP_ENTRY_NAME = (fpvm_magic_trap_entry_t) (*(uint64_t*)(FPVM_MAGIC_ADDR+FPVM_TRAP_OFFSET));
+	  Write(2,"FOUND\n",6);
+	}
       }
     }
     checked_for_magic=1;
@@ -66,7 +78,7 @@ void fpvm_correctness_trap(void)
   if (have_magic) { // branch hint likely
     // magic trap
     Write(2,"MAGIC!!\n",8);
-    ((void (*)(void))(FPVM_MAGIC_ADDR+FPVM_TRAP_OFFSET))();
+    FPVM_MAGIC_TRAP_ENTRY_NAME();
   } else {
     // mundane trap
     Write(2,"mundane\n",8);
