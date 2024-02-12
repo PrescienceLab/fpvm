@@ -1,3 +1,5 @@
+#include <fpvm/include/config.h>
+
 .code64
 .section .text
 .global _user_fpvm_entry
@@ -23,8 +25,10 @@ _user_fpvm_entry:
   pushq %r8
   movq %rsp, %rdi
 
+#if CONFIG_TRAP_SHORT_CIRCUITING
   call fpvm_short_circuit_handler@GOTPCREL(%rip)
-  
+#endif
+	
   popq %r8
   popq %r9
   popq %r10
