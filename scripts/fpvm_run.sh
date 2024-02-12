@@ -1,9 +1,9 @@
 #!/bin/bash
 
 if [ -z "${FPVM_HOME}" ]; then
-	echo "Set FPVM_HOME";
-	exit -1
-fi	
+	echo "Using a default FPVM_HOME";
+  FPVM_HOME=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/../")
+fi
 
 if [ ! -e $FPVM_HOME/build/fpvm.so  ] ; then
 	echo "$FPVM_HOME/build/fpvm.so does not exist - build first!"
