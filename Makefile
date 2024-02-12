@@ -5,7 +5,7 @@
 
 
 
-SRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s')
+SRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
 INCS := $(shell find include -name '*.hpp' -or -name '*.h')
 
 
@@ -36,6 +36,10 @@ foo:
 $(BUILD)/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	$(AS) -fPIC -shared -c $< -o $@
+
+$(BUILD)/%.S.o: %.S
+	@mkdir -p $(dir $@)
+	$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
 
 # c source
 $(BUILD)/%.c.o: %.c

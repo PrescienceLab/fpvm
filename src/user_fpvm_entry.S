@@ -1,9 +1,10 @@
-#include <fpvm/include/config.h>
+#include <fpvm/config.h>
 
 .code64
 .section .text
 .global _user_fpvm_entry
 
+#if CONFIG_TRAP_SHORT_CIRCUITING
 _user_fpvm_entry:
   pushf
   pushq 16(%rsp)  		
@@ -25,9 +26,7 @@ _user_fpvm_entry:
   pushq %r8
   movq %rsp, %rdi
 
-#if CONFIG_TRAP_SHORT_CIRCUITING
-  call fpvm_short_circuit_handler@GOTPCREL(%rip)
-#endif
+  call *fpvm_short_circuit_handler@GOTPCREL(%rip)
 	
   popq %r8
   popq %r9
@@ -55,3 +54,4 @@ _user_fpvm_entry:
   popf
   popq %rsp
   jmp *-152(%rsp)
+#endif
