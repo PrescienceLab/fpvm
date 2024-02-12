@@ -1,9 +1,9 @@
-
 from capstone.x86 import X86_OP_IMM, X86_OP_MEM, X86_OP_REG
 import csv
 
+
 def bridge_e9patch(binary_path, binary, sinks, func_sinks, file):
-    
+
     mem_mem = []
     reg_mem = []
     mem_reg = []
@@ -21,22 +21,21 @@ def bridge_e9patch(binary_path, binary, sinks, func_sinks, file):
         if src == X86_OP_REG:
             if dst == X86_OP_MEM:
                 reg_mem.append(insn.address)
-            
+
             elif dst == X86_OP_REG:
                 reg_reg.append(insn.address)
-    
-    
-    with open(f'call_patches.csv', 'w', encoding='UTF8', newline='') as f:
+
+    with open(f"call_patches.csv", "w", encoding="UTF8", newline="") as f:
         writer = csv.writer(f)
         for addr in func_sinks.keys():
             print("to patch call", hex(addr))
             writer.writerow([int(hex(addr), base=16)])
-    
-    with open(f'mem_patches.csv', 'w', encoding='UTF8', newline='') as f:
+
+    with open(f"mem_patches.csv", "w", encoding="UTF8", newline="") as f:
         writer = csv.writer(f)
         for addr in set(mem_reg):
             writer.writerow([int(hex(addr), base=16)])
-    
+
     # import subprocess
     # p = subprocess.Popen(['../dep/e9patch/e9tool', \
     # '-M', f"addr={binary}_call_patches[0]", "-P", "before trap", \
