@@ -31,7 +31,7 @@ pushd ${PFX}
     e9tool -M 'addr=call_patches[0]' -P 'before trap' \
             -M 'addr=mem_patches[0]' -P 'before trap' \
             input --output input.patched_trap
-    cp input.patched_magic ${BIN}.patched_trap
+    cp input.patched_trap ${BIN}.patched_trap
 
 
     e9compile.sh ../magictrap/fpvm_magic.c
