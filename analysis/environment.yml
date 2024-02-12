@@ -90,4 +90,3 @@ dependencies:
     - wcwidth==0.2.5
     - z3-solver==4.8.14.0
     - zipp==3.7.0
-prefix: /home/jiacma/miniconda3/envs/python3

@@ -2,17 +2,19 @@
 
 PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
 
+
+OLD_DIR=$PWD
 BIN=$(realpath $1)
-RES="${BIN}.patched"
-echo $PFX
-echo "$BIN -> $RES"
 
+pushd ${PFX} 2>/dev/null
+  # Delete the old workspace folder
+  rm -rf workspace
+  # Make a new one
+  mkdir -p workspace
+  # Copy the binary into the right location
+  cp $BIN workspace/input
+  # Run the patch
+  docker buildx build --progress=plain -o workspace/ .
 
-pushd $PFX/src 2>/dev/null
-  set -e
-
-  python3 parse_vfg.py $BIN 1  #generate vfg
-  python3 parse_vfg.py $BIN 0  #generate taint source
-  python3 parse_vfg.py $BIN -1 #generate taint sink + e9patch file
-
+  cp workspace/input.patched ${BIN}.patched
 popd 2>/dev/null

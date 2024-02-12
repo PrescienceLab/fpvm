@@ -33,3 +33,5 @@ analysis/src/sources-*
 analysis/src/a.out
 analysis/dep
 analysis/src/angr
+
+analysis/workspace
