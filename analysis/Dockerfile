@@ -23,9 +23,7 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 
 
 WORKDIR /root/analysis
-# Copy over the source and environment
-COPY src src
-COPY magictrap magictrap
+# Setup the conda environment
 COPY environment.yml .
 
 ENV PATH=/root/analysis/dep/e9patch/:$PATH
@@ -34,10 +32,13 @@ RUN conda env create -f environment.yml
 # Set the shell to use conda's fpvm environment
 SHELL ["conda", "run", "-n", "fpvm_static_analysis_env", "/bin/bash", "-c"]
 
+COPY src src
+
 COPY workspace /root/workspace
 RUN /root/analysis/src/run.sh /root/workspace/input
-RUN cp /root/analysis/src/*_patches.csv /root/workspace/
+RUN mkdir -p /root/output
+RUN cp /root/analysis/src/*_patches.csv /root/output/
 
 FROM scratch as output
-COPY --from=build /root/workspace .
+COPY --from=build /root/output .
 
