@@ -23,38 +23,20 @@ ENV PATH=$CONDA_DIR/bin:$PATH
 
 
 WORKDIR /root/analysis
+# Copy over the source and environment
 COPY src src
-COPY patch patch
+COPY magictrap magictrap
 COPY environment.yml .
 
-RUN git config --global user.email "you@example.com"
-RUN git config --global user.name "Your Name"
-
-# 
-RUN mkdir -p dep
-
-# Setup e9patch
-RUN git clone https://github.com/GJDuck/e9patch.git dep/e9patch
-RUN cd dep/e9patch && ./build.sh
-
-# Setup angr
-RUN git clone https://github.com/angr/angr.git dep/angr
-RUN git -C dep/angr checkout 25844567d18564095e2e1f1b4f74141f76e8101f
-
-RUN ls -la /root/analysis
-RUN git -C dep/angr am --reject --whitespace=fix /root/analysis/patch/angr.patch
-RUN cp -r dep/angr/angr src/
+ENV PATH=/root/analysis/dep/e9patch/:$PATH
 RUN conda env create -f environment.yml
 
 # Set the shell to use conda's fpvm environment
 SHELL ["conda", "run", "-n", "fpvm_static_analysis_env", "/bin/bash", "-c"]
 
-
 COPY workspace /root/workspace
 RUN /root/analysis/src/run.sh /root/workspace/input
-RUN cp /root/analysis/src/a.out /root/workspace/input.patched
-RUN cp /root/analysis/src/input*.csv /root/workspace/
-
+RUN cp /root/analysis/src/*_patches.csv /root/workspace/
 
 FROM scratch as output
 COPY --from=build /root/workspace .
