@@ -9,7 +9,7 @@ dep/angr:
 	git -C $@ am --reject --whitespace=fix $(PWD)/patch/angr.patch 
 	cp -r dep/angr/angr src/
 	conda env create -f environment.yml
-	conda activate fpvm_static_analysis_env
+	# conda activate fpvm_static_analysis_env
 
 
 dep/e9patch:

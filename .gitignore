@@ -31,5 +31,6 @@ test/boost.tar.gz
 analysis/src/*_*_patches.csv
 analysis/src/sources-*
 analysis/src/a.out
-analysis/dep
-analysis/src/angr
+analysis/e9patch
+
+analysis/workspace
