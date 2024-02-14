@@ -8,6 +8,20 @@ config DEBUG
     bool "Debug output"
     default n
 
+config TELEMETRY
+    bool "Basic telemetry"
+    default n
+    help
+       This will print out basic info that is always recorded
+       
+config TELEMETRY_PERIOD
+    depends on TELEMETRY
+    int "Reporting period"
+    default 0
+    help
+        Number of FP traps between telemetry reports
+	0 means that reports are generated only at thread end / process end
+	
 config PERF_STATS
     bool "Performance measurement"
     default n
@@ -15,9 +29,10 @@ config PERF_STATS
 config PERF_STATS_PERIOD
     depends on PERF_STATS
     int "Reporting period"
-    default 1000000
+    default 0
     help
-        Number of emulated instructions between performance statistics reports
+        Number of FP traps between performance statistics reports
+	0 means that reports are generated only at thread end / process end
 
 config INSTR_TRACES
     bool "Instruction tracing and analysis"
@@ -26,9 +41,10 @@ config INSTR_TRACES
 config INSTR_TRACES_PERIOD
     depends on INSTR_TRACES
     int "Reporting period"
-    default 100
+    default 0
     help
-        Number of emulated instructions between trace reports
+        Number of FP traps between trace reports
+	0 means that reports are generated only at thread end / process end
 
 
 config TRAP_SHORT_CIRCUITING
@@ -57,11 +73,6 @@ config KERNEL_SHORT_CIRCUITING
     help
        Use user-level trap handling if possible
 
-config MPFR_PRECISION
-    int "MPFR Precision"
-		default 200
-		depends on ALT_MATH_MPFR
-
 
 # Add your own alternative math here
 choice
@@ -83,6 +94,11 @@ choice
     
     config ALT_MATH_MPFR
         bool "GNU MPFR"
+
+config MPFR_PRECISION
+    int "MPFR Precision"
+		default 200
+		depends on ALT_MATH_MPFR
 
     config ALT_MATH_RATIONAL
         bool "Rationals"

@@ -419,7 +419,8 @@ static int decode_to_common(fpvm_inst_t *fi) {
   fi->common = &capstone_to_common[inst->id];
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    ERROR("instruction decodes to unknown common op type\n");
+    // not an error, since this could be a sequence-ending instruction
+    DEBUG("instruction decodes to unknown common op type\n");
     return -1;
   }
   return 0;
@@ -471,7 +472,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   fi->internal = inst;
 
   if (decode_to_common(fi)) {
-    ERROR("Can't decode to common representation\n");
+    DEBUG("Can't decode to common representation\n");
     fpvm_decoder_free_inst(fi);
     return 0;
   }

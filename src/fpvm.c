@@ -201,7 +201,8 @@ typedef struct execution_context {
   enum { INIT, AWAIT_FPE, ABORT } state;
   int aborting_in_trap;
   int tid;
-  uint64_t total_inst;
+  uint64_t fp_traps;
+  uint64_t correctness_traps;
   uint64_t emulated_inst;
 
   fpvm_inst_t **decode_cache;  // chaining hash - array of pointers to instructions
@@ -214,7 +215,7 @@ typedef struct execution_context {
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
 #define DEINIT_TRACER(c) fpvm_instr_tracer_destroy((c)->trace_context)
 #define RECORD_TRACE(c,ec,sa,ic) fpvm_instr_tracer_record((c)->trace_context,TRACE_START_NORMAL,sa,ec,ic)
-#define PRINT_TRACES(c) fpvm_instr_tracer_print(stderr,"trace: ",(c)->trace_context,4)
+#define PRINT_TRACES(c) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): trace: ",(c)->tid); fpvm_instr_tracer_print(stderr,_buf,(c)->trace_context,4); }
 #else
 #define INIT_TRACER(c)
 #define DEINIT_TRACER(c)
@@ -232,8 +233,8 @@ typedef struct execution_context {
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
-#define PRINT_PERF(c, x) perf_stat_print(&c->x##_stat, stderr)
-#define PRINT_PERFS(c)         \
+#define PRINT_PERF(c, x) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): perf: ",(c)->tid); perf_stat_print(&(c)->x##_stat, stderr, _buf); }
+#define PRINT_PERFS(c)       \
   PRINT_PERF(c, gc);           \
   PRINT_PERF(c, decode_cache); \
   PRINT_PERF(c, decode);       \
@@ -247,6 +248,9 @@ typedef struct execution_context {
 #define PRINT_PERFS(c)
 #endif
 
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu correctness traps, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+
+  
 } execution_context_t;
 
 typedef union {
@@ -315,8 +319,6 @@ static void set_mxcsr(uint32_t val) {
   __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
 }
 
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
-
 static void mxcsr_disable_save(uint32_t* old) {
   uint32_t tmp = get_mxcsr();
   *old = tmp;
@@ -327,6 +329,9 @@ static void mxcsr_disable_save(uint32_t* old) {
 static void mxcsr_restore(uint32_t old) {
   set_mxcsr(old);
 }
+
+#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+
 
 static inline void fxsave(struct _libc_fpstate *fpvm_fpregs)
 {
@@ -367,6 +372,34 @@ static execution_context_t *find_execution_context(int tid) {
   unlock_contexts();
   return 0;
 }
+
+
+static void dump_execution_contexts_info(void)
+{
+  int i;
+  uint32_t m;
+  lock_contexts();
+  // we will internally be using floating point
+  // and need to guarantee that we don't trap to ourselves
+  mxcsr_disable_save(&m);
+
+  for (i = 0; i < MAX_CONTEXTS; i++) {
+    if (context[i].tid) {
+#if CONFIG_INSTR_TRACES
+      PRINT_TRACES(&context[i]);
+#endif
+#if CONFIG_TELEMETRY
+      PRINT_TELEMETRY(&context[i]);
+#endif
+#if CONFIG_PERF_STATS
+      PRINT_PERFS(&context[i]);
+#endif
+    }
+  }
+  mxcsr_restore(m);
+  unlock_contexts();
+}
+
 
 static execution_context_t *alloc_execution_context(int tid) {
   int i;
@@ -654,6 +687,16 @@ static void *trampoline(void *p) {
   // if it's returning normally instead of via pthread_exit(), we'll do the
   // cleanup here
 
+#if CONFIG_INSTR_TRACES
+  PRINT_TRACES(find_execution_context(gettid()));
+#endif
+#if CONFIG_TELEMETRY
+  PRINT_TELEMETRY(find_execution_context(gettid()));
+#endif
+#if CONFIG_PERF_STATS
+  PRINT_PERFS(find_execution_context(gettid()));
+#endif
+
   pthread_exit(ret);
 }
 
@@ -923,6 +966,8 @@ static void fp_restore_handler(void *priv) {
   int do_insert = 0;
   // char instbuf[256];
 
+  mc->correctness_traps++;
+  
   fi = decode_cache_lookup(mc, rip);
 
   if (!fi) {
@@ -1164,7 +1209,7 @@ static void fp_trap_handler(ucontext_t *uc)
     return;
   }
 
-  mc->total_inst++;
+  mc->fp_traps++;
 
 
 #if 1 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
@@ -1356,28 +1401,30 @@ static void fp_trap_handler(ucontext_t *uc)
     // stay in state AWAIT_FPE
     
     mc->emulated_inst++;
-    
-    if (!(mc->total_inst % 1000000)) {
-      INFO(
-	   "%lu total instructions handled, %lu emulated successfully, %lu "
-	   "decode cache hits, %lu unique instructions\n",
-	   mc->total_inst, mc->emulated_inst, mc->decode_cache_hits, mc->decode_cache_unique);
-    }
-#if CONFIG_PERF_STATS
-    if (!(mc->total_inst % CONFIG_PERF_STATS_PERIOD)) {
-      PRINT_PERFS(mc);
-    }
-#endif
-#if CONFIG_INSTR_TRACES
-    if (!(mc->total_inst % CONFIG_INSTR_TRACES_PERIOD)) {
-      PRINT_TRACES(mc);
-    }
-#endif
+
     
   }
 
   // At this point, we have successfully finished at least one instruction
   RECORD_TRACE(mc,end_reason,(uint64_t)start_rip,instindex);
+
+
+#if CONFIG_TELEMETRY
+  if (CONFIG_TELEMETRY_PERIOD && !(mc->fp_traps % CONFIG_TELEMETRY_PERIOD)) {
+    PRINT_TELEMETRY(mc);
+  }
+#endif
+#if CONFIG_INSTR_TRACES
+  if (CONFIG_INSTR_TRACES_PERIOD && !(mc->fp_traps % CONFIG_INSTR_TRACES_PERIOD)) {
+    PRINT_TRACES(mc);
+  }
+#endif
+#if CONFIG_PERF_STATS
+  if (CONFIG_PERF_STATS_PERIOD && !(mc->fp_traps % CONFIG_PERF_STATS_PERIOD)) {
+    PRINT_PERFS(mc);
+  }
+#endif
+
     
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
@@ -1404,10 +1451,6 @@ fail_do_trap:
     }
   }
 
-  if (!(mc->total_inst % 1000000)) {
-    INFO("%lu total instructions handled, %lu emulated successfully\n", mc->total_inst,
-        mc->emulated_inst);
-  }
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
@@ -1586,7 +1629,8 @@ static int bringup_execution_context(int tid) {
 
   c->state = INIT;
   c->aborting_in_trap = 0;
-  c->total_inst = 0;
+  c->fp_traps = 0;
+  c->correctness_traps = 0;
   c->emulated_inst = 0;
   c->decode_cache = malloc(sizeof(fpvm_inst_t *) * decode_cache_size);
   if (!c->decode_cache) {
@@ -1863,6 +1907,7 @@ static __attribute__((constructor)) void fpvm_init(void) {
 // Called on unload of preload library
 static __attribute__((destructor)) void fpvm_deinit(void) {
   DEBUG("deinit\n");
+  dump_execution_contexts_info();
   inited = 0;
   DEBUG("done\n");
 }

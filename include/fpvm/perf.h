@@ -40,11 +40,11 @@ static inline void perf_stat_end(perf_stat_t *p) {
   }
 }
 
-static inline void perf_stat_print(perf_stat_t *p, FILE *f) {
+static inline void perf_stat_print(perf_stat_t *p, FILE *f, char *prefix) {
   double mean = (double)p->sum / p->n;
   double std = sqrt((double)p->sum2 / p->n - mean * mean);
-  fprintf(f, "%s : count=%lu sum=%lu sum2=%lu avg=%lf std=%lf min=%lu max=%lu\n", p->name, p->n,
-      p->sum, p->sum2, mean, std, p->min_val, p->max_val);
+  fprintf(f, "%s%s : count=%lu sum=%lu sum2=%lu avg=%lf std=%lf min=%lu max=%lu\n", prefix, p->name, p->n,
+	  p->sum, p->sum2, mean, std, p->min_val, p->max_val);
 }
 
 
