@@ -1119,6 +1119,27 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 }
 
 
+inline static int decode_cache_insert_undecodable(execution_context_t *c, void *rip) {
+  fpvm_inst_t *inst = malloc(sizeof(fpvm_inst_t));
+  
+  if (!inst) {
+    ERROR("cannot allocate marker for undecodable instruction\n");
+    return -1;
+  }
+
+  memset(inst,0,sizeof(*inst));
+
+  // zero length instruction marks undecodable
+  inst->addr = rip;
+
+  decode_cache_insert(c,inst);
+
+  return 0;
+}
+
+
+#define IS_UNDECODABLE(inst) (!(inst->length))
+
 //
 // Shared, common FP trap handling, regardless of how the
 // trap is delivered
@@ -1199,7 +1220,7 @@ static void fp_trap_handler(ucontext_t *uc)
     }
     
 
-    if (!fi) {
+    if (!fi || IS_UNDECODABLE(fi)) {
       // The first instruction of the sequence must be decodable...
       if (instindex==0) {
 	ERROR("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
@@ -1212,6 +1233,14 @@ static void fp_trap_handler(ucontext_t *uc)
 	DEBUG("Ending sequence as instruction %d (rip %p) is not decodable\n", instindex,rip);
 	end_reason = TRACE_END_INSTR_UNDECODABLE;
 	DUMP_SEQUENCE_ENDING_INSTR();
+	if (!fi) {
+	  // this means we have not placed the undecodable instruction in the cache previously
+	  // so let's do it now
+	  if (decode_cache_insert_undecodable(mc,rip)) {
+	    ERROR("failed to insert undecodable instruction into decode cache\n");
+	    // we can keep going
+	  }
+	}
 	break; // done with the sequence
       }
     }
