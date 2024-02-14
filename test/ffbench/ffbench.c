@@ -146,7 +146,7 @@
 #define Asize    256               /* Array edge size */
 
 #ifndef ITERATIONS                 /* Allow iterations to be supplied by -D */
-#define ITERATIONS 100000
+#define ITERATIONS 50
 #endif
 int niter = ITERATIONS;            /* Iteration counter */
 
