@@ -75,6 +75,7 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
 #include <fpvm/fpvm_magic.h>
+#include <fpvm/config.h>
 
 
 // support for kernel module
@@ -993,16 +994,15 @@ out:
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
 }
 
-// SIGTRAP is used for three scenarios:
+// trap_handler is used for three scenarios:
 //    bootstrap  - to initially set the FP exceptions/masks/etc
 //    singlestop - when cannot emulate an instruction and execute it instead
 //    abort      - when we need to revert back
-static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
-  execution_context_t *mc = find_execution_context(gettid());
-  ucontext_t *uc = (ucontext_t *)priv;
+//
+// trap_handler can be invoked from either a SIGTRAP or a magic call
 
-  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
-      si->si_addr);
+static void trap_handler(ucontext_t *uc) {
+  execution_context_t *mc = find_execution_context(gettid());
 
   if (!mc || mc->state == ABORT) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
@@ -1011,7 +1011,7 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
     set_trap_flag_context(uc, 0);  // traps disabled
     if (!mc) {
       // this may end badly
-      abort_operation("Cannot find execution context during sigtrap_handler exec");
+      abort_operation("Cannot find execution context during trap_handler exec");
     } else {
       DEBUG("FP and TRAP mcontext restored on abort\n");
     }
@@ -1028,7 +1028,7 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
 
     if (mc->state == AWAIT_FPE) {
       START_PERF(mc, patch);
-      fp_restore_handler(priv);
+      fp_restore_handler((void *)uc);
       END_PERF(mc, patch);
     } else {
       ERROR("not await fpe %d \n", mc->state);
@@ -1074,14 +1074,24 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
   DEBUG("TRAP done\n");
 }
 
+// Entry via magic (e9patch call)
 static void *magic_page=0;
 
-static void magic_trap_entry(void)
+static void magic_trap_entry(void *priv)
 {
   DEBUG("invoked magic_trap_entry!\n");
   ERROR("magic_trap_entry runtime support is NOT IMPLEMENTED\n");
 }
 
+// Entry via normal trap
+static void sigtrap_entry(int sig, siginfo_t *si, void *priv)
+{
+  ucontext_t *uc = priv;
+  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
+      si->si_addr);
+
+  trap_handler(uc);
+}
 
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
@@ -1702,7 +1712,7 @@ static int bringup() {
 #endif
 
   memset(&sa, 0, sizeof(sa));
-  sa.sa_sigaction = sigtrap_handler;
+  sa.sa_sigaction = sigtrap_entry;
   sa.sa_flags |= SA_SIGINFO;
   sigemptyset(&sa.sa_mask);
   sigaddset(&sa.sa_mask, SIGINT);
