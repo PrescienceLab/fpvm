@@ -75,6 +75,7 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
 #include <fpvm/fpvm_magic.h>
+#include <fpvm/config.h>
 
 
 // support for kernel module
@@ -1075,7 +1076,6 @@ out:
   return rc;
 }
 
-
 // The correctness trap handler is invoked in the following
 // situations:
 //
@@ -1106,7 +1106,6 @@ static int correctness_trap_handler(ucontext_t *uc)
   }
 
   // if we got here, we have an mc, and are in INIT, AWAIT_TRAP, or AWAIT_FPE
-
 
   int rc = 0;
   
@@ -1164,14 +1163,24 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
   DEBUG("SIGTRAP done\n");
 }
 
+// Entry via magic (e9patch call)
 static void *magic_page=0;
 
-static void magic_trap_entry(void)
+static void magic_trap_entry(void *priv)
 {
   DEBUG("invoked magic_trap_entry!\n");
   ERROR("magic_trap_entry runtime support is NOT IMPLEMENTED\n");
 }
 
+// Entry via normal trap
+static void sigtrap_entry(int sig, siginfo_t *si, void *priv)
+{
+  ucontext_t *uc = priv;
+  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
+      si->si_addr);
+
+  trap_handler(uc);
+}
 
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
@@ -1837,7 +1846,7 @@ static int bringup() {
 #endif
 
   memset(&sa, 0, sizeof(sa));
-  sa.sa_sigaction = sigtrap_handler;
+  sa.sa_sigaction = sigtrap_entry;
   sa.sa_flags |= SA_SIGINFO;
   sigemptyset(&sa.sa_mask);
   sigaddset(&sa.sa_mask, SIGINT);
