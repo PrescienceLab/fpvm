@@ -27,21 +27,30 @@ pushd ${PFX}
 
   pushd workspace
 
+  
     # Patch with traps
     e9tool -M 'addr=call_patches[0]' -P 'before trap' \
             -M 'addr=mem_patches[0]' -P 'before trap' \
             input --output input.patched_trap
-    cp input.patched_magic ${BIN}.patched_trap
+    cp input.patched_trap ${BIN}.patched_trap
 
-
+    # Build magic
     e9compile.sh ../magictrap/fpvm_magic.c
 
+    # Patch with magic
     e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap()@fpvm_magic" \
            -M "addr=mem_patches[0]" -P "fpvm_correctness_trap()@fpvm_magic" \
            input --output input.patched_magic
 
     cp input.patched_magic ${BIN}.patched_magic
     
+    # copy out working files for sanity
+    cp call_patches.csv ${BIN}.call_patches.csv
+    cp mem_patches.csv ${BIN}.mem_patches.csv
+    cp fpvm_magic ${BIN}.fpvm_magic
+    cp ../magictrap/fpvm_magic.c ${BIN}.fpvm_magic.c
+    cp input ${BIN}.original
 
+    
   popd
 popd
