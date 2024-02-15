@@ -38,8 +38,8 @@ pushd ${PFX}
     e9compile.sh ../magictrap/fpvm_magic.c
 
     # Patch with magic
-    e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap()@fpvm_magic" \
-           -M "addr=mem_patches[0]" -P "fpvm_correctness_trap()@fpvm_magic" \
+    e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap<naked>()@fpvm_magic" \
+           -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
            input --output input.patched_magic
 
     cp input.patched_magic ${BIN}.patched_magic
