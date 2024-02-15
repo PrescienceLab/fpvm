@@ -1088,7 +1088,7 @@ out:
 static int correctness_trap_handler(ucontext_t *uc)
 {
   execution_context_t *mc = find_execution_context(gettid());
-  
+
   if (!mc || mc->state == ABORT) {
     // ABORT case
     clear_fp_exceptions_context(uc);        // exceptions cleared
@@ -1163,14 +1163,45 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
   DEBUG("SIGTRAP done\n");
 }
 
+#if CONFIG_MAGIC_CORRECTNESS_TRAP
 // Entry via magic (e9patch call)
 static void *magic_page=0;
 
-static void magic_trap_entry(void *priv)
+void fpvm_magic_trap_entry(void *priv)
 {
-  DEBUG("invoked magic_trap_entry!\n");
-  ERROR("magic_trap_entry runtime support is NOT IMPLEMENTED\n");
+  // Build up a sufficiently detailed ucontext_t and
+  // call the shared handler.  Copy in/out the FP and GP
+  // state 
+  struct _libc_fpstate fpvm_fpregs; 
+  ucontext_t fake_ucontext;
+  
+  // capture FP state (note that this eventually needs to do xsave)
+  fxsave(&fpvm_fpregs);
+  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
+
+  // capture greg state
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
+  }
+
+  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+
+  correctness_trap_handler(uc);
+ 
+  // restore GP state
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
+  }
+
+  // restore FP state (note that this eventually needs to do xsave)
+  // note that this is also doing the mxcsr restore for however
+  // fp_trap_handler modified it
+  fxrstor(&fpvm_fpregs); 
+  return;
 }
+#endif
 
 // Entry via normal trap
 static void sigtrap_entry(int sig, siginfo_t *si, void *priv)
@@ -1179,7 +1210,7 @@ static void sigtrap_entry(int sig, siginfo_t *si, void *priv)
   DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
       si->si_addr);
 
-  trap_handler(uc);
+  correctness_trap_handler(uc);
 }
 
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
@@ -1783,6 +1814,11 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
+#if CONFIG_MAGIC_CORRECTNESS_TRAP
+// trampoline entry stub - from the assembly code
+extern void * fpvm_magic_trap_entry_asm;
+#endif
+
 static int bringup() {
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
@@ -1870,7 +1906,7 @@ static int bringup() {
   f = dlsym(RTLD_NEXT, FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
 
   if (f) {
-    *f = magic_trap_entry;
+    *f = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry_asm;
     DEBUG("airdropped magic trap location\n");
   } else {
     DEBUG("no airdrop of magic trap is possible, can't find %s\n",FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
@@ -1888,7 +1924,7 @@ static int bringup() {
       magic_page = 0;
     } else {
       *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
-      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = magic_trap_entry;
+      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry_asm;
       DEBUG("magic page initialized\n");
     }
   }
