@@ -316,7 +316,7 @@ static void set_mxcsr(uint32_t val) {
   __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
 }
 
-#ifdef CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_TRAP_SHORT_CIRCUITING || CONFIG_MAGIC_CORRECTNESS_TRAP
 
 static void mxcsr_disable_save(uint32_t* old) {
   uint32_t tmp = get_mxcsr();
@@ -1084,7 +1084,7 @@ void fpvm_magic_trap_entry(void *priv)
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state 
-  struct _libc_fpstate fpvm_fpregs; 
+  struct _libc_fpstate fpvm_fpregs;
   ucontext_t fake_ucontext;
   
   // capture FP state (note that this eventually needs to do xsave)
@@ -1098,6 +1098,9 @@ void fpvm_magic_trap_entry(void *priv)
   }
 
   ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+
+  // This is to handle e9patch's lea instruction
+  uc->uc_mcontext.gregs[REG_RIP] += 8;
 
   trap_handler(uc);
  

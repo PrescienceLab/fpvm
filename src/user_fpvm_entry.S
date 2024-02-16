@@ -58,17 +58,28 @@ _user_fpvm_entry:
 
 #if CONFIG_MAGIC_CORRECTNESS_TRAP
 // This is highly dependent on e9patch's trampoline implementation
-// For now, e9patch calls us :)
+// For now, e9patch calls us in this manner:
+
+/*
+	lea -0x4000(%rsp), rsp
+	call fpvm_correctness_trap_asm
+	lea 0x4000(%rsp), rsp
+	<original instruction>
+*/
+
+// For a variety of reasons, we will have to hack around this
+
 .global fpvm_magic_trap_entry_asm
 fpvm_magic_trap_entry_asm:
   // Gonna give FPVM the "correct" RSP 
   pushq %rcx
-  leaq 16(%rsp), %rcx
+  leaq 0x4010(%rsp), %rcx
 
+  // Now stack is either 
   pushf
-  pushq 16(%rsp) 		
+  pushq 0x10(%rsp) 		
   pushq %rcx 
-  pushq	24(%rsp)
+  pushq	0x18(%rsp)
   pushq %rax
   pushq %rdx
   pushq %rbx
@@ -85,8 +96,21 @@ fpvm_magic_trap_entry_asm:
   pushq %r8
 
   movq %rsp, %rdi
-  call *fpvm_magic_trap_entry@GOTPCREL(%rip)
+ 
+// Check for 16-byte stack alignment
+  test $0x8, %spl
+  jnz fpvm_trap_entry_unaligned
 
+fpvm_trap_entry_aligned:
+  call *fpvm_magic_trap_entry@GOTPCREL(%rip)
+  jmp fpvm_trap_entry_exit
+
+fpvm_trap_entry_unaligned:
+  subq $0x8, %rsp
+  call *fpvm_magic_trap_entry@GOTPCREL(%rip)
+  addq $0x8, %rsp
+
+fpvm_trap_entry_exit:
   popq %r8
   popq %r9
   popq %r10
@@ -103,7 +127,8 @@ fpvm_magic_trap_entry_asm:
   popq %rax
   popq %rcx
   // Ignore the saved %RIP and %RSP
-  addq $16, %rsp
+  addq $0x10, %rsp
   popf
-  ret
+  movq -0x18(%rsp), %rsp
+  jmp *-0x4020(%rsp)
 #endif
