@@ -77,7 +77,7 @@ void fpvm_correctness_trap(void)
   }
   if (have_magic) { // branch hint likely
     // magic trap
-    Write(2,"MAGIC!!\n",8);
+    //Write(2,"MAGIC!!\n",8);
     FPVM_MAGIC_TRAP_ENTRY_NAME();
   } else {
     // mundane trap
