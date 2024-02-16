@@ -9,7 +9,15 @@
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi);
 // takes a bound instruction and emulates it
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi);
-int fpvm_fp_restore(fpvm_inst_t *fi, fpvm_regs_t *fr);
+// handle a problematic, bound instruction that has been
+// flagged by the static analysis and patcher
+typedef enum {
+  FPVM_CORRECT_ERROR=-1,
+  FPVM_CORRECT_CONTINUE,
+  FPVM_CORRECT_SKIP
+} fpvm_emulator_correctness_response_t;
+fpvm_emulator_correctness_response_t
+fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions);
 
 // double (*orig_pow)(double a, double b) = 0;
 // double (*orig_exp)(double a) = 0;

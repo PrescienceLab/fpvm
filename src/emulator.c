@@ -439,36 +439,80 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
   return rc;
 }
 
-int fpvm_fp_restore(fpvm_inst_t *fi, fpvm_regs_t *fr) {
-  DEBUG("Emulating instruction\n");
+//
+// There are currently two reasons why this function might be invoked:
+//
+// patched call instruction
+//     (ideally only to a function that is not subject to the static analysis)
+//  
+// patched memory instruction
+//     (which may read an FP value that is a nanbox)
+//
+// For calls, we assume the Sys V cdecl calling convention on x64.
+// In this convention, the first 8 FP regs are used for the first 8
+// FP values.   For a varargs call, rax stores the number of FP values
+// passed via registers.   In both cases, FP regs are
+// caller-save/callee-clobber.   Therefore, once we are *at* the call
+// we know the compiler/etc must have already saved any FP regs that
+// it cannot afford to lose, and will restore them after the function
+// returns.   Therefore, we simply do a wholesale translation of
+// all the FPregs, converting any nanboxed values to doubles, then
+// tell the correctness handler to execute the call.  When we come back
+// from the call, the compiler/etc-generated code will restore the FP regs
+// restoring any nanboxed values for us.
+//
+// For memory instructions, we need to emulate the instruction,
+// downcasting any source that is a nanboxed value.
+// 
+//
+fpvm_emulator_correctness_response_t
+fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotion_count)
+{
+  DEBUG("handling problematic instruction of type %d (%s)\n", fi->common->op_type,
+	fi->common->op_type == FPVM_OP_MOVE ? "MOVE" :
+	fi->common->op_type == FPVM_OP_CALL ? "CALL" :
+	fi->common->op_type == FPVM_OP_WARN ? "WARN" :
+	fi->common->op_type == FPVM_OP_UNKNOWN ? "UNKNOWN" : "**SURPRISE!**");
+
+  *demotion_count=0;
+  
   if (fi->common->has_mask) {
     ERROR("Cannot handle masks yet\n");
     return -1;
   }
+
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    // execute
-    ERROR(" FP restore unknown op; you can print out\n");
-    // fpvm_decoder_print_inst(fi,stderr);
-    return 0;
-  }
-  if (fi->common->op_type == FPVM_OP_WARN) {
-    fpvm_decoder_print_inst(fi, stderr);
-    // printf("warn inst FPVM_OP_WARN\n");
+    ERROR("problematic instruction is of unknown type - simply allowing it to execute, but this is LIKELY BOGUS\n");
+    return FPVM_CORRECT_CONTINUE;
   }
 
+
   if (fi->common->op_type == FPVM_OP_CALL) {
+    DEBUG("handling problematic call instruction\n");
 #define _XMM(id) X86_REG_XMM##id
     int allxmm[32] = {_XMM(0), _XMM(1), _XMM(2), _XMM(3), _XMM(4), _XMM(5), _XMM(6), _XMM(7),
         _XMM(8), _XMM(9), _XMM(10), _XMM(11), _XMM(12), _XMM(13), _XMM(14), _XMM(15), _XMM(16),
         _XMM(17), _XMM(18), _XMM(19), _XMM(20), _XMM(21), _XMM(22), _XMM(23), _XMM(24), _XMM(25),
         _XMM(26), _XMM(27), _XMM(28), _XMM(29), _XMM(30), _XMM(31)};
-    for (int i = 0; i < 16; i++) {
-      void *xmm_addr = fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0);
+    for (int i = 0; i < 32; i++) {
+      uint64_t *xmm_addr = (uint64_t *) (fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0));
+      // invoke the altmath package to convert numbers back to doubles
+      uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
       restore_xmm(xmm_addr);
+      *demotion_count += xmm_addr[0]!= old[0];
+      *demotion_count += xmm_addr[1]!= old[1];
     }
-    return 0;
+    return FPVM_CORRECT_CONTINUE;
   }
 
+  if (fi->common->op_type == FPVM_OP_WARN) { 
+    ERROR("instruction decodes to warning type - this is LIKELY BOGUS\n");
+    // fall through, treat as move
+  }
+
+  // if we got to here, we are dealing with a memory instruction
+  DEBUG("handling problematic memory instruction of op type %d\n",fi->common->op_type);
+  
   op_special_t special = {0, 0, 0};
   void *src1 = 0, *src2 = 0, *src3 = 0, *src4 = 0, *dest = 0;
 
@@ -478,79 +522,132 @@ int fpvm_fp_restore(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   int dest_step = 0, src_step = 0;
 
   if (fi->common->is_vector) {
-    ERROR("vector patch; doesn't support now \n");
-    // fpvm_decoder_print_inst(fi,stderr);
-    return 0;
     count = fi->operand_sizes[0] / fi->common->op_size;
     dest_step = fi->common->op_size;
     src_step = fi->common->op_size;  // these can technically be different - FIX FIX FIX
+    ERROR("problematic instruction is vector instruction - SKIPPING, WHICH IS BOGUS\n");
+    // fpvm_decoder_print_inst(fi,stderr);
+    // this would normally fall through instead of stopping here
+    return FPVM_CORRECT_CONTINUE;
   }
 
-  if (fi->operand_count == 2) {
+  switch (fi->operand_count) {
+  case 1:
+    DEBUG("single operand instruction\n");
+    dest = fi->operand_addrs[0];
+    src1 = fi->operand_addrs[0];
+    src1 = fi->operand_addrs[0];
+    break;
+  case 2:
+    DEBUG("two operand instruction\n");
     dest = fi->operand_addrs[0];
     src1 = fi->operand_addrs[0];
     src2 = fi->operand_addrs[1];
-
-  } else if (fi->operand_count == 3) {
+    break;
+  case 3:
+    DEBUG("three operand instruction\n");
     dest = fi->operand_addrs[0];
     src1 = fi->operand_addrs[1];
     src2 = fi->operand_addrs[2];
+    break;
+  default:
+    ERROR("instruction has %d operands - SKIPPING, WHICH IS BOGUS\n",fi->operand_count);
+    return FPVM_CORRECT_CONTINUE;
+    break;
   }
 
+  // note that the following should consider the different
+  // op types, ideally, but wer 
   switch (fi->common->op_type) {
-      // case FPVM_OP_SHIFT_RIGHT_BYTE:
-      //   ERROR("handle FPVM_OP_SHIFT_RIGHT_BYTE \n ");
-      //   if (fi->common->op_size == 8) {
-      //     func = op_map[fi->common->op_type][1];
-      //   } else {
-      //     ERROR("Cannot handle FPVM_OP_SHIFT_RIGHT_BYTE instruction with
-      //     op_size = %d mnemonic=%d\n", fi->common->op_size, fi->common->op_type
-      //     ); return -1;
-      //   }
-      //   break;
-
-      // case FPVM_OP_SHIFT_LEFT_BYTE:
-      //  if (fi->common->op_size == 8) {
-      //     func = op_map[fi->common->op_type][1];
-      //   } else {
-      //     ERROR("Cannot handle FPVM_OP_SHIFT_LEFT_BYTE instruction with op_size
-      //     = %d mnemonic=%d\n", fi->common->op_size, fi->common->op_type );
-      //     return -1;
-      //   }
-      //   break;
-
-    default:
-      if (fi->common->op_size == 4) {
-        func = restore_float;
-      } else if (fi->common->op_size == 8) {
-        func = restore_double;
-      } else {
-        // func = restore_64;
-        // fpvm_decoder_print_inst(fi,stderr);
-        ERROR("Cannot handle instruction trapped with op_size = %d mnemonic=%d\n",
+  default:
+    DEBUG("default type\n");
+    if (fi->common->op_size == 4) {
+      DEBUG("restore float\n");
+      func = restore_float;
+    } else if (fi->common->op_size == 8) {
+      DEBUG("restore double\n");
+      func = restore_double;
+    } else {
+      ERROR("cannot handle instruction trapped with op_size = %d mnemonic=%d, continuing, which is BOGUS\n",
             fi->common->op_size, fi->common->op_type);
-        return 0;
-        // return -1;
-      }
+      return FPVM_CORRECT_CONTINUE;
+    }
   }
 
+  if (fi->common->op_type==FPVM_OP_MOVE) {
+    if (fi->is_simple_mov) {
+      DEBUG("handling simple move\n");
+      if (fi->operand_count != 2) {
+	ERROR("simple move has %d operands... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->operand_count);
+	goto complex_transforms_sources_yikes;
+      }
+      if (fi->common->op_size != 8 ) {
+	ERROR("simple move with operand size %d ... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->common->op_size);
+	goto complex_transforms_sources_yikes;
+      }
+      // now we will copy the source instead of using original value
+      uint64_t temp = *(uint64_t*)src1;
+      uint64_t old = temp;
+      // now convert that temp via the alternative math library
+      func(0,0,&temp,0,0,0);
+      // and write it to the destination
+      *(uint64_t*)dest = temp;
+      DEBUG("completed emulation of simple mov successully\n");
+      if (old!=temp) {
+	DEBUG("value actually demoted (%016lx => %016lx)\n",old,temp);
+	(*demotion_count)++;
+      } else {
+	DEBUG("value not demoted (not actually a nanbox)\n");
+      }
+      return FPVM_CORRECT_SKIP;
+    }
+  }
+
+ complex_transforms_sources_yikes:
+  
   int rc = 0;
 
-#define increment(a, step) (void *)((char *)a + step)
+#define increment(a, step) (void *)(a ? (char *)a + step : 0)
+  
   for (int i = 0; i < count; i++, dest = increment(dest, dest_step),
            src1 = increment(src1, src_step), src2 = increment(src2, src_step),
            src3 = increment(src3, src_step), src4 = increment(src4, src_step)) {
+#if CONFIG_DEBUG
+    Dl_info dli;
+    dladdr(func,&dli);
+    char buf[256];
+    if (dli.dli_sname) {
+      snprintf(buf,255,"%s",dli.dli_sname);
+    } else {
+      snprintf(buf,255,"%p",func);
+    }
     DEBUG(
-        "calling %p((byte_width=%d,truncate=%d,unordered=%d), "
-        "%p,%p,%p,%p,%p)\n",
-        func, special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
+        "calling %s((byte_width=%d,truncate=%d,unordered=%d), "
+        "%p,%p,%p,%p,%p)\n", buf, 
+	special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
         src4);
+#endif
+    uint64_t s1[2]={0,0}, s2[2]={0,0}, s3[2]={0,0}, s4[2]={0,0};
+    if (src1) { s1[0] = ((uint64_t*)src1)[0]; s1[1] = ((uint64_t*)src1)[1]; } 
+    if (src2) { s2[0] = ((uint64_t*)src2)[0]; s2[1] = ((uint64_t*)src2)[1]; } 
+    if (src3) { s3[0] = ((uint64_t*)src3)[0]; s3[1] = ((uint64_t*)src3)[1]; } 
+    if (src4) { s4[0] = ((uint64_t*)src4)[0]; s4[1] = ((uint64_t*)src4)[1]; } 
     rc |= func(&special, dest, src1, src2, src3, src4);
+    if (src1) { *demotion_count += (((uint64_t*)src1)[0]!=s1[0]) + (((uint64_t*)src1)[1]!=s1[1]); }
+    if (src2) { *demotion_count += (((uint64_t*)src2)[0]!=s2[0]) + (((uint64_t*)src2)[1]!=s2[1]); }
+    if (src3) { *demotion_count += (((uint64_t*)src3)[0]!=s3[0]) + (((uint64_t*)src3)[1]!=s3[1]); }
+    if (src4) { *demotion_count += (((uint64_t*)src4)[0]!=s4[0]) + (((uint64_t*)src4)[1]!=s4[1]); }
   }
 
-  if (fi->common->op_type == FPVM_OP_WARN) {
-    ERROR("Done warn inst FPVM_OP_WARN\n");
-  }
   DEBUG("Instruction emulation result: %d (%s)\n", rc, rc ? "FAIL" : "success");
-  return rc;
+
+  DEBUG("demotions: %d\n",*demotion_count);
+  
+  if (rc) {
+    ERROR("source demotion failed, so trying to execute instruction (BOGUS)\n");
+    return FPVM_CORRECT_CONTINUE;
+  } else {
+    DEBUG("source demotion succeeded, so trying to execute instruction (BOGUS)\n");
+    return FPVM_CORRECT_CONTINUE;
+  }
 }

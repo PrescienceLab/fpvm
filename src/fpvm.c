@@ -198,11 +198,14 @@ static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 // This is to allow us to handle multiple threads
 // and to follow forks later
 typedef struct execution_context {
-  enum { INIT, AWAIT_FPE, ABORT } state;
+  enum { INIT, AWAIT_FPE, AWAIT_TRAP, ABORT } state;
   int aborting_in_trap;
   int tid;
   uint64_t fp_traps;
+  uint64_t promotions;
+  uint64_t demotions;
   uint64_t correctness_traps;
+  uint64_t correctness_demotions;
   uint64_t emulated_inst;
 
   fpvm_inst_t **decode_cache;  // chaining hash - array of pointers to instructions
@@ -248,7 +251,7 @@ typedef struct execution_context {
 #define PRINT_PERFS(c)
 #endif
 
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu correctness traps, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu correctness traps, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->correctness_traps, (c)->correctness_demotions, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
 
   
 } execution_context_t;
@@ -954,36 +957,43 @@ static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
 inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c, void *rip);
 inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst);
 
-static void fp_restore_handler(void *priv) {
+// we got here from a correctness trap produced by
+// a patch on the application binary.   uc is expected to
+// be pointing to the faulting instruction (the patch
+// should trigger us before the faulting instruction has
+// been executed.
+static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
+{
+  int rc = 0;
+  
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
 
-  execution_context_t *mc = find_execution_context(gettid());
-  ucontext_t *uc = (ucontext_t *)priv;
-  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
-  DEBUG("Restore RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
+  void *rip = (void *)uc->uc_mcontext.gregs[REG_RIP];
+  void *rsp = (void *)uc->uc_mcontext.gregs[REG_RSP];
+  
+  DEBUG("correctness handling for instruction at RIP=%p RSP=%p\n", rip, rsp);
 
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
-  // char instbuf[256];
 
   mc->correctness_traps++;
   
   fi = decode_cache_lookup(mc, rip);
 
   if (!fi) {
-    DEBUG("Instruction is not in the decode cache\n");
+    DEBUG("instruction is not in the decode cache\n");
     fi = fpvm_decoder_decode_inst(rip);
+    if (!fi) {
+      ERROR("cannot decode instruction\n");
+      rc = -1;
+      goto out;
+    }
     do_insert = 1;
   }
 
-  if (!fi) {
-    ERROR("Cannot decode instruction\n");
-    // BAD
-    // return;
-    goto out;
-  }
+
 #if DEBUG_OUTPUT
-  ERROR("Detailed instruction dump:\n");
+  DEBUG("detailed instruction dump:\n");
   fpvm_decoder_print_inst(fi, stderr);
 #endif
 
@@ -997,30 +1007,48 @@ static void fp_restore_handler(void *priv) {
   regs.fpr_size = 16;
 
   // bind operands
+  // not relevant for a call instruction
+  // critical for a memory instruction
   if (fpvm_decoder_bind_operands(fi, &regs)) {
     ERROR("Cannot bind operands of instruction\n");
+    rc = -1;
     goto out;
   }
 
-  DEBUG("About to emulate:\n");
 #if DEBUG_OUTPUT
+  DEBUG("about to invoke correctness handler, register contents follow:\n"); 
   fpvm_dump_xmms_double(stderr, regs.fprs);
   fpvm_dump_xmms_float(stderr, regs.fprs);
   fpvm_dump_float_control(stderr, uc);
   fpvm_dump_gprs(stderr, uc);
 #endif
 
-  // 0 or -1 will reexecute the program
-  if (fpvm_fp_restore(fi, &regs) == 1) {
-    // restore happen; skip the instruction; otherwise re-execute;
-    // ERROR("fp restore Failed to emulate instruction\n");
-    // return ;
-    // skip instruction
+  int demotions=0;
+  fpvm_emulator_correctness_response_t r =
+    fpvm_emulator_handle_correctness_for_inst(fi, &regs, &demotions);
+
+  mc->correctness_demotions+=demotions;
+  DEBUG("handling resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
+  
+  switch (r) {
+  case FPVM_CORRECT_ERROR:
+    ERROR("failed to handle correctness for instruction...\n");
+    break;
+  case FPVM_CORRECT_CONTINUE:
+    DEBUG("handled correctness, allowing instruction to proceed\n");
+    break;
+  case FPVM_CORRECT_SKIP:
+    DEBUG("handled correctness, skipping instruction\n");
     uc->uc_mcontext.gregs[REG_RIP] += fi->length;
+    break;
+  default:
+    ERROR("unknown response from correctness handler: %d\n",r);
+    rc = -1;
+    break;
   }
 
-  DEBUG("Emulation done:\n");
 #if DEBUG_OUTPUT
+  DEBUG("correctness handling complete, registers follow:\n");
   fpvm_dump_xmms_double(stderr, regs.fprs);
   fpvm_dump_xmms_float(stderr, regs.fprs);
   fpvm_dump_float_control(stderr, uc);
@@ -1028,95 +1056,105 @@ static void fp_restore_handler(void *priv) {
 #endif
 
   if (do_insert) {
-    // put into the cache for next time
     decode_cache_insert(mc, fi);
+    DEBUG("problematic instruction added to decode cache\n");
   }
 
 out:
 
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+
+  return rc;
 }
 
-// SIGTRAP is used for three scenarios:
-//    bootstrap  - to initially set the FP exceptions/masks/etc
-//    singlestop - when cannot emulate an instruction and execute it instead
-//    abort      - when we need to revert back
-static void sigtrap_handler(int sig, siginfo_t *si, void *priv) {
+
+// The correctness trap handler is invoked in the following
+// situations:
+//
+//   bootstrap    - to initially set the FP exceptions/masks/etc for the thread
+//   correctness  - invoked by a correctness trap inserted into the application
+//                  binary via static analysis and
+//   single step  - indirectly after an FP trap if we cannot emulate the
+//                  trapping instruction.   This should really not occur
+//   abort        - we are in the process of aborting operation process-wide
+static int correctness_trap_handler(ucontext_t *uc)
+{
   execution_context_t *mc = find_execution_context(gettid());
-  ucontext_t *uc = (ucontext_t *)priv;
-
-  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
-      si->si_addr);
-
+  
   if (!mc || mc->state == ABORT) {
+    // ABORT case
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
+    // the trap flag (rflags.
     set_trap_flag_context(uc, 0);  // traps disabled
     if (!mc) {
       // this may end badly
-      abort_operation("Cannot find execution context during sigtrap_handler exec");
+      abort_operation("Cannot find execution context during correctness trap handler exec");
     } else {
       DEBUG("FP and TRAP mcontext restored on abort\n");
     }
-    return;
+    return -1;
   }
 
-  // turn FP exceptions back on
-  if (mc) {
-    orig_mxcsr_round_daz_ftz_mask = get_mxcsr_round_daz_ftz(uc);
-    clear_fp_exceptions_context(uc);        // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
-    set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
-    // set_trap_flag_context(uc,0);         // traps disabled
+  // if we got here, we have an mc, and are in INIT, AWAIT_TRAP, or AWAIT_FPE
 
-    if (mc->state == AWAIT_FPE) {
-      START_PERF(mc, patch);
-      fp_restore_handler(priv);
-      END_PERF(mc, patch);
-    } else {
-      ERROR("not await fpe %d \n", mc->state);
+
+  int rc = 0;
+  
+  switch (mc->state) {
+  case INIT:
+    DEBUG("initialization trap received\n");
+    // we have completed startup of the thread
+    break;
+  case AWAIT_TRAP:
+    DEBUG("single stepping trap received\n");
+    // we are completing this single step operation
+    break;
+  case AWAIT_FPE:
+    // this must be a correctness trap from the patched binary
+    DEBUG("correctness patch-driven trap received\n");
+    START_PERF(mc, patch);
+    rc = correctness_handler(uc,mc);
+    END_PERF(mc, patch);
+    if (rc) {
+      ERROR("correctness handler failed\n");
     }
-
-    mc->state = AWAIT_FPE;
-    DEBUG("MXCSR state initialized\n");
-    return;
-  } else {
-    ERROR("Caught trap with no matching context.... WTF\n");
-    return;
+    break;
+  default:
+    ERROR("unknown state %d (only INIT, AWAIT_TRAP, and AWAIT_FPE are expected\n",mc->state);
+    rc = -1;
+    break;
   }
+    
+  // reconfigure state to reflect waiting for the next FP trap in all cases
+  orig_mxcsr_round_daz_ftz_mask = get_mxcsr_round_daz_ftz(uc);
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
+  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_trap_flag_context(uc,0);         // traps disabled
+  
+  mc->state = AWAIT_FPE;
 
-  /*
-  if (mc->state == AWAIT_TRAP) {
-    mc->count++;
-    clear_fp_exceptions_context(uc);      // exceptions cleared
-    if (maxcount!=-1 && mc->count >= maxcount) {
-      // disable further operation since we've recorded enough
-      set_mask_fp_exceptions_context(uc,1); // exceptions masked
-      set_mxcsr_round_daz_ftz(uc,orig_mxcsr_round_daz_ftz_mask);
-    } else {
-      set_mask_fp_exceptions_context(uc,0); // exceptions unmasked
-      set_mxcsr_round_daz_ftz(uc,our_mxcsr_round_daz_ftz_mask);
-    }
-    set_trap_flag_context(uc,0);          // traps disabled
-    mc->state = AWAIT_FPE;
-    if (mc->sampler.delayed_processing) {
-        DEBUG("Delayed sampler handling\n");
-        update_sampler(mc,uc);
-    }
-  } else {
-    clear_fp_exceptions_context(uc);     // exceptions cleared
-    set_mask_fp_exceptions_context(uc,1);// exceptions masked
-    set_mxcsr_round_daz_ftz(uc,orig_mxcsr_round_daz_ftz_mask);
-    set_trap_flag_context(uc,0);         // traps disabled
-    mc->aborting_in_trap = 1;
-    abort_operation("Surprise state during sigtrap_handler exec");
+  return rc;
+
+}
+
+// ENTRY point for SIGTRAP
+static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
+{
+  ucontext_t *uc = (ucontext_t *)priv;
+
+  DEBUG("SIGTRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
+      si->si_addr);
+
+  if (correctness_trap_handler(uc)) {
+    abort_operation("correctness trap handler failed\n");
+    ASSERT(0);
   }
-
-  */
-
-  DEBUG("TRAP done\n");
+  
+  DEBUG("SIGTRAP done\n");
 }
 
 static void *magic_page=0;
@@ -1189,6 +1227,16 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 // Shared, common FP trap handling, regardless of how the
 // trap is delivered
 //
+// Note that if a faulting instruction cannot be emulated, the 
+// system will switch to single-step mode (x86 trap mode) in order
+// to allow the instruction to execute, and then get control back
+// to renable FP traps:
+//
+//   FP Trap -> Emulation Failure -> Single Step Mode + FP Traps Off
+//     -> Instruction Executes -> Next Instruction ->
+//        Correctness Trap via SIGTRAP
+//     -> FP Traps On + Single Step Mode Off
+//
 static void fp_trap_handler(ucontext_t *uc)
 {
   execution_context_t *mc = find_execution_context(gettid());
@@ -1199,12 +1247,16 @@ static void fp_trap_handler(ucontext_t *uc)
   fpvm_gc_run();
   END_PERF(mc, gc);
 
-  if (!mc) {
+  if (!mc || mc->state != AWAIT_FPE) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
     set_trap_flag_context(uc, 0);  // traps disabled
-    abort_operation("Cannot find execution context during sigfpvm_handler exec");
+    if (mc) { 
+      abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
+    } else {
+      abort_operation("Cannot find execution context during sigfpvm_handler exec");
+    }
     ASSERT(0);
     return;
   }
@@ -1458,6 +1510,8 @@ fail_do_trap:
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
   set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
   set_trap_flag_context(uc, 1);  // traps disabled
+  
+  mc->state = AWAIT_TRAP;
 
   // our next stop should be the instruction, and then, immediately afterwards,
   // the sigtrap handler
@@ -1630,7 +1684,10 @@ static int bringup_execution_context(int tid) {
   c->state = INIT;
   c->aborting_in_trap = 0;
   c->fp_traps = 0;
+  c->demotions = 0;
+  c->promotions = 0;
   c->correctness_traps = 0;
+  c->correctness_demotions = 0;
   c->emulated_inst = 0;
   c->decode_cache = malloc(sizeof(fpvm_inst_t *) * decode_cache_size);
   if (!c->decode_cache) {

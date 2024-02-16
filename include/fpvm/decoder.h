@@ -42,7 +42,7 @@ typedef enum {
   // unknown why we have these - PAD
   // FPVM_OP_SHIFT_RIGHT_BYTE,
   // FPVM_OP_SHIFT_LEFT_BYTE,
-  // FPVM_OP_RESOTRE,
+  // FPVM_OP_RESTORE,
   // FPVM_OP_ROUND,
 
 
@@ -69,6 +69,8 @@ typedef struct fpvm_inst {
   unsigned length;
 
   fpvm_inst_common_t *common;
+
+  int is_simple_mov;
 
   // note that operands are in the *intel* order, not the at&t order
   unsigned operand_count;

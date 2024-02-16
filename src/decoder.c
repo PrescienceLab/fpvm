@@ -223,6 +223,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     // moves are handled during sequence emulation to lengthen sequence length
     // they are also needed for correctness traps
     [X86_INS_MOV] = {FPVM_OP_MOVE, 0, 0, 8, 8},  // is this right? - PAD
+    //[X86_INS_MOVS] = {FPVM_OP_MOVE, 0, 0, 2, 2}, // surprising this doesn't exist - PAD
     [X86_INS_MOVD] = {FPVM_OP_MOVE, 0, 0, 4, 4},
     [X86_INS_MOVQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
     [X86_INS_MOVNTQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
@@ -390,6 +391,10 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_UNPCKHPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
 
     // call instructions and related
+    // push is included here because that is
+    // instruction that the patcher marks, instead of
+    // the call following it
+    [X86_INS_CALL] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_PUSH] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_JMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
@@ -423,6 +428,15 @@ static int decode_to_common(fpvm_inst_t *fi) {
     DEBUG("instruction decodes to unknown common op type\n");
     return -1;
   }
+  // track simple moves for correctness handler
+  if (inst->id==X86_INS_MOV  ||
+      // inst->id==X86_INS_MOVS ||  weird... 
+      inst->id==X86_INS_MOVD ||
+      inst->id==X86_INS_MOVQ ||
+      inst->id==X86_INS_MOVNTQ) {
+    fi->is_simple_mov = 1;
+  }
+
   return 0;
 }
 

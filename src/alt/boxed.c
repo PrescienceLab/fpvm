@@ -606,8 +606,7 @@ DECL_DEFINITION(u2f, float)
 
 int restore_double(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
-// ERROR("About to restore %016lx  %016lx \n", *(uint64_t*) src1,  *(uint64_t*)
-// src2);
+  DEBUG("About to restore %016lx  %016lx \n", *(uint64_t*) src1,  *(uint64_t*) src2);
 #define n 4
   void *allsrc[n] = {src1, src2, src3, src4};
   for (int i = 0; i < n; i++) {
