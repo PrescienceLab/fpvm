@@ -1207,15 +1207,6 @@ void fpvm_magic_trap_entry(void *priv)
 }
 #endif
 
-// Entry via normal trap
-static void sigtrap_entry(int sig, siginfo_t *si, void *priv)
-{
-  ucontext_t *uc = priv;
-  DEBUG("TRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
-      si->si_addr);
-
-  correctness_trap_handler(uc);
-}
 
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
@@ -1886,7 +1877,7 @@ static int bringup() {
 #endif
 
   memset(&sa, 0, sizeof(sa));
-  sa.sa_sigaction = sigtrap_entry;
+  sa.sa_sigaction = sigtrap_handler;
   sa.sa_flags |= SA_SIGINFO;
   sigemptyset(&sa.sa_mask);
   sigaddset(&sa.sa_mask, SIGINT);
