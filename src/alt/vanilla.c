@@ -32,10 +32,18 @@
     return 0;                                                                                   \
   }
 
-#define identity(x) (x)
-
-#define MOVE_OP(TYPE, ITYPE, SPEC, ISPEC) UN_FUNC(TYPE,ITYPE,move,identity,SPEC,ISPEC)
-
+// use separate integer-based move operation to avoid any nan-normalization crap...
+#define MOVE_OP(TYPE, ITYPE, SPEC, ISPEC)                                                       \
+  int vanilla_move_##TYPE(						                        \
+      op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
+                                                                                                \
+    DEBUG("move_" #TYPE ": " SPEC " = " SPEC " [" ISPEC "] (%p)\n", *(TYPE *)src1,*(TYPE *)src1, \
+        *(ITYPE *)src1, dest);                                                                  \
+    *(ITYPE *)dest = *(ITYPE *)src1;					                        \
+                                                                                                \
+    return 0;                                                                                   \
+  }
+  
 #define BIN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                     \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
