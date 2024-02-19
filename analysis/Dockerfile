@@ -38,6 +38,8 @@ COPY workspace /root/workspace
 RUN /root/analysis/src/run.sh /root/workspace/input
 RUN mkdir -p /root/output
 RUN cp /root/analysis/src/*_patches.csv /root/output/
+RUN cp /root/analysis/src/*.profile /root/output/
+RUN cp /root/analysis/src/*.timing /root/output/
 
 FROM scratch as output
 COPY --from=build /root/output .
