@@ -134,9 +134,14 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 }
 
 
-int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
+int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
   DEBUG("Emulating instruction\n");
 
+#if CONFIG_TELEMETRY_PROMOTIONS
+  // currently only promotions will be tracked
+  *promotions = *demotions = *clobbers = 0;
+#endif  
+  
   if (fi->common->has_mask) {
     // ERROR("Cannot handle masks yet\n");
     // ASSERT(0);
@@ -410,8 +415,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
   // PAD: if count>1, then this is a vector instruction, and we
   // had better have the steps for all operands correct
 
-  for (i = 0; i < count; i++, dest += dest_step, src1 += src_step, src2 += src_step,
-      src3 += src_step, src4 += src_step) {
+#define increment(a, step) (void *)(a ? (char *)a + step : 0)
+  for (int i = 0; i < count; i++, dest = increment(dest, dest_step),
+           src1 = increment(src1, src_step), src2 = increment(src2, src_step),
+           src3 = increment(src3, src_step), src4 = increment(src4, src_step)) {
 #if CONFIG_DEBUG
     Dl_info dli;
     dladdr(func,&dli);
@@ -431,7 +438,89 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
     //            If this begins to cause problems, we will have to fix that
     if (special.byte_width > 8) special.byte_width = 8;
+
+#if CONFIG_TELEMETRY_PROMOTIONS
+    uint64_t d=0, s1=0, s2=0, s3=0, s4=0;
+    if (dest) { d  = *((uint64_t*)dest); }
+    if (src1) { s1 = *((uint64_t*)src1); }
+    if (src2) { s2 = *((uint64_t*)src2); }
+    if (src3) { s3 = *((uint64_t*)src3); }
+    if (src4) { s4 = *((uint64_t*)src4); }
+#endif
+
     rc |= func(&special, dest, src1, src2, src3, src4);
+
+#if CONFIG_TELEMETRY_PROMOTIONS
+    // This assumes all promotions/demotions are done in place
+    // it will also likely miscount when src1==dest
+    // this could also probably sanity-check to see that there are no differences outside of promotions
+    // destination and src1 can be the same, so only consider dest changes
+    // only a destination can be clobbered
+    if (dest) {
+	if (d  != (*(uint64_t*)dest)) {
+	  if ((ISNAN(d))) { 
+	    (*clobbers)++;  DEBUG("destination clobbered\n");
+	  }
+	  if (fi->common->op_type != FPVM_OP_MOVE) {
+	    if (ISNAN(*(uint64_t*)dest)) {
+	      (*promotions)++; DEBUG("destination promoted\n");
+	    } else {
+	      (*demotions)++; DEBUG("destination demoted\n");
+	    }
+	  }
+	}
+    }
+    if (src1 && src1!=dest) { 
+      // only handle src1 separately if it is distinct from dest
+      // source operands should only be promoted...
+      if (s1  != (*(uint64_t*)src1)) {
+	if ((ISNAN(s1))) { 
+	  (*clobbers)++;  DEBUG("src1 clobbered\n");
+	}
+	if (ISNAN(*(uint64_t*)src1)) {
+	  (*promotions)++; DEBUG("src1 promoted\n");
+	} else {
+	  (*demotions)++; DEBUG("src1 demoted\n");
+	}
+      }
+    }
+    if (src2) {
+      if (s2  != (*(uint64_t*)src2)) {
+	if ((ISNAN(s2))) { 
+	  (*clobbers)++;  DEBUG("src2 clobbered\n");
+	}
+	if (ISNAN(*(uint64_t*)src2)) {
+	  (*promotions)++; DEBUG("src2 promoted\n");
+	} else {
+	  (*demotions)++; DEBUG("src2 demoted\n");
+	}
+      }
+    }
+    if (src3) {
+      if (s3  != (*(uint64_t*)src3)) {
+	if ((ISNAN(s3))) { 
+	  (*clobbers)++;  DEBUG("src3 clobbered\n");
+	}
+	if (ISNAN(*(uint64_t*)src3)) {
+	  (*promotions)++; DEBUG("src3 promoted\n");
+	} else {
+	  (*demotions)++; DEBUG("src3 demoted\n");
+	}
+      }
+    }
+    if (src4) {
+      if (s4  != (*(uint64_t*)src4)) {
+	if ((ISNAN(s4))) { 
+	  (*clobbers)++;  DEBUG("src4 clobbered\n");
+	}
+	if (ISNAN(*(uint64_t*)src4)) {
+	  (*promotions)++; DEBUG("src4 promoted\n");
+	} else {
+	  (*demotions)++; DEBUG("src4 demoted\n");
+	}
+      }
+    }
+#endif
   }
 
   DEBUG("Instruction emulation result: %d (%s)\n", rc, rc ? "FAIL" : "success");
@@ -466,7 +555,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi) {
 // 
 //
 fpvm_emulator_correctness_response_t
-fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotion_count)
+fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions)
 {
   DEBUG("handling problematic instruction of type %d (%s)\n", fi->common->op_type,
 	fi->common->op_type == FPVM_OP_MOVE ? "MOVE" :
@@ -474,7 +563,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	fi->common->op_type == FPVM_OP_WARN ? "WARN" :
 	fi->common->op_type == FPVM_OP_UNKNOWN ? "UNKNOWN" : "**SURPRISE!**");
 
-  *demotion_count=0;
+#if CONFIG_TELEMETRY_PROMOTIONS  
+  *demotions=0;
+#endif
   
   if (fi->common->has_mask) {
     ERROR("Cannot handle masks yet\n");
@@ -497,10 +588,14 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     for (int i = 0; i < 32; i++) {
       uint64_t *xmm_addr = (uint64_t *) (fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0));
       // invoke the altmath package to convert numbers back to doubles
+#if CONFIG_TELEMETRY_PROMOTIONS
       uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
+#endif
       restore_xmm(xmm_addr);
-      *demotion_count += xmm_addr[0]!= old[0];
-      *demotion_count += xmm_addr[1]!= old[1];
+#if CONFIG_TELEMETRY_PROMOTIONS
+      *demotions += xmm_addr[0]!= old[0];
+      *demotions += xmm_addr[1]!= old[1];
+#endif
     }
     return FPVM_CORRECT_CONTINUE;
   }
@@ -593,12 +688,14 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       // and write it to the destination
       *(uint64_t*)dest = temp;
       DEBUG("completed emulation of simple mov successully\n");
+#if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {
 	DEBUG("value actually demoted (%016lx => %016lx)\n",old,temp);
-	(*demotion_count)++;
+	(*demotions)++;
       } else {
 	DEBUG("value not demoted (not actually a nanbox)\n");
       }
+#endif
       return FPVM_CORRECT_SKIP;
     }
   }
@@ -627,21 +724,32 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
         src4);
 #endif
-    uint64_t s1[2]={0,0}, s2[2]={0,0}, s3[2]={0,0}, s4[2]={0,0};
-    if (src1) { s1[0] = ((uint64_t*)src1)[0]; s1[1] = ((uint64_t*)src1)[1]; } 
-    if (src2) { s2[0] = ((uint64_t*)src2)[0]; s2[1] = ((uint64_t*)src2)[1]; } 
-    if (src3) { s3[0] = ((uint64_t*)src3)[0]; s3[1] = ((uint64_t*)src3)[1]; } 
-    if (src4) { s4[0] = ((uint64_t*)src4)[0]; s4[1] = ((uint64_t*)src4)[1]; } 
+#if CONFIG_TELEMETRY_PROMOTIONS
+    // note that promotion/demotion monitoring here is slightly different
+    // than for full instruction emulation.   We only care about demotions,
+    // and we are not demoting the destination
+    uint64_t d=0, s1=0, s2=0, s3=0, s4=0;
+    if (dest) { d  = *((uint64_t*)dest); }
+    if (src1) { s1 = *((uint64_t*)src1); }
+    if (src2) { s2 = *((uint64_t*)src2); }
+    if (src3) { s3 = *((uint64_t*)src3); }
+    if (src4) { s4 = *((uint64_t*)src4); }
+#endif
     rc |= func(&special, dest, src1, src2, src3, src4);
-    if (src1) { *demotion_count += (((uint64_t*)src1)[0]!=s1[0]) + (((uint64_t*)src1)[1]!=s1[1]); }
-    if (src2) { *demotion_count += (((uint64_t*)src2)[0]!=s2[0]) + (((uint64_t*)src2)[1]!=s2[1]); }
-    if (src3) { *demotion_count += (((uint64_t*)src3)[0]!=s3[0]) + (((uint64_t*)src3)[1]!=s3[1]); }
-    if (src4) { *demotion_count += (((uint64_t*)src4)[0]!=s4[0]) + (((uint64_t*)src4)[1]!=s4[1]); }
+#if CONFIG_TELEMETRY_PROMOTIONS
+    if (dest) { *demotions += *((uint64_t*)dest)!=d;  DEBUG("demoted dest\n"); }
+    if (src1 && src1!=dest) { *demotions += *((uint64_t*)src1)!=s1; DEBUG("demoted src1\n"); }
+    if (src2) { *demotions += *((uint64_t*)src2)!=s2; DEBUG("demoted src2\n"); }
+    if (src3) { *demotions += *((uint64_t*)src3)!=s3; DEBUG("demoted src3\n"); }
+    if (src4) { *demotions += *((uint64_t*)src4)!=s4; DEBUG("demoted src4\n"); }
+#endif
   }
 
   DEBUG("Instruction emulation result: %d (%s)\n", rc, rc ? "FAIL" : "success");
 
-  DEBUG("demotions: %d\n",*demotion_count);
+#if CONFIG_TELEMETRY_PROMOTIONS
+  DEBUG("demotions: %d\n",*demotions);
+#endif
   
   if (rc) {
     ERROR("source demotion failed, so trying to execute instruction (BOGUS)\n");

@@ -13,6 +13,15 @@ config TELEMETRY
     default n
     help
        This will print out basic info that is always recorded
+
+config TELEMETRY_PROMOTIONS
+    bool "Track promotions and demotions"
+    depends on TELEMETRY
+    default n
+    help
+       This will include demotion/promotion and
+       correctness demotions, which currently are more
+       expensive to track than they should be
        
 config TELEMETRY_PERIOD
     depends on TELEMETRY

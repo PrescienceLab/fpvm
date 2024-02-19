@@ -204,6 +204,7 @@ typedef struct execution_context {
   uint64_t fp_traps;
   uint64_t promotions;
   uint64_t demotions;
+  uint64_t clobbers;           // overwriting one of our nans
   uint64_t correctness_traps;
   uint64_t correctness_demotions;
   uint64_t emulated_inst;
@@ -251,8 +252,11 @@ typedef struct execution_context {
 #define PRINT_PERFS(c)
 #endif
 
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu correctness traps, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->correctness_traps, (c)->correctness_demotions, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
-
+#if CONFIG_TELEMETRY_PROMOTIONS
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_demotions, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+#else
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+#endif
   
 } execution_context_t;
 
@@ -1015,7 +1019,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
     goto out;
   }
 
-#if DEBUG_OUTPUT
+#if 0 && DEBUG_OUTPUT
   DEBUG("about to invoke correctness handler, register contents follow:\n"); 
   fpvm_dump_xmms_double(stderr, regs.fprs);
   fpvm_dump_xmms_float(stderr, regs.fprs);
@@ -1027,8 +1031,11 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
   fpvm_emulator_correctness_response_t r =
     fpvm_emulator_handle_correctness_for_inst(fi, &regs, &demotions);
 
+
+#if CONFIG_TELEMETRY_PROMOTIONS
   mc->correctness_demotions+=demotions;
   DEBUG("handling resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
+#endif
   
   switch (r) {
   case FPVM_CORRECT_ERROR:
@@ -1047,7 +1054,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
     break;
   }
 
-#if DEBUG_OUTPUT
+#if 0 && DEBUG_OUTPUT
   DEBUG("correctness handling complete, registers follow:\n");
   fpvm_dump_xmms_double(stderr, regs.fprs);
   fpvm_dump_xmms_float(stderr, regs.fprs);
@@ -1243,10 +1250,16 @@ static void fp_trap_handler(ucontext_t *uc)
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
   uint8_t *start_rip = rip;
 
+  int inst_promotions = 0, inst_demotions = 0, inst_clobbers = 0;
+#if CONFIG_TELEMETRY_PROMOTIONS
+  int seq_promotions = 0, seq_demotions = 0, seq_clobbers = 0;
+#endif
+  
   START_PERF(mc, gc);
   fpvm_gc_run();
   END_PERF(mc, gc);
 
+  
   if (!mc || mc->state != AWAIT_FPE) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
@@ -1411,7 +1424,7 @@ static void fp_trap_handler(ucontext_t *uc)
     // #endif
     
     START_PERF(mc, emulate);
-    if (fpvm_emulator_emulate_inst(fi)) {
+    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
         ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
@@ -1431,6 +1444,13 @@ static void fp_trap_handler(ucontext_t *uc)
       }
     }
     END_PERF(mc, emulate);
+    
+#if CONFIG_TELEMETRY_PROMOTIONS
+    seq_promotions += inst_promotions;
+    seq_demotions += inst_demotions;
+    seq_clobbers += inst_clobbers;
+    DEBUG("instruction emulation created %d promotions, %d demotions, and %d clobbers; sequence so far has %d promotions, %d demotions, and %d clobbers\n", inst_promotions, inst_demotions, inst_clobbers, seq_promotions, seq_demotions, seq_clobbers);
+#endif
     
     rip += fi->length;
     
@@ -1477,7 +1497,13 @@ static void fp_trap_handler(ucontext_t *uc)
   }
 #endif
 
-    
+#if CONFIG_TELEMETRY_PROMOTIONS
+  mc->promotions += seq_promotions;
+  mc->demotions += seq_demotions;
+  mc->clobbers += seq_clobbers;
+  DEBUG("sequence had %d promotions, %d demotions, and %d clobbers\n", seq_promotions, seq_demotions, seq_clobbers);
+#endif
+
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
   
@@ -1502,6 +1528,13 @@ fail_do_trap:
       fpvm_decoder_free_inst(fi);
     }
   }
+
+#if CONFIG_TELEMETRY_PROMOTIONS
+  mc->promotions += seq_promotions;
+  mc->demotions += seq_demotions;
+  mc->clobbers += seq_clobbers;
+  DEBUG("evil sequence had %d promotions, %d demotions, and %d clobbers\n", seq_promotions, seq_demotions, seq_clobbers);
+#endif
 
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
@@ -1686,6 +1719,7 @@ static int bringup_execution_context(int tid) {
   c->fp_traps = 0;
   c->demotions = 0;
   c->promotions = 0;
+  c->clobbers = 0;
   c->correctness_traps = 0;
   c->correctness_demotions = 0;
   c->emulated_inst = 0;
