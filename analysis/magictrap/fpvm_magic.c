@@ -45,7 +45,88 @@ int Mlock(void *addr, uint64_t len)
   return Syscall(149,(uint64_t)addr,len,0,0,0,0);
 }
 
-void fpvm_correctness_trap(void)
+// This is highly dependent on e9patch's trampoline implementation
+// For now, e9patch calls us in this manner:
+
+/*
+	lea -0x4000(%rsp), rsp
+	call fpvm_correctness_trap
+	lea 0x4000(%rsp), rsp
+	<original instruction>
+*/
+
+// For a variety of reasons, we will have to hack around this
+__asm__(
+  ".global fpvm_correctness_trap;"
+  ".type fpvm_correctness_trap, @function;"
+  "fpvm_correctness_trap:;"
+  // Gonna give FPVM the "correct" RSP
+  "pushq %rcx;"
+  "leaq 0x4010(%rsp), %rcx;"
+
+  "pushf;"
+  "pushq 0x10(%rsp);"
+  "pushq %rcx ;"
+  "pushq 0x18(%rsp);"
+  "pushq %rax;"
+  "pushq %rdx;"
+  "pushq %rbx;"
+  "pushq %rbp;"
+  "pushq %rsi;"
+  "pushq %rdi;"
+  "pushq %r15;"
+  "pushq %r14;"
+  "pushq %r13;"
+  "pushq %r12;"
+  "pushq %r11;"
+  "pushq %r10;"
+  "pushq %r9;"
+  "pushq %r8;"
+
+  // pt_regs setup
+  "movq %rsp, %rdi;"
+
+  // Check stack alignment
+  "test $0xF, %spl;"
+  "jnz fpvm_trap_entry_unaligned;"
+
+  // Go here if aligned
+  "fpvm_trap_entry_aligned:;"
+  "call fpvm_correctness_trap_dispatch;"
+  "jmp fpvm_trap_entry_exit;"
+
+  // Go here is unaligned
+  "fpvm_trap_entry_unaligned:;"
+  "subq $0x8, %rsp;"
+  "call fpvm_correctness_trap_dispatch;"
+  "addq $0x8, %rsp;"
+
+  "fpvm_trap_entry_exit:;"
+  "popq %r8;"
+  "popq %r9;"
+  "popq %r10;"
+  "popq %r11;"
+  "popq %r12;"
+  "popq %r13;"
+  "popq %r14;"
+  "popq %r15;"
+  "popq %rdi;"
+  "popq %rsi;"
+  "popq %rbp;"
+  "popq %rbx;"
+  "popq %rdx;"
+  "popq %rax;"
+  "popq %rcx;"
+  // Ignore the saved %RIP and %RSP;
+  "addq $0x10, %rsp;"
+  "popf;"
+  "movq -0x18(%rsp), %rsp;"
+  "jmp *-0x4020(%rsp);"
+
+);
+
+
+void fpvm_correctness_trap_dispatch(void * pt_regs)
 {
   if (!checked_for_magic) {  // branch hint unlikely
     // check to see if FPVM RT has already air-dropped
@@ -78,7 +159,7 @@ void fpvm_correctness_trap(void)
   if (have_magic) { // branch hint likely
     // magic trap
     //Write(2,"MAGIC!!\n",8);
-    FPVM_MAGIC_TRAP_ENTRY_NAME();
+    FPVM_MAGIC_TRAP_ENTRY_NAME(pt_regs);
   } else {
     // mundane trap
     Write(2,"mundane\n",8);
