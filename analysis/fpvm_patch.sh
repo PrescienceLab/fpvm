@@ -1,10 +1,40 @@
 #!/usr/bin/env bash
 
+
+
+
 PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
 
 
 OLD_DIR=$PWD
+
+# Parse the command line arguments
+BIN=""
+workspace="${PFX}/workspace/"
+
+# Parse command-line arguments
+while getopts ":w:" opt; do
+  case ${opt} in
+    w )
+      workspace=$(realpath "$OPTARG")
+      ;;
+    \? )
+      echo "Usage: $(basename $0) [-w WORKSPACE] <binary>"
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND -1))
+
 BIN=$(realpath $1)
+
+
+echo $BIN
+echo $workspace
+
+[[ -z "${BIN}" ]] && { echo "No binary provided" ; exit 1; }
+
+
 
 pushd ${PFX}
 
@@ -16,18 +46,18 @@ pushd ${PFX}
 
 
   # Delete the old workspace folder
-  rm -rf workspace
+  rm -rf ${workspace}
   # Make a new one
-  mkdir -p workspace
+  mkdir -p ${workspace}
   # Copy the binary into the right location
-  cp $BIN workspace/input
+  cp $BIN ${workspace}/input
   # Copy other stuff we will want
-  cp /usr/bin/time workspace
-  # Run the patch
-  docker buildx build --progress=plain -o workspace/ .
+  cp /usr/bin/time ${workspace}
+  # Run the patch, copying the results to the workspace folder
+  docker buildx build --progress=plain -o $workspace .
 
 
-  pushd workspace
+  pushd $workspace
 
   
     # Patch with traps
