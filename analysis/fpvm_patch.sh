@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
-
+if [[ -z "${FPVM_HOME}" ]] ; then
+    echo "Please set FPVM_HOME"
+    exit 1;
+fi
 
 
 PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
@@ -67,7 +70,8 @@ pushd ${PFX}
     cp input.patched_trap ${BIN}.patched_trap
 
     # Build magic
-    e9compile.sh ../magictrap/fpvm_magic.c
+    cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.c .
+    e9compile.sh fpvm_magic.c
 
     # Patch with magic
     e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap<naked>()@fpvm_magic" \
@@ -80,7 +84,7 @@ pushd ${PFX}
     cp call_patches.csv ${BIN}.call_patches.csv
     cp mem_patches.csv ${BIN}.mem_patches.csv
     cp fpvm_magic ${BIN}.fpvm_magic
-    cp ../magictrap/fpvm_magic.c ${BIN}.fpvm_magic.c
+    cp fpvm_magic.c ${BIN}.fpvm_magic.c
     cp input ${BIN}.original
     cp generate.profile ${BIN}.generate.profile
     cp taintsource.profile ${BIN}.taintsource.profile
