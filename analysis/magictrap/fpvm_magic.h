@@ -14,7 +14,7 @@
 */
 
 
-typedef void (*fpvm_magic_trap_entry_t)(void);
+typedef void (*fpvm_magic_trap_entry_t)(void * pt_regs);
 
 #define FPVM_MAGIC_TRAP_ENTRY_NAME fpvm_correctness_trap_entry
 

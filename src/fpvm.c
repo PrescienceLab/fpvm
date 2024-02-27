@@ -1809,11 +1809,6 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
-#if CONFIG_MAGIC_CORRECTNESS_TRAP
-// trampoline entry stub - from the assembly code
-extern void * fpvm_magic_trap_entry_asm;
-#endif
-
 static int bringup() {
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
@@ -1901,7 +1896,7 @@ static int bringup() {
   f = dlsym(RTLD_NEXT, FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
 
   if (f) {
-    *f = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry_asm;
+    *f = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
     DEBUG("airdropped magic trap location\n");
   } else {
     DEBUG("no airdrop of magic trap is possible, can't find %s\n",FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
@@ -1919,7 +1914,7 @@ static int bringup() {
       magic_page = 0;
     } else {
       *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
-      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry_asm;
+      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
       DEBUG("magic page initialized\n");
     }
   }
