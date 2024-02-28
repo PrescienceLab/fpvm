@@ -70,7 +70,7 @@ pushd ${PFX}
     cp input.patched_trap ${BIN}.patched_trap
 
     # Build magic
-    cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.c .
+    cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.[ch] .
     e9compile.sh fpvm_magic.c
 
     # Patch with magic
@@ -85,6 +85,7 @@ pushd ${PFX}
     cp mem_patches.csv ${BIN}.mem_patches.csv
     cp fpvm_magic ${BIN}.fpvm_magic
     cp fpvm_magic.c ${BIN}.fpvm_magic.c
+    cp fpvm_magic.h ${BIN}.fpvm_magic.h
     cp input ${BIN}.original
     cp generate.profile ${BIN}.generate.profile
     cp taintsource.profile ${BIN}.taintsource.profile
