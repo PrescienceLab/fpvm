@@ -1548,16 +1548,10 @@ static void fp_trap_handler(ucontext_t *uc)
   // of a sequence could not be decoded, bound, or emulated
 fail_do_trap:
 
-  fpvm_decoder_get_inst_str(fi, instbuf, 256);
-
-  ERROR(
-      "Unable to emulate first instruction of sequence and starting single step - instr %s - "
-      "rip %p instr bytes %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x "
-      "%02x %02x %02x %02x %02x %02x\n",
-      instbuf, rip, rip[0], rip[1], rip[2], rip[3], rip[4], rip[5], rip[6], rip[7], rip[8], rip[9],
-      rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG("doing fail do trap for %p\n",rip);
 
   if (fi) {
+    DEBUG("have decoded failing instruction\n");
     // only free if we didn't find it in the decode cache...
     if (do_insert) {
       fpvm_decoder_free_inst(fi);
@@ -1571,6 +1565,7 @@ fail_do_trap:
   DEBUG("evil sequence had %d promotions, %d demotions, and %d clobbers\n", seq_promotions, seq_demotions, seq_clobbers);
 #endif
 
+  DEBUG("switching to trap mode\n");
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
