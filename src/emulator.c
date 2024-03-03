@@ -680,8 +680,10 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	ERROR("simple move with operand size %d ... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->common->op_size);
 	goto complex_transforms_sources_yikes;
       }
-      // now we will copy the source instead of using original value
-      uint64_t temp = *(uint64_t*)src1;
+      // because this is a mov, there is only one source, and it is not the destination
+      // note that this is different from the emulation code below, which
+      // We have previously decoded mov dest|src1, src2, thus we need to convert src2
+      uint64_t temp = *(uint64_t*)src2;
       uint64_t old = temp;
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);

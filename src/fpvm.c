@@ -1804,6 +1804,9 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
+// these are auto-generated
+#include <fpvm/additional_wrappers.h>
+
 static int bringup() {
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
@@ -1818,6 +1821,11 @@ static int bringup() {
     return -1;
   }
 
+  if (fpvm_setup_additional_wrappers()) {
+    ERROR("Some additional wrapper setup failed - ignoring\n");
+  }
+
+  
   ORIG_IF_CAN(feclearexcept, exceptmask);
 
   init_execution_contexts();
