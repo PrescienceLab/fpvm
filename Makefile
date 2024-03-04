@@ -31,6 +31,10 @@ foo:
 	@echo "objects:  $(OBJS)"
 	@echo "includes: $(INCS)"
 
+include/fpvm/additional_wrappers.h src/additional_wrappers.S : wrap.list
+	scripts/wrap_dynamic_calls.pl wrap.list additional_wrappers
+	mv additional_wrappers.h include/fpvm
+	mv additional_wrappers.S src
 
 # assembly
 $(BUILD)/%.s.o: %.s

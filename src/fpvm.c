@@ -95,6 +95,10 @@ volatile static int mxcsrmask_base =
 #define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
 #define MXCSR_MASK_MASK (mxcsrmask_base << 7)
 
+// for communication to auto-generated wrappers
+uint32_t __fpvm_mxcsr_mask_entry = (0x3f<<7);      // | => masks on, nothing touched
+uint32_t __fpvm_mxcsr_mask_exit  = (((~0x3f)<<7)|(0x1<<6));   // & => masks off, flags zeroed 
+
 // MXCSR used when *we* are executing floating point code
 // All masked, flags zeroed, round nearest, special features off
 #define MXCSR_OURS 0x1f80
@@ -337,6 +341,11 @@ static void mxcsr_disable_save(uint32_t* old) {
 
 static void mxcsr_restore(uint32_t old) {
   set_mxcsr(old);
+}
+
+void fpvm_demote_machine_registers(void)
+{
+  ERROR("machine register remotion is UNIMPLEMENTED\n");
 }
 
 #if CONFIG_TRAP_SHORT_CIRCUITING || CONFIG_MAGIC_CORRECTNESS_TRAP
