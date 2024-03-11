@@ -1,6 +1,7 @@
 #ifndef _FPVM_EMULATOR_
 #define _FPVM_EMULATOR_
 
+#include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
 
 
@@ -19,6 +20,9 @@ typedef enum {
 } fpvm_emulator_correctness_response_t;
 fpvm_emulator_correctness_response_t
 fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions);
+
+int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr);
+
 
 // double (*orig_pow)(double a, double b) = 0;
 // double (*orig_exp)(double a) = 0;

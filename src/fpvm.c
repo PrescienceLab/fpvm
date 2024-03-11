@@ -95,10 +95,6 @@ volatile static int mxcsrmask_base =
 #define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
 #define MXCSR_MASK_MASK (mxcsrmask_base << 7)
 
-// for communication to auto-generated wrappers
-uint32_t __fpvm_mxcsr_mask_entry = (0x3f<<7);      // | => masks on, nothing touched
-uint32_t __fpvm_mxcsr_mask_exit  = (((~0x3f)<<7)|(0x1<<6));   // & => masks off, flags zeroed 
-
 // MXCSR used when *we* are executing floating point code
 // All masked, flags zeroed, round nearest, special features off
 #define MXCSR_OURS 0x1f80
@@ -321,6 +317,10 @@ typedef union {
 static int context_lock;
 static execution_context_t context[MAX_CONTEXTS];
 
+// faster lookup of execution context
+__thread execution_context_t *__fpvm_current_execution_context=0;
+
+
 static uint32_t get_mxcsr() {
   uint32_t val = 0;
   __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
@@ -389,6 +389,11 @@ static execution_context_t *find_execution_context(int tid) {
   }
   unlock_contexts();
   return 0;
+}
+
+execution_context_t *find_my_execution_context(void)
+{
+  return __fpvm_current_execution_context;
 }
 
 
@@ -597,7 +602,7 @@ static void abort_operation(char *reason) {
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
     ORIG_IF_CAN(sigaction, SIGFPE, &oldsa_fpe, 0);
 
-    execution_context_t *mc = find_execution_context(gettid());
+    execution_context_t *mc = find_my_execution_context();
 
     if (!mc) {
       ERROR("Cannot find execution context\n");
@@ -706,13 +711,13 @@ static void *trampoline(void *p) {
   // cleanup here
 
 #if CONFIG_INSTR_TRACES
-  PRINT_TRACES(find_execution_context(gettid()));
+  PRINT_TRACES(find_my_execution_context());
 #endif
 #if CONFIG_TELEMETRY
-  PRINT_TELEMETRY(find_execution_context(gettid()));
+  PRINT_TELEMETRY(find_my_execution_context());
 #endif
 #if CONFIG_PERF_STATS
-  PRINT_PERFS(find_execution_context(gettid()));
+  PRINT_PERFS(find_my_execution_context());
 #endif
 
   pthread_exit(ret);
@@ -1097,7 +1102,7 @@ out:
 //   abort        - we are in the process of aborting operation process-wide
 static int correctness_trap_handler(ucontext_t *uc)
 {
-  execution_context_t *mc = find_execution_context(gettid());
+  execution_context_t *mc = find_my_execution_context();
 
   if (!mc || mc->state == ABORT) {
     // ABORT case
@@ -1217,6 +1222,61 @@ void fpvm_magic_trap_entry(void *priv)
 #endif
 
 
+uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void)
+{ 
+  execution_context_t *mc = find_my_execution_context();
+  struct _libc_fpstate fstate;
+  fpvm_regs_t regs;
+  int demotions=0;
+
+  if (!mc) {
+    ERROR("foreign call from unknown execution context\n");
+    abort_operation("foreign call from unknown execution context\n");
+    return -1;
+  }
+  
+  SAFE_DEBUG("handling correctness for foreign call\n");
+
+  uint32_t oldmxcsr = get_mxcsr();
+
+  fxsave(&fstate);
+
+  regs.mcontext = 0;        // nothing should need this state
+  regs.fprs = fstate._xmm;  // note xmm only
+  regs.fpr_size = 16;       // note bogus
+    
+  demotions = fpvm_emulator_demote_registers(&regs);
+
+  if (demotions<0) {
+    ERROR("demotions in foreign call somehow failed\n");
+    abort_operation("demotions in foreign call somehow failed\n");
+    return -1;
+  }
+
+#if CONFIG_TELEMETRY_PROMOTIONS
+  mc->correctness_demotions+=demotions;
+  // NOT SAFE TO DO HERE
+  // DEBUG("handling foreign call resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
+#endif
+
+  // disable our traps
+  uint32_t mxcsr = oldmxcsr | MXCSR_MASK_MASK;
+
+  // NOT SAFE TO DO HERE WILL POLLUTE FPRS
+  //DEBUG("setting mxcsr to %08x (previously %08x)\n", mxcsr, oldmxcsr);
+  SAFE_DEBUG("setting mxcsr\n");
+
+  fxrstor(&fstate);  // restore demoted registers to machine
+  
+  set_mxcsr(mxcsr);
+
+  // return the value to restore to after the call
+  return oldmxcsr;
+  
+}
+
+
+
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
   return ((uint64_t)rip) % table_len;
 }
@@ -1290,7 +1350,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 //
 static void fp_trap_handler(ucontext_t *uc)
 {
-  execution_context_t *mc = find_execution_context(gettid());
+  execution_context_t *mc = find_my_execution_context();
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
   uint8_t *start_rip = rip;
 
@@ -1771,6 +1831,8 @@ static int bringup_execution_context(int tid) {
     memset(c->decode_cache, 0, sizeof(fpvm_inst_t *) * c->decode_cache_size);
   }
 
+  __fpvm_current_execution_context = c;
+  
   return 0;
 }
 

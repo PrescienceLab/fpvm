@@ -22,9 +22,25 @@
 
 #define MALLOC_ALIGN_16 fpvm_gc_alloc
 
+#if CONFIG_DEBUG_ALT_ARITH
 #ifdef DEBUG
 #undef DEBUG
-#define DEBUG(...)
+#endif
+#define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
+#ifdef SAFE_DEBUG
+#undef SAFE_DEBUG
+#endif
+#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: boxed: " S, strlen("fpvm safe debug: boxed: " S))
+#else
+#define DEBUG(S, ...)
+#define SAFE_DEBUG(S)
+#endif
+
+#if !NO_OUTPUT
+#undef INFO
+#undef ERROR
+#define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
+#define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
 #endif
 
 #define EXIT(d) exit(d)  // not exit , what if there is really a nan
@@ -35,7 +51,7 @@
 
 #define IEEE_REVERT_SIGN(ITYPE, TYPE, ptr_val, dest)                                              \
   {                                                                                               \
-    DEBUG("CHECK IS THIS WIRED ? %016lx \n", *(uint64_t *)dest);                                  \
+    DEBUG("REVERT_SIGN %016lx (potential corruption)\n", *(uint64_t *)dest);                                  \
     volatile TYPE *_per_result = (TYPE *)MALLOC_ALIGN_16(sizeof(TYPE));                           \
     memset(_per_result, 0, sizeof(TYPE));                                                         \
     *_per_result = -*(TYPE *)ptr_val;                                                             \
@@ -49,8 +65,8 @@
   int NAME##_##TYPE(                                                                               \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {         \
     void *src_or1 = src1, *src_or2 = src2;                                                         \
-    DEBUG(ISNAN(*(uint64_t *)src1) ? "True " : "False ");                                          \
-    DEBUG(ISNAN(*(uint64_t *)src2) ? "True \n" : "False \n");                                      \
+    DEBUG("src1 nan: %s\n", ISNAN(*(uint64_t *)src1) ? "True" : "False"); \
+    DEBUG("src2 nan: %s\n", ISNAN(*(uint64_t *)src2) ? "True" : "False"); \
     DEBUG("src1 %p , %016lx,  src2 %p, %016lx \n", src1, *(uint64_t *)src1, src2,                  \
         *(uint64_t *)src2);                                                                        \
     if (ISNAN(*(uint64_t *)src1)) {                                                                \
@@ -66,12 +82,12 @@
       IEEE_REVERT_SIGN(ITYPE, TYPE, src2, src_or2);                                                \
     if (isnan(*(double *)src1)) {                                                                  \
       ERROR(                                                                                       \
-          "not my nan, try fix %p ori ptr %p, val %016lx\n", src1, src_or1, *(uint64_t *)src_or1); \
+          "src1 not my nan, try fix %p ori ptr %p, val %016lx\n", src1, src_or1, *(uint64_t *)src_or1); \
       EXIT(1);                                                                                     \
     }                                                                                              \
     if (isnan(*(double *)src2)) {                                                                  \
       ERROR(                                                                                       \
-          "not my nan, try fix %p ori ptr %p, val %016lx\n", src2, src_or2, *(uint64_t *)src_or2); \
+          "src2 not my nan, try fix %p ori ptr %p, val %016lx\n", src2, src_or2, *(uint64_t *)src_or2); \
       EXIT(1);                                                                                     \
     }                                                                                              \
     DEBUG("decoded src1 %p , %016lx,  src2 %p, %016lx \n", src1, *(uint64_t *)src1, src2,          \
@@ -95,7 +111,7 @@
   int NAME##_##TYPE(                                                                            \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
     void *src_or1 = src1;                                                                       \
-    DEBUG(ISNAN(*(uint64_t *)src1) ? "True \n" : "False \n");                                   \
+    DEBUG("src1 nan: %s\n",ISNAN(*(uint64_t *)src1) ? "True" : "False"); \
     DEBUG("src1 %p , %016lx\n", src1, *(uint64_t *)src1);                                       \
     if (ISNAN(*(uint64_t *)src1)) src1 = (void *)NANBOX_DECODE(*(uint64_t *)src1);              \
     if (CORRUPTED(*(uint64_t *)src_or1, *(uint64_t *)src1))                                     \
@@ -119,8 +135,8 @@
   int NAME##_##TYPE(                                                                        \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {  \
     void *src_or1 = src1, *src_or2 = src2;                                                  \
-    DEBUG(ISNAN(*(uint64_t *)src1) ? "True " : "False ");                                   \
-    DEBUG(ISNAN(*(uint64_t *)src2) ? "True \n" : "False \n");                               \
+    DEBUG("src1 nan: %s\n",ISNAN(*(uint64_t *)src1) ? "True" : "False"); \
+    DEBUG("src2 nan: %s\n",ISNAN(*(uint64_t *)src2) ? "True" : "False"); \
     DEBUG("src1 %p , %016lx,  src2 %p, %016lx \n", src1, *(uint64_t *)src1, src2,           \
         *(uint64_t *)src2);                                                                 \
     if (ISNAN(*(uint64_t *)src1)) src1 = (void *)NANBOX_DECODE(*(uint64_t *)src1);          \
@@ -148,9 +164,9 @@
   int NAME##_##TYPE(                                                                               \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {         \
     void *src_or1 = src1, *src_or2 = src2, *src_or3 = src3;                                        \
-    DEBUG(ISNAN(*(uint64_t *)src1) ? "True " : "False ");                                          \
-    DEBUG(ISNAN(*(uint64_t *)src2) ? "True " : "False ");                                          \
-    DEBUG(ISNAN(*(uint64_t *)src3) ? "True \n" : "False \n");                                      \
+    DEBUG("src1 nan: %s\n",ISNAN(*(uint64_t *)src1) ? "True" : "False"); \
+    DEBUG("src2 nan: %s\n",ISNAN(*(uint64_t *)src2) ? "True" : "False");                                          \
+    DEBUG("src3 nan: %s\n",ISNAN(*(uint64_t *)src3) ? "True" : "False");                                      \
     DEBUG("src1 %p , %016lx,  src2 %p, %016lx, src3 %p, %016lx \n", src1, *(uint64_t *)src1, src2, \
         *(uint64_t *)src2, src3, *(uint64_t *)src3);                                               \
     if (ISNAN(*(uint64_t *)src1)) src1 = (void *)NANBOX_DECODE(*(uint64_t *)src1);                 \
@@ -425,9 +441,9 @@ int f2i_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
 
 int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   void *src_or1 = src1, *src_or2 = src2;
-  DEBUG("CMP !!!!! WTF deal with it \n");
-  DEBUG("%s\n", ISNAN(*(uint64_t *)src1) ? "True " : "False ");
-  DEBUG("%s\n", ISNAN(*(uint64_t *)src2) ? "True \n" : "False \n");
+  DEBUG("CMP !!!!! WTF deal with it\n");
+  DEBUG("src1 nan: %s\n", ISNAN(*(uint64_t *)src1) ? "True" : "False");
+  DEBUG("src2 nan: %s\n", ISNAN(*(uint64_t *)src2) ? "True" : "False");
   DEBUG("src1 %p , %016lx,  src2 %p, %016lx \n", src1, *(uint64_t *)src1, src2, *(uint64_t *)src2);
   if (ISNAN(*(uint64_t *)src1)) {
     src1 = (void *)NANBOX_DECODE(*(uint64_t *)src1);
@@ -442,11 +458,11 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     IEEE_REVERT_SIGN(uint64_t, double, src2, src_or2);
 
   if (isnan(*(double *)src1)) {
-    ERROR("not my nan, try fix %p ori ptr %p, val %016lx\n", src1, src_or1, *(uint64_t *)src1);
+    ERROR("src1 not my nan, try fix %p ori ptr %p, val %016lx\n", src1, src_or1, *(uint64_t *)src1);
     EXIT(1);
   }
   if (isnan(*(double *)src2)) {
-    ERROR("not my nan, try fix %p ori ptr %p, val %016lx\n", src2, src_or2, *(uint64_t *)src2);
+    ERROR("src2 not my nan, try fix %p ori ptr %p, val %016lx\n", src2, src_or2, *(uint64_t *)src2);
     EXIT(1);
   }
 
@@ -571,7 +587,7 @@ UN_FUNC(double, uint64_t, sqrt, sqrt, "%lf", "%016lx");
 
 #define DECL_DEFINITION(FUNC, TYPE) \
   FPVM_MATH_DECL(FUNC, TYPE) {      \
-    printf("Nice.\n");              \
+    ERROR("huh?  %s invoked\n", #FUNC);	\
     return 0;                       \
   }
 
@@ -604,36 +620,46 @@ DECL_DEFINITION(u2f, float)
 
 // restore function
 
-int restore_double(
-    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
-  DEBUG("About to restore %016lx  %016lx \n", *(uint64_t*) src1,  *(uint64_t*) src2);
+  // if ptr points to a valid double, return that. If it points to a boxed value,
+// convert it to a double. Designed for debugging
+static double decode_to_double(void *ptr) {
+  double value = *(double *)ptr;
+  double *box_value = (double *)fpvm_gc_unbox(value);
+  if (box_value) {
+    return *box_value;
+  } else {
+    return value;
+  }
+}
+
+  
+int restore_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
 #define n 4
   void *allsrc[n] = {src1, src2, src3, src4};
   for (int i = 0; i < n; i++) {
-    uint64_t *src = (void *)allsrc[i];  // src1 is mem op
-    if (src != NULL && ISNAN(*(uint64_t *)src)) {
-      double a = *(double *)NANBOX_DECODE(*(uint64_t *)src);
-      a = (CORRUPTED(*(uint64_t *)src, *(uint64_t *)&a) ? -a : a);
-      *(uint64_t *)src = *(uint64_t *)&a;
+    if (allsrc[i]) {
+      *(double*)allsrc[i] = decode_to_double(allsrc[i]);
     }
   }
-
   return 0;
 }
+
 int restore_float(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   // skip float
   return 0;
 }
 
-int restore_xmm(void *xmm_ptr) {
+int NO_TOUCH_FLOAT restore_xmm(void *xmm_ptr) {
+  // NOT SAFE DEBUG("restore xmm %p\n",xmm_ptr);
+  // SAFE_DEBUG("restore xmm\n");
   uint64_t *src = (uint64_t *)xmm_ptr;  // src1 is mem op
   // printf("captures call here\n");
   if (src != NULL && ISNAN(*(uint64_t *)src)) {
     double a = *(double *)NANBOX_DECODE(*(uint64_t *)src);
     a = (CORRUPTED(*(uint64_t *)src, *(uint64_t *)&a) ? -a : a);
     *(uint64_t *)src = *(uint64_t *)&a;
-    // printf("xmm0 value after %lf \n", *(uint64_t*) xmm_ptr);
+    // NOTE SAFE printf("xmm0 value after %lf \n", *(uint64_t*) xmm_ptr);
   }
   // iterate to next one in xmm
   src = (uint64_t *)((char *)src + 8);
@@ -642,7 +668,7 @@ int restore_xmm(void *xmm_ptr) {
     double a = *(double *)NANBOX_DECODE(*(uint64_t *)src);
     a = (CORRUPTED(*(uint64_t *)src, *(uint64_t *)&a) ? -a : a);
     *(uint64_t *)src = *(uint64_t *)&a;
-    // printf("xmm0 value after %lf \n", *(uint64_t*) xmm_ptr);
+    // NOT SAFE printf("xmm0 value after %lf \n", *(uint64_t*) xmm_ptr);
   }
   return 0;
 }
@@ -708,7 +734,7 @@ void sincos(double a, double *sin, double *cos) {
   void *xmm1;
   RECOVER(a, xmm1);
   orig_sincos(a, sin, cos);
-  // DEBUG(#NAME " input (%lf , %d) result %lf \n", a, , ori);
+  DEBUG("sincos " " input (%lf) result %lf, %lf \n", a, *sin, *cos);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   return;

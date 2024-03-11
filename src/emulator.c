@@ -528,12 +528,39 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   return rc;
 }
 
+int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr) 
+{
+  int demotions=0;
+  SAFE_DEBUG("handling fp register demotions\n");
+#define _XMM(id) X86_REG_XMM##id
+  int allxmm[32] = {_XMM(0), _XMM(1), _XMM(2), _XMM(3), _XMM(4), _XMM(5), _XMM(6), _XMM(7),
+    _XMM(8), _XMM(9), _XMM(10), _XMM(11), _XMM(12), _XMM(13), _XMM(14), _XMM(15), _XMM(16),
+    _XMM(17), _XMM(18), _XMM(19), _XMM(20), _XMM(21), _XMM(22), _XMM(23), _XMM(24), _XMM(25),
+    _XMM(26), _XMM(27), _XMM(28), _XMM(29), _XMM(30), _XMM(31)};
+  for (int i = 0; i < 32; i++) {
+      uint64_t *xmm_addr = (uint64_t *) (fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0));
+      // invoke the altmath package to convert numbers back to doubles
+#if CONFIG_TELEMETRY_PROMOTIONS
+      uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
+#endif
+      restore_xmm(xmm_addr);
+#if CONFIG_TELEMETRY_PROMOTIONS
+      demotions += xmm_addr[0]!= old[0];
+      demotions += xmm_addr[1]!= old[1];
+#endif
+  }
+  SAFE_DEBUG("demotions done\n");
+  return demotions;
+}
+				   
+
 //
 // There are currently two reasons why this function might be invoked:
 //
 // patched call instruction
 //     (ideally only to a function that is not subject to the static analysis)
-//  
+//     Note that libm functions are internalized to the alt math package
+//     and we should never see them here
 // patched memory instruction
 //     (which may read an FP value that is a nanbox)
 //
@@ -579,24 +606,15 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 
 
   if (fi->common->op_type == FPVM_OP_CALL) {
-    DEBUG("handling problematic call instruction\n");
-#define _XMM(id) X86_REG_XMM##id
-    int allxmm[32] = {_XMM(0), _XMM(1), _XMM(2), _XMM(3), _XMM(4), _XMM(5), _XMM(6), _XMM(7),
-        _XMM(8), _XMM(9), _XMM(10), _XMM(11), _XMM(12), _XMM(13), _XMM(14), _XMM(15), _XMM(16),
-        _XMM(17), _XMM(18), _XMM(19), _XMM(20), _XMM(21), _XMM(22), _XMM(23), _XMM(24), _XMM(25),
-        _XMM(26), _XMM(27), _XMM(28), _XMM(29), _XMM(30), _XMM(31)};
-    for (int i = 0; i < 32; i++) {
-      uint64_t *xmm_addr = (uint64_t *) (fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0));
-      // invoke the altmath package to convert numbers back to doubles
-#if CONFIG_TELEMETRY_PROMOTIONS
-      uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
-#endif
-      restore_xmm(xmm_addr);
-#if CONFIG_TELEMETRY_PROMOTIONS
-      *demotions += xmm_addr[0]!= old[0];
-      *demotions += xmm_addr[1]!= old[1];
-#endif
+    DEBUG("handling problematic call instruction (SHOULD NOT HAPPEN WITH WRAPPERS)\n");
+    int rc = fpvm_emulator_demote_registers(fr);
+    if (rc<0) {
+      ERROR("demotions failed\n");
+      return FPVM_CORRECT_ERROR;
     }
+#if CONFIG_TELEMETRY_PROMOTIONS
+    *demotions += rc;
+#endif
     return FPVM_CORRECT_CONTINUE;
   }
 

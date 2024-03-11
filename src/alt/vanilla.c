@@ -8,6 +8,28 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
 
+#if CONFIG_DEBUG_ALT_ARITH
+#ifdef DEBUG
+#undef DEBUG
+#endif
+#define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
+#ifdef SAFE_DEBUG
+#undef SAFE_DEBUG
+#endif
+#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: vanilla: " S, strlen("fpvm safe debug: boxed: " S))
+#else
+#define DEBUG(S, ...)
+#define SAFE_DEBUG(S)
+#endif
+
+#if !NO_OUTPUT
+#undef INFO
+#undef ERROR
+#define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
+#define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
+#endif
+
+
 #define BIN_OP(TYPE, ITYPE, NAME, OP, SPEC, ISPEC)                                         \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
@@ -548,8 +570,8 @@ int restore_float(
   return 0;
 }
 
-// demote
-int restore_xmm(void *ptr) {
+// demote - does nothing
+int NO_TOUCH_FLOAT restore_xmm(void *ptr) {
   return 0;
 }
 

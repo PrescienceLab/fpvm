@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 if [ -z "$1" ] ; then
   echo "fpvm_run.sh <command>"
   exit -1
@@ -14,6 +15,8 @@ if [ ! -e $FPVM_HOME/build/fpvm.so  ] ; then
   echo "$FPVM_HOME/build/fpvm.so does not exist - build first!"
   exit -1
 fi
+
+export GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX512_Usable
 
 time LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRESSIVE=y $@
 

@@ -8,6 +8,10 @@ config DEBUG
     bool "Debug output"
     default n
 
+config DEBUG_ALT_ARITH
+    bool "Debug alternative arithmetic"
+    default n
+
 config TELEMETRY
     bool "Basic telemetry"
     default n

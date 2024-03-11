@@ -25,8 +25,10 @@
 
 #if DEBUG_OUTPUT
 #define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__)
+#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: " S,strlen("fpvm safe debug: " S))
 #else
 #define DEBUG(S, ...)
+#define SAFE_DEBUG(S) 
 #endif
 
 #if NO_OUTPUT
@@ -52,5 +54,10 @@ static inline uint64_t __attribute__((always_inline)) rdtsc(void) {
   asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
   return lo | ((uint64_t)(hi) << 32);
 }
+
+#define NO_TOUCH_FLOAT __attribute__((__target__("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3")))
+
+
+
 
 #endif

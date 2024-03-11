@@ -1,7 +1,11 @@
+set confirm off
 handle SIGUSR2 nostop pass noprint
+handle SIGFPE  nostop pass noprint
+handle SIGTRAP nostop pass noprint
 set cwd /home/pdinda/fpvm
 set env LD_PRELOAD=./build/fpvm.so
 set env FPVM_DISABLE_PTHREADS=y
 set env FPVM_AGGRESSIVE=y
+set env LD_LIBRARY_PATH=.
 b exit
 
