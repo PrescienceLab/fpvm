@@ -11,12 +11,14 @@ PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd 
 
 OLD_DIR=$PWD
 
+
 # Parse the command line arguments
 BIN=""
 workspace="${PFX}/workspace/"
+memonly="no"
 
 # Parse command-line arguments
-while getopts ":wm:" opt; do
+while getopts "w:m" opt; do
   case ${opt} in
     w )
       workspace=$(realpath "$OPTARG")
@@ -73,7 +75,7 @@ pushd ${PFX}
   cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.[ch] .
   e9compile.sh fpvm_magic.c
   
-  if [ -z ${memonly} ]; then
+  if [ "${memonly}" = "no" ]; then
       # patch mem and call insts with traps
       e9tool -M 'addr=call_patches[0]' -P 'before trap' \
              -M 'addr=mem_patches[0]' -P 'before trap' \
@@ -83,7 +85,7 @@ pushd ${PFX}
              -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
              input --output input.patched_magic
   else
-      # patch mem insts with traps
+      # patch meminsts with traps
       e9tool -M 'addr=mem_patches[0]' -P 'before trap' \
              input --output input.patched_trap
       # patch mem insts with magic
@@ -115,13 +117,16 @@ pushd ${PFX}
   cp taintsource.timing ${BIN}.taintsource.timing
   cp taintsink.timing ${BIN}.taintsink.timing
   
-  if [ -z ${memonly} ]; then
+  if [ "${memonly}" = "no" ]; then
       echo "Patched executables for memory and calls"
   else
+      printf '\e[31m'
       echo "Patched executables for memory only"
       echo "Assuming you will handle calls in alternative manner"
       echo "If you are using wrappers, be sure to update"
       echo "your wrap.list using get_dynamic_calls.pl"
       echo "and rebuild FPVM if necessary"
+      printf '\e[0m'
+  fi
   popd
 popd
