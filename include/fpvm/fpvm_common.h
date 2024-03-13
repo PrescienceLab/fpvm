@@ -58,6 +58,9 @@ static inline uint64_t __attribute__((always_inline)) rdtsc(void) {
 #define NO_TOUCH_FLOAT __attribute__((__target__("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3")))
 
 
+// interface to assembly stub
+int fpvm_memaddr_probe_readable_long(void *addr);
+
 
 
 #endif

@@ -169,7 +169,7 @@ double (*orig_atanh)(double a) = 0;
 double (*orig_atan2)(double a, double b) = 0;
 double (*orig___powidf2)(double a, int b) = 0;
 
-static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int;
+static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 #define ORIG_RETURN(func, ...)                            \
   if (orig_##func) {                                      \
@@ -591,6 +591,7 @@ static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
 }
 
 static void abort_operation(char *reason) {
+  DEBUG("aborting due to %s inited=%d\n",reason,inited);
   if (!inited) {
     DEBUG("Initializing before aborting\n");
     fpvm_init();
@@ -601,6 +602,8 @@ static void abort_operation(char *reason) {
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
     ORIG_IF_CAN(sigaction, SIGFPE, &oldsa_fpe, 0);
+    ORIG_IF_CAN(sigaction, SIGINT, &oldsa_int, 0);
+    ORIG_IF_CAN(sigaction, SIGSEGV, &oldsa_segv, 0);
 
     execution_context_t *mc = find_my_execution_context();
 
@@ -1106,6 +1109,7 @@ static int correctness_trap_handler(ucontext_t *uc)
 
   if (!mc || mc->state == ABORT) {
     // ABORT case
+    DEBUG("Aborting: mc=%p, mc->state=%d\n",mc,mc?mc->state:-1);
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
@@ -1158,6 +1162,8 @@ static int correctness_trap_handler(ucontext_t *uc)
   
   mc->state = AWAIT_FPE;
 
+  //DEBUG("correctness handling done for thread %lu context %p state %d rc %d\n",gettid(),mc,mc->state,rc);
+
   return rc;
 
 }
@@ -1175,7 +1181,7 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
     ASSERT(0);
   }
   
-  DEBUG("SIGTRAP done\n");
+  DEBUG("SIGTRAP done (mc->state=%d)\n",find_my_execution_context()->state);
 }
 
 #if CONFIG_MAGIC_CORRECTNESS_TRAP
@@ -1221,21 +1227,34 @@ void fpvm_magic_trap_entry(void *priv)
 }
 #endif
 
+#if CONFIG_DEBUG
+static void NO_TOUCH_FLOAT SAFE_DEBUG_FCALL(char *str, void *func)
+{
+  char buf[512];
+  Dl_info dli;
+  dladdr(func,&dli);
+  strcpy(buf,"fpvm safe debug: ");
+  strcat(buf,str);
+  strcat(buf," : ");
+  strcat(buf,dli.dli_sname);
+  strcat(buf,"\n");
+  syscall(SYS_write,2,buf,strlen(buf));
+}
+#endif
 
-uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void)
+uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
 { 
   execution_context_t *mc = find_my_execution_context();
   struct _libc_fpstate fstate;
   fpvm_regs_t regs;
   int demotions=0;
 
-  if (!mc) {
-    ERROR("foreign call from unknown execution context\n");
-    abort_operation("foreign call from unknown execution context\n");
+  if (!inited) {
+    SAFE_DEBUG_FCALL("ignoring pre-boot foreign call from unknown execution context",f);
     return -1;
   }
-  
-  SAFE_DEBUG("handling correctness for foreign call\n");
+
+  SAFE_DEBUG_FCALL("handling correctness for foreign call",f);
 
   uint32_t oldmxcsr = get_mxcsr();
 
@@ -1793,7 +1812,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 static __attribute__((destructor)) void fpvm_deinit(void);
 
 static void sigint_handler(int sig, siginfo_t *si, void *priv) {
-  DEBUG("Handling break\n");
+  DEBUG("SIGINT\n");
 
   if (oldsa_int.sa_sigaction) {
     fpvm_deinit();  // dump everything out
@@ -1804,6 +1823,34 @@ static void sigint_handler(int sig, siginfo_t *si, void *priv) {
     exit(-1);
   }
 }
+
+static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
+{
+  ucontext_t *uc = (ucontext_t *)priv;
+  void *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  int probe = rip==fpvm_memaddr_probe_readable_long;
+  
+  DEBUG("SIGSEGV rip=%p (%s)\n",rip,probe ? "probe" : "NOT PROBE");
+  if (probe) {
+    // this means we faulted, in the probe address
+    // and so it is unwritable, so return to retbad
+    // if it did not fault, then it would continue to retgood
+    uc->uc_mcontext.gregs[REG_RIP] += 0xb;
+  } else {
+    // this means it is a fault somewhere in FPVM (impossible!) or
+    // in the program, so continue with original handling
+    if (oldsa_segv.sa_sigaction) {
+      // invoke underlying handler
+      oldsa_segv.sa_sigaction(sig, si, priv);
+      return;
+    } else {
+      // exit - our deinit will be called
+      DEBUG("not our segfault, and don't know what to do with it!\n");
+      exit(-1);
+    }
+  }
+}
+
 
 static int bringup_execution_context(int tid) {
   execution_context_t *c;
@@ -1832,6 +1879,8 @@ static int bringup_execution_context(int tid) {
   }
 
   __fpvm_current_execution_context = c;
+
+  DEBUG("brought up execution context for thread %lu at %p (state %d)\n",gettid(),c,c->state);
   
   return 0;
 }
@@ -1961,6 +2010,13 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction, SIGINT, &sa, &oldsa_int);
 
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_sigaction = sigsegv_handler;
+  sa.sa_flags |= SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
+  sigaddset(&sa.sa_mask, SIGSEGV);
+  ORIG_IF_CAN(sigaction, SIGSEGV, &sa, &oldsa_segv);
+
   ORIG_IF_CAN(feenableexcept, exceptmask);
 
 #if CONFIG_MAGIC_CORRECTNESS_TRAP
@@ -1989,7 +2045,7 @@ static int bringup() {
     } else {
       *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
       *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
-      DEBUG("magic page initialized\n");
+      DEBUG("magic page initialized at %p\n",magic_page);
     }
   }
 #endif
@@ -2097,6 +2153,7 @@ static __attribute__((constructor)) void fpvm_init(void) {
       ERROR("cannot bring up framework\n");
       return;
     }
+    DEBUG("fpvm_init done\n");
     return;
   } else {
     ERROR("already inited!\n");
