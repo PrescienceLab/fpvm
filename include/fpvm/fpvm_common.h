@@ -1,4 +1,7 @@
+
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 
 #ifndef _FPVM_COMMON_
 #define _FPVM_COMMON_
