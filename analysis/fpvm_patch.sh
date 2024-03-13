@@ -16,13 +16,20 @@ BIN=""
 workspace="${PFX}/workspace/"
 
 # Parse command-line arguments
-while getopts ":w:" opt; do
+while getopts ":wm:" opt; do
   case ${opt} in
     w )
       workspace=$(realpath "$OPTARG")
       ;;
+    m )
+      memonly="yes"
+      ;;
     \? )
-      echo "Usage: $(basename $0) [-w WORKSPACE] <binary>"
+      echo "Usage: $(basename $0) [-w WORKSPACE] [-m] <binary>"
+      echo "  -w WORKSPACE : use WORKSPACE as workspace"
+      echo "                 instead of default shared workspace"
+      echo "  -m           : do memory patching only"
+      echo "                 for example to use wrapper method"
       exit 1
       ;;
   esac
@@ -62,39 +69,59 @@ pushd ${PFX}
 
   pushd $workspace
 
+  # Build magic
+  cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.[ch] .
+  e9compile.sh fpvm_magic.c
   
-    # Patch with traps
-    e9tool -M 'addr=call_patches[0]' -P 'before trap' \
-            -M 'addr=mem_patches[0]' -P 'before trap' \
-            input --output input.patched_trap
-    cp input.patched_trap ${BIN}.patched_trap
-
-    # Build magic
-    cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.[ch] .
-    e9compile.sh fpvm_magic.c
-
-    # Patch with magic
-    e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap<naked>()@fpvm_magic" \
-           -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
-           input --output input.patched_magic
-
-    cp input.patched_magic ${BIN}.patched_magic
-    
-    # copy out working files for sanity
-    cp call_patches.csv ${BIN}.call_patches.csv
-    cp mem_patches.csv ${BIN}.mem_patches.csv
-    cp fpvm_magic ${BIN}.fpvm_magic
-    cp fpvm_magic.c ${BIN}.fpvm_magic.c
-    cp fpvm_magic.h ${BIN}.fpvm_magic.h
-    cp input ${BIN}.original
-    cp generate.profile ${BIN}.generate.profile
-    cp taintsource.profile ${BIN}.taintsource.profile
-    cp taintsink.profile ${BIN}.taintsink.profile
-    cp generate.timing ${BIN}.generate.timing
-    cp taintsource.timing ${BIN}.taintsource.timing
-    cp taintsink.timing ${BIN}.taintsink.timing
-
-
-    
+  if [ -z ${memonly} ]; then
+      # patch mem and call insts with traps
+      e9tool -M 'addr=call_patches[0]' -P 'before trap' \
+             -M 'addr=mem_patches[0]' -P 'before trap' \
+             input --output input.patched_trap
+      # patch mem and call insts with magic
+      e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap<naked>()@fpvm_magic" \
+             -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
+             input --output input.patched_magic
+  else
+      # patch mem insts with traps
+      e9tool -M 'addr=mem_patches[0]' -P 'before trap' \
+             input --output input.patched_trap
+      # patch mem insts with magic
+      e9tool -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
+             input --output input.patched_magic
+  fi
+  
+  #
+  # Generate function info
+  #
+  patches_to_functions.pl mem_patches.csv input > input.mem_patch.info
+  patches_to_functions.pl call_patches.csv input > input.call_patch.info
+  
+  # copy out working files for sanity
+  cp input.patched_trap ${BIN}.patched_trap
+  cp input.patched_magic ${BIN}.patched_magic
+  cp call_patches.csv ${BIN}.call_patches.csv
+  cp mem_patches.csv ${BIN}.mem_patches.csv
+  cp input.mem_patch.info ${BIN}.mem_patch.info
+  cp input.call_patch.info ${BIN}.call_patch.info
+  cp fpvm_magic ${BIN}.fpvm_magic
+  cp fpvm_magic.c ${BIN}.fpvm_magic.c
+  cp fpvm_magic.h ${BIN}.fpvm_magic.h
+  cp input ${BIN}.original
+  cp generate.profile ${BIN}.generate.profile
+  cp taintsource.profile ${BIN}.taintsource.profile
+  cp taintsink.profile ${BIN}.taintsink.profile
+  cp generate.timing ${BIN}.generate.timing
+  cp taintsource.timing ${BIN}.taintsource.timing
+  cp taintsink.timing ${BIN}.taintsink.timing
+  
+  if [ -z ${memonly} ]; then
+      echo "Patched executables for memory and calls"
+  else
+      echo "Patched executables for memory only"
+      echo "Assuming you will handle calls in alternative manner"
+      echo "If you are using wrappers, be sure to update"
+      echo "your wrap.list using get_dynamic_calls.pl"
+      echo "and rebuild FPVM if necessary"
   popd
 popd
