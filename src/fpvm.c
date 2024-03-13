@@ -1287,7 +1287,7 @@ uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
 
   fxrstor(&fstate);  // restore demoted registers to machine
   
-  set_mxcsr(mxcsr);
+  set_mxcsr(mxcsr); // Write the new mxcsr, with traps disabled
 
   // return the value to restore to after the call
   return oldmxcsr;
