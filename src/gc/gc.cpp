@@ -44,8 +44,14 @@ namespace gc {
     double get_boxed(void) const {
       return as.f64;
     }
+    uint64_t get_boxed_uint(void) const {
+      return as.u64;
+    }
     void set_boxed(double f) {
       as.f64 = f;
+    }
+    void set_boxed(uint64_t u) {
+      as.u64 = u;
     }
 
    private:
@@ -260,6 +266,22 @@ extern "C" double fpvm_gc_box(void *ptr) {
   return b.get_boxed();
 }
 
+extern "C" uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr) {
+  gc::box b;
+
+  b.set((uint64_t)ptr);
+  return b.get_boxed_uint();
+}
+
+extern "C" void NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target) {
+  gc::box b;
+
+  b.set((uint64_t)ptr);
+  b.store((double*)target);
+}
+
+
+
 static bool is_tracked(void *ptr) {
   if (get_heap().count(ptr) != 0) return true;
   return false;
@@ -274,9 +296,45 @@ extern "C" void *fpvm_gc_unbox(double val) {
   return is_tracked(ptr) ? ptr : nullptr;
 }
 
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val)
+{
+  gc::box b;
+  b.set_boxed(val);
+
+  if (!b.valid()) return 0;
+  void *ptr = b.get();
+  return is_tracked(ptr) ? ptr : nullptr;
+}
+
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val)
+{
+  return fpvm_gc_unbox_from_uint((*(uint64_t*)val));
+}
+
 extern "C" int fpvm_gc_is_tracked_nan(double val) {
   gc::box b;
   b.set_boxed(val);
+
+  if (!b.valid()) return 0;
+  void *ptr = b.get();
+
+  return is_tracked(ptr) ? 1 : 0;
+}
+
+extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val) {
+  gc::box b;
+  b.set_boxed(val);
+
+  if (!b.valid()) return 0;
+  void *ptr = b.get();
+
+  return is_tracked(ptr) ? 1 : 0;
+}
+
+
+extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_ptr(void *val) {
+  gc::box b;
+   b.set_boxed(*(uint64_t*)val);
 
   if (!b.valid()) return 0;
   void *ptr = b.get();
