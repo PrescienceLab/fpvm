@@ -11,7 +11,10 @@ $preorig="__fpvm_orig_";
 $entry = "*__fpvm_foreign_entry\@GOTPCREL(%rip)";
 
 open(L,"$lf") or die "cannot open $lf\n";
-while (<L>) { chomp(); ($f) = split(/\t/); $fs{$f}=1; }
+while (<L>) {
+    chomp();
+    next if (/^\s*#/ || /^\s*$/); # kill comments and empty lines
+    ($f) = split(/\t/); $fs{$f}=1; }
 close(L);
 @funcs = sort keys %fs;
 
@@ -112,6 +115,7 @@ $func:
     pushq %rcx
     pushq %r8
     pushq %r9            # odd number of pushes -> OK
+    movq $func\@GOTPCREL(%rip), %rdi # for debugging
     call $entry          # returns with desired mxcsr in eax
     movl %eax, -8(%rbp)  # stash exit msr for later
     popq  %r9
