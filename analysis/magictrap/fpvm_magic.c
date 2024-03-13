@@ -162,7 +162,10 @@ void fpvm_correctness_trap_dispatch(void * pt_regs)
     FPVM_MAGIC_TRAP_ENTRY_NAME(pt_regs);
   } else {
     // mundane trap
-    Write(2,"mundane\n",8);
+	  Write(2,"magic trap is not enabled!\n",28);
+    // call sys_exit_group
+    Syscall(231,-1,0,0,0,0,0);
+
     // enable when using for real
     //asm volatile ("int3");
   }
