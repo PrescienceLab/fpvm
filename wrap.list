@@ -1,0 +1,19 @@
+# Toy example
+#  foobar
+
+# From lorenz
+_ZNSt8ios_base4InitC1Ev	4	1
+_ZNSt8ios_base4InitD1Ev	4	1
+__printf_chk	4	50001
+# Not handled due to pre-boot, have no wrapper available yet
+# __cxa_atexit	4	1
+
+# From double pend
+_ZNSt13random_device7_M_finiEv	4	1
+_ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE	4	1
+_ZNSt13random_device9_M_getvalEv	4	1
+__printf_chk	4	10000
+#
+# Handled internally as part of libm support
+#sin	4	160000
+#sincos	4	99998
