@@ -554,7 +554,7 @@ int NO_TOUCH_FLOAT restore_xmm(void *xmm_ptr) {
       if (fpvm_memaddr_probe_readable_long(ptr)) { 
 	*cur = *ptr;
       } else {
-	ERROR("cannot read through tracked value (%016lx => %016lx)\n", x[i], ptr);
+	ERROR("cannot read through tracked value (%016lx => %016lx)\n", (uint64_t) *cur, (uint64_t) ptr);
       }
     }
   }
