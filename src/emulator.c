@@ -19,7 +19,7 @@
 #include <fpvm/fp_ops.h>
 #include <fpvm/number_system.h>
 #include <fpvm/nan_boxing.h>
-
+#include <fpvm/gc.h>
 
 static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   ERROR("Cannot emulate instruction\n");
@@ -117,18 +117,16 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
       for (j=0, cur=fi->operand_addrs[i];
 	   j<count;
 	   j++, cur += dest_step) {
-	uint64_t val;
-	FPVM_READ_FROM_PTR(val,cur);
-	if (ISNAN(val)) {
-	  DEBUG("operand[%d][%d] is a NAN - should emulate\n", i,j);
+	if (fpvm_gc_is_tracked_nan_from_ptr(cur)) {
+	  DEBUG("operand[%d][%d] is tracked - should emulate\n", i,j);
 	  return 1;
 	}
       }
     }
-
+    
     // no nans found
-    DEBUG("None of the %d x %d operands are a NAN\n", fi->operand_count, count);
-
+    DEBUG("None of the %d x %d operands are tracked\n", fi->operand_count, count);
+    
     return 0;
   }
 }
@@ -543,6 +541,7 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 #if CONFIG_TELEMETRY_PROMOTIONS
       uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
 #endif
+      //SAFE_DEBUG("Invoking restore_xmm\n");
       restore_xmm(xmm_addr);
 #if CONFIG_TELEMETRY_PROMOTIONS
       demotions += xmm_addr[0]!= old[0];
