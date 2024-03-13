@@ -1227,9 +1227,9 @@ void fpvm_magic_trap_entry(void *priv)
 }
 #endif
 
-#if CONFIG_DEBUG
 static void NO_TOUCH_FLOAT SAFE_DEBUG_FCALL(char *str, void *func)
 {
+#if CONFIG_DEBUG
   char buf[512];
   Dl_info dli;
   dladdr(func,&dli);
@@ -1239,8 +1239,8 @@ static void NO_TOUCH_FLOAT SAFE_DEBUG_FCALL(char *str, void *func)
   strcat(buf,dli.dli_sname);
   strcat(buf,"\n");
   syscall(SYS_write,2,buf,strlen(buf));
-}
 #endif
+}
 
 uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
 { 
