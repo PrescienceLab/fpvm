@@ -591,6 +591,12 @@ static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
   }
 }
 
+static inline void zero_fp_xmm_context(ucontext_t *uc)
+{
+  memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
+}
+
+
 static void abort_operation(char *reason) {
   DEBUG("aborting due to %s inited=%d\n",reason,inited);
   if (!inited) {
@@ -1132,6 +1138,7 @@ static int correctness_trap_handler(ucontext_t *uc)
   switch (mc->state) {
   case INIT:
     DEBUG("initialization trap received\n");
+    zero_fp_xmm_context(uc);
     // we have completed startup of the thread
     break;
   case AWAIT_TRAP:
