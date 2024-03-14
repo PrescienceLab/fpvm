@@ -1228,20 +1228,7 @@ void fpvm_magic_trap_entry(void *priv)
 }
 #endif
 
-static void NO_TOUCH_FLOAT SAFE_DEBUG_FCALL(char *str, void *func)
-{
-#if CONFIG_DEBUG
-  char buf[512];
-  Dl_info dli;
-  dladdr(func,&dli);
-  strcpy(buf,"fpvm safe debug: ");
-  strcat(buf,str);
-  strcat(buf," : ");
-  strcat(buf,dli.dli_sname);
-  strcat(buf,"\n");
-  syscall(SYS_write,2,buf,strlen(buf));
-#endif
-}
+
 
 uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
 { 
@@ -1251,11 +1238,11 @@ uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
   int demotions=0;
 
   if (!inited) {
-    SAFE_DEBUG_FCALL("ignoring pre-boot foreign call from unknown execution context",f);
+    SAFE_DEBUG_QUAD("ignoring pre-boot foreign call from unknown execution context for",f);
     return -1;
   }
 
-  SAFE_DEBUG_FCALL("handling correctness for foreign call",f);
+  SAFE_DEBUG_QUAD("handling correctness for foreign call",f);
 
   mc->correctness_foreign_calls++;
   
