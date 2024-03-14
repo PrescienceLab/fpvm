@@ -51,9 +51,35 @@
 #define ALLOC(n)   fpvm_gc_alloc(n)
 #define BOX(p,t)   fpvm_gc_box_to_ptr(p,t)
 #define TRACKED(p) fpvm_gc_is_tracked_nan_from_ptr(p)
-#define UNBOX(p)   fpvm_gc_unbox_from_ptr(p)
-#define UNBOX_TRACKED(p) if (TRACKED(p)) { (p) = UNBOX(p); }
-#define UNBOX_VAL(v) if (fpvm_gc_is_tracked_nan(v)) { (v) = *(double*)fpvm_gc_unbox(v); }
+#define UNBOX(p,s) fpvm_gc_unbox_from_ptr(p,&s)
+#define UNBOX_TRACKED(p,t)			\
+  {						\
+  int _sign;					\
+  void *_np;					\
+  (_np) = UNBOX(p,_sign);			\
+  if (_np) {					\
+    if (_sign) {				\
+      t=-*(double*)(_np);			\
+      (p) = &t;					\
+    } else {					\
+      (p) = _np;				\
+    }						\
+  }						\
+  }
+
+#define UNBOX_VAL(v)				\
+  {						\
+  int _sign;					\
+  void *_np;					\
+  (_np) = fpvm_gc_unbox((v),&_sign);		\
+  if (_np) {					\
+    if (_sign) {				\
+      v=-*(double*)(_np);			\
+    } else {					\
+      v=+*(double*)(_np);			\
+    }						\
+  }						\
+  }
 
     
 
@@ -73,10 +99,11 @@
 #define BIN_OP(TYPE, ITYPE, NAME, OP, SPEC, ISPEC)			\
   int NAME##_##TYPE(							\
 		    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
+    double t1, t2;							\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
-    UNBOX_TRACKED(src2);						\
+    UNBOX_TRACKED(src1,t1);						\
+    UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (*(TYPE *)src1)OP(*(TYPE *)src2);				\
     BOX(result,dest);							\
@@ -88,8 +115,9 @@
 #define UN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                           \
   int NAME##_##TYPE(                                                                            \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
+    double t1;								\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
+    UNBOX_TRACKED(src1,t1);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1));					\
     BOX(result,dest);							\
@@ -101,10 +129,11 @@
 #define BIN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                      \
   int NAME##_##TYPE(                                                                        \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {  \
+    double t1, t2;							\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
-    UNBOX_TRACKED(src2);						\
+    UNBOX_TRACKED(src1,t1);						\
+    UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1), (*(TYPE *)src2));			\
     BOX(result,dest);							\
@@ -116,12 +145,13 @@
 #define FUSED_OP(TYPE, ITYPE, NAME, OP1, NEGOP, OP2, SPEC, ISPEC)                                  \
   int NAME##_##TYPE(                                                                               \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {         \
+    double t1, t2, t3;							\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
     DEBUG("src3 tracked: %s\n", TRACKED(src3) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
-    UNBOX_TRACKED(src2);						\
-    UNBOX_TRACKED(src3);						\
+    UNBOX_TRACKED(src1,t1);						\
+    UNBOX_TRACKED(src2,t2);						\
+    UNBOX_TRACKED(src3,t3);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (NEGOP((*(TYPE *)src1)OP1(*(TYPE *)src2)))OP2(*(TYPE *)src3); \
     BOX(result,dest);							\
@@ -196,7 +226,8 @@ static inline float minf(float a, float b) {
 #define DOUBLE_CONVERT_F2I(FTYPE, ITYPE, FSPEC, ISPEC)			\
   {									\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
+    double t1;								\
+    UNBOX_TRACKED(src1,t1);						\
     ITYPE result = (ITYPE)(*(FTYPE *)src1);                                                        \
     DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
         dest);                                                                                     \
@@ -309,10 +340,11 @@ int u2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *
 }
 
 // unbox input, but do not box result
-#define DOUBLE_CONVERT_F2F(FITYPE, FOTYPE, FISPEC, FOSPEC)                                      \
-  {                                                                                             \
+#define DOUBLE_CONVERT_F2F(FITYPE, FOTYPE, FISPEC, FOSPEC)		\
+  {									\
+    double t1;								\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    UNBOX_TRACKED(src1);						\
+    UNBOX_TRACKED(src1,t1);						\
     FOTYPE result = (FOTYPE)(*(FITYPE *)src1);                                                  \
     DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
         result, dest);                                                                          \
@@ -375,11 +407,12 @@ int f2i_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
 // which we do not handle...
 
 int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  double t1, t2;
   DEBUG("CMP !!!!! WTF deal with it\n");
   DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
   DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
-  UNBOX_TRACKED(src1);							
-  UNBOX_TRACKED(src2);							
+  UNBOX_TRACKED(src1,t1);							
+  UNBOX_TRACKED(src2,t2);							
   double a = *(double *)src1;
   double b = *(double *)src2;
   uint64_t *rflags = special->rflags;
@@ -416,6 +449,7 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *
 
 int ltcmp_double(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  double t1, t2;
   DEBUG("LTCMP !!!!! WTF deal with it (this is likely crazy code...) \n");
 #if 1
   DEBUG("LTCMP !!!!! Treating like cmp\n");
@@ -423,8 +457,8 @@ int ltcmp_double(
 #else 
   DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
   DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
-  UNBOX_TRACKED(src1);							
-  UNBOX_TRACKED(src2);							
+  UNBOX_TRACKED(src1,t1);							
+  UNBOX_TRACKED(src2,t2);							
   double a = *(double *)src1;
   double b = *(double *)src2;
   int which;
@@ -521,7 +555,8 @@ DECL_DEFINITION(u2f, float)
   // if ptr points to a valid double, return that. If it points to a boxed value,
 // convert it to a double. Designed for debugging
 static double decode_to_double(void *ptr) {
-  UNBOX_TRACKED(ptr);
+  double t1;
+  UNBOX_TRACKED(ptr,t1);
   return *(double*)ptr;
 }
 
@@ -547,15 +582,22 @@ int NO_TOUCH_FLOAT restore_xmm(void *xmm_ptr) {
   uint64_t *cur = (uint64_t *)xmm_ptr;
   uint64_t *end = cur+2;
   for (;cur<end;cur++) {
-    if (TRACKED(cur))  {
-      uint64_t *ptr=UNBOX(cur);
+    uint64_t *ptr;
+    int s;
+    ptr = UNBOX(cur,s);
+    if (ptr) {
+#if CONFIG_DEBUG
       // the following is a redundant check
       // basically to just let us play with it
       if (fpvm_memaddr_probe_readable_long(ptr)) { 
-	*cur = *ptr;
+	*cur = s ? (*ptr) ^ (0x1UL<<63) : (*ptr);
       } else {
 	ERROR("cannot read through tracked value (%016lx => %016lx)\n", (uint64_t) *cur, (uint64_t) ptr);
       }
+#else
+      // just do the ref
+      *cur = s ? (*ptr) ^ (0x1UL<<63) : (*ptr);
+#endif
     }
   }
   return 0;
