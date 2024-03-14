@@ -54,6 +54,9 @@ namespace gc {
     void set_boxed(uint64_t u) {
       as.u64 = u;
     }
+    int get_sign(void) const {
+      return as.bits.sign;
+    }
 
    private:
     union {
@@ -288,57 +291,68 @@ static bool is_tracked(void *ptr) {
   return false;
 }
 
-extern "C" void *fpvm_gc_unbox(double val) {
+/*
+  A note on why this function returns two values, the pointer and "negated":
+
+  We only hand out boxed nans with a particular pattern, and that pattern
+  includes them being "positive nans" (i.e., the sign bit is set to zero).
+
+  The following is a legitimate way to negate a value:
+
+  xorsd $(1<<63), [value]
+
+  Unfortunately, this cannot be caught by the hardware.   As a result, a 
+  nanboxed value may end up being a "negative nan".  When this happens,
+  the alternative math system needs to be aware, so that it can apply
+  this negation to its own internal value as appropriate.  
+
+ */
+
+
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *negated)
+{
   gc::box b;
   b.set_boxed(val);
 
+
   if (!b.valid()) return 0;
   void *ptr = b.get();
-  return is_tracked(ptr) ? ptr : nullptr;
+  
+  if (is_tracked(ptr)) {
+    *negated = b.get_sign();
+    return ptr;
+  } else {
+    *negated = 0;
+    return 0;
+  }
 }
 
-extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val)
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *negated)
+{
+  return fpvm_gc_unbox_from_uint((*(uint64_t*)val), negated);
+}
+
+extern "C" void *fpvm_gc_unbox(double val, int *negated)
+{
+  return fpvm_gc_unbox_from_uint(*(uint64_t*)&val,negated);
+}
+
+extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val)
 {
   gc::box b;
   b.set_boxed(val);
 
   if (!b.valid()) return 0;
   void *ptr = b.get();
-  return is_tracked(ptr) ? ptr : nullptr;
-}
 
-extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val)
-{
-  return fpvm_gc_unbox_from_uint((*(uint64_t*)val));
+  return is_tracked(ptr) ? 1 : 0;
 }
 
 extern "C" int fpvm_gc_is_tracked_nan(double val) {
-  gc::box b;
-  b.set_boxed(val);
-
-  if (!b.valid()) return 0;
-  void *ptr = b.get();
-
-  return is_tracked(ptr) ? 1 : 0;
+  return fpvm_gc_is_tracked_nan_from_uint(*(uint64_t*)&val);
 }
 
-extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val) {
-  gc::box b;
-  b.set_boxed(val);
-
-  if (!b.valid()) return 0;
-  void *ptr = b.get();
-
-  return is_tracked(ptr) ? 1 : 0;
-}
-
-
-extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_ptr(void *val) {
-  gc::box b;
-   b.set_boxed(*(uint64_t*)val);
-
-  if (!b.valid()) return 0;
-  void *ptr = b.get();
-
-  return is_tracked(ptr) ? 1 : 0;
+extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_ptr(void *val)
+{
+  return fpvm_gc_is_tracked_nan_from_uint(*(uint64_t*)val);
 }

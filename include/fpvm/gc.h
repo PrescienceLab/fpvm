@@ -24,12 +24,16 @@ double   fpvm_gc_box(void *ptr);
 // same, but to uint
 uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr);
 void     NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target);
-// unbox a double into a void*
-void *fpvm_gc_unbox(double val);
+// unbox a double into a void*,
+// indicate whether the value represented in val has been
+// negated external to alt number system control, which the
+// alt number system needs to be aware of
+//    This is due to xor 1<<63, [value] being a way sign can be flipped
+void *fpvm_gc_unbox(double val, int *negated);
 // unbox a uint64_t into a void*
-void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val);
+void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *negated);
 // unbox from a pointer to  void* (ie, is the thing pointed to a nanbox)
-void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val);
+void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *negated);
 
 // return 1 if the double is a boxed pointer that we are tracking in the GC
 int fpvm_gc_is_tracked_nan(double nanbox);
