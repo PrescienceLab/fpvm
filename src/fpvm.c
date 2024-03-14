@@ -349,9 +349,6 @@ void fpvm_demote_machine_registers(void)
   ERROR("machine register remotion is UNIMPLEMENTED\n");
 }
 
-#if CONFIG_TRAP_SHORT_CIRCUITING || CONFIG_MAGIC_CORRECTNESS_TRAP
-
-
 static inline void fxsave(struct _libc_fpstate *fpvm_fpregs)
 {
   __asm__ __volatile__("fxsave (%0)" :: "r"(fpvm_fpregs));
@@ -361,9 +358,6 @@ static inline void fxrstor(const struct _libc_fpstate *fpvm_fpregs)
 {
   __asm__ __volatile__("fxrstor (%0)" :: "r"(fpvm_fpregs));
 }
-
-#endif
-
 
 static void init_execution_contexts() {
   memset(context, 0, sizeof(context));
