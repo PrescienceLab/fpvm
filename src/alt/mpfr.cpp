@@ -10,7 +10,7 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/gc.h>
 #include <fpvm/number_system.h>
-#include <fpvm/number_system/nan_boxing.h>
+#include <fpvm/nan_boxing.h>
 #include <math.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -77,7 +77,7 @@ static double decode_to_double(void *ptr) {
     if (sign_bit != mpfr_signbit(*mpfr_value)) {
       value *= -1;
     }
-    mpfr_fprintf(stdout, "Decode %32.16R to %lf\n", mpfr_value, value);
+    // mpfr_fprintf(stdout, "Decode %32.16R to %lf\n", mpfr_value, value);
   }
 
   return value;

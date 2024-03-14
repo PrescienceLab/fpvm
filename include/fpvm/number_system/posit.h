@@ -2,7 +2,7 @@
 
 #define POSIT_NO_GENERICS
 #include <universal/number/posit/posit.h>
-#include <fpvm/number_system/nan_boxing.h>
+#include <fpvm/nan_boxing.h>
 #include <fpvm/number_system.h>
 #define POSIT_NUMBER_SYSTEM 1
 

@@ -19,7 +19,7 @@
 #include <fpvm/fpvm_math.h>
 #include <fpvm/gc.h>
 #include <fpvm/number_system.h>
-#include <fpvm/number_system/nan_boxing.h>
+#include <fpvm/nan_boxing.h>
 #include <universal/number/posit/posit.h>
 
 #ifdef DEBUG

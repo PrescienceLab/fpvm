@@ -1,7 +1,8 @@
 #include <fpvm/gc.h>
 
 #include <chrono>
-#include <fpvm/number_system/nan_boxing.h>
+#include <fpvm/number_system.h> // For fpvm_alt_apply_sign 
+#include <fpvm/nan_boxing.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

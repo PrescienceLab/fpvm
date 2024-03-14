@@ -19,6 +19,8 @@
 
 #define SIGN(val) (!!(val >> 63))
 
+// this means a nan that has the top mantissa bits
+// set to something other than 01 => 0=>signaling, 1=> force nan
 #define CORRUPTED(p, val)                                                        \
   ({                                                                             \
     (ISNAN(p) && (((p >> DOUBLE_ZERO_BITS << DOUBLE_ZERO_BITS) & NANBOX_MASK) != \
