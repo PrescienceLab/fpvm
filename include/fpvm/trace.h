@@ -16,6 +16,8 @@ typedef struct fpvm_instr_trace {
 #define TRACE_END_INSTR_UNBINDABLE   2
 #define TRACE_END_INSTR_UNEMULATABLE 4
 #define TRACE_END_INSTR_SHOULDNOT    8
+#define TRACE_END_INSTR_NEWPAGE      16
+#define TRACE_END_INSTR_UNREADABLE   32
 #define TRACE_END_INSTR_SEQUENCE_MAX 512
   uint64_t end_cond;
   uint64_t instr_count;     // number of instructions that were handled (not including terminating instruction)

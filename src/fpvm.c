@@ -1399,18 +1399,22 @@ static void fp_trap_handler(ucontext_t *uc)
 
   mc->fp_traps++;
 
-
+#define ON_SAME_PAGE(x,y) ((((uint64_t)(x))&(~0xfffUL))==(((uint64_t)(y))&(~0xfffUL)))
+  
 #if 1 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
 #define DUMP_SEQUENCE_ENDING_INSTR()					\
-    if (instindex>0) {							\
-      void *_currip=rip;                                                \
-      DEBUG("sequence of %d instructions broken by instruction at rip=%p: (plus next 4 instructions)\n",instindex,_currip); \
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
-      _currip+=fpvm_decoder_decode_and_print_any_inst(_currip,stderr,"");	\
-    }
+  if (instindex>0) {							\
+    void *__startrip=rip;						\
+    void *__currip=rip;							\
+    DEBUG("sequence of %d instructions broken by instruction at rip=%p: (plus next 4 (if possible) instructions on page)\n",instindex,__currip); \
+    for (int __inst_count=0;__inst_count<5;__inst_count++) {		\
+      if (ON_SAME_PAGE(__currip+14,__startrip)) {				\
+	__currip+=fpvm_decoder_decode_and_print_any_inst(__currip,stderr,""); \
+      } else {								\
+	break;								\
+      }									\
+    }									\
+  }
 #else
 #define DUMP_SEQUENCE_ENDING_INSTR()
 #endif
@@ -1429,13 +1433,26 @@ static void fp_trap_handler(ucontext_t *uc)
   
   
   // repeat until we run out of instructions that
-  // need to be emulated
+  // need to be emulated or we run off the page
   // instindex = index of current instruction in sequence
   // rip = address of current instruction
   
   for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) {
 
     DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
+
+    if (!ON_SAME_PAGE(rip+14,start_rip)) {
+      // note that we care about 15 bytes, so let's just see if we can get 16...
+      if (!fpvm_memaddr_probe_readable_long(rip) || !fpvm_memaddr_probe_readable_long(rip+8)) {
+	DEBUG("Ending sequence as instruction %d (rip %p) involves a new, unreadable page\n", instindex,rip);
+	end_reason = TRACE_END_INSTR_UNREADABLE;
+	DUMP_SEQUENCE_ENDING_INSTR();
+	fi = 0;
+	do_insert = 0;
+	break; // done with the sequence
+      }
+    }
+      
 
     START_PERF(mc, decode_cache);
     fi = decode_cache_lookup(mc, rip);
@@ -1828,9 +1845,11 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
 {
   ucontext_t *uc = (ucontext_t *)priv;
   void *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  void *addr = si->si_addr;
   int probe = rip==fpvm_memaddr_probe_readable_long;
   
-  DEBUG("SIGSEGV rip=%p (%s)\n",rip,probe ? "probe" : "NOT PROBE");
+  DEBUG("SIGSEGV rip=%p (%s) addr=%p reason: %d (%s)\n",rip,probe ? "probe" : "NOT PROBE",addr,
+	si->si_code, si->si_code==SEGV_MAPERR ? "MAPERR" : si->si_code==SEGV_ACCERR ? "PERM" : "UNKNOWN");
   if (probe) {
     // this means we faulted, in the probe address
     // and so it is unwritable, so return to retbad
@@ -1847,6 +1866,7 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
       // exit - our deinit will be called
       DEBUG("not our segfault, and don't know what to do with it!\n");
       exit(-1);
+      //abort();
     }
   }
 }

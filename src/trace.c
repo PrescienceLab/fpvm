@@ -71,6 +71,8 @@ static void dump_trace(FILE *out, char *prefix, fpvm_instr_trace_t *r, uint64_t 
 	  r->start_cond==TRACE_START_UNUSED ? "**UNUSED!**" :
 	  r->start_cond==TRACE_START_NORMAL ? "normal" : "**UNKNOWN!**",
 	  r->end_cond,
+	  r->end_cond==TRACE_END_INSTR_NEWPAGE ? "newpage" :
+	  r->end_cond==TRACE_END_INSTR_UNREADABLE ? "unreadable" :
 	  r->end_cond==TRACE_END_INSTR_UNDECODABLE ? "undecodable" :
 	  r->end_cond==TRACE_END_INSTR_UNBINDABLE ? "unbindable" :
 	  r->end_cond==TRACE_END_INSTR_UNEMULATABLE ? "unemulatable" :
@@ -87,15 +89,23 @@ static void dump_trace(FILE *out, char *prefix, fpvm_instr_trace_t *r, uint64_t 
   strcat(pre2," *");
 
   for (i=0, currip=r->start_addr;i<r->instr_count+extra;i++) {
-    int rc=fpvm_decoder_decode_and_print_any_inst((void*)currip,stderr,i<r->instr_count ? pre1 : pre2);
-    if (rc<0) {
-      ERROR("failed to decode and print...\n");
-      return;
+    // make sure next 15 bytes are readable
+    if (fpvm_memaddr_probe_readable_long((void*)currip) && fpvm_memaddr_probe_readable_long((void*)(currip+8))) {
+      int rc=fpvm_decoder_decode_and_print_any_inst((void*)currip,stderr,i<r->instr_count ? pre1 : pre2);
+      if (rc<0) {
+	ERROR("failed to decode and print...\n");
+	return;
+      } else {
+	currip+=rc;
+      }
     } else {
-      currip+=rc;
+      fprintf(out,"%s [unreadable page]\n",prefix);
+      break;
     }
+      
   }
   fprintf(out,"%sTRACE END\n",prefix);
+
 }  
 
 int fpvm_instr_tracer_print(FILE *out, char *prefix, fpvm_instr_trace_context_t *c, uint64_t extra)
