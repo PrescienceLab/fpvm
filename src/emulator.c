@@ -526,26 +526,67 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   return rc;
 }
 
+/*
+  Note 
+  SSE:   128 bit regs -  8 regs on 32 bit mode, 16 on 64 bit mode (16 is what we care about)
+  SSE2:    SSE + extended use of the 16 128 bit registers
+  SSE3:    SSE2 + more extended uses of the 16 128 bit registers
+  SSSE3:   SSE3 + more extended uses of the 16 128 bit registers
+  SSE4:    SSE3(?) + other more extended uses of the 16 128 bit registers
+  AVX:     256 bit registers - 16 of them
+  AVX2:    AVX + more extended uses of the 16 256 bit registers
+  AVX512:  512 bit registers - 32 of them
+  AVC512*: AVX512 + .... = PROFIT!
+
+  run gcc -Q --help=target to see what's enabled by default
+  for ubuntu-22 (roquefort), we see SSE2:
+
+  gcc -Q --help=target | grep enabled
+  -m128bit-long-double        		[enabled]
+  -m64                        		[enabled]
+  -m80387                     		[enabled]
+  -malign-stringops           		[enabled]
+  -mfancy-math-387            		[enabled]
+  -mfp-ret-in-387             		[enabled]
+  -mfxsr                      		[enabled]
+  -mglibc                     		[enabled]
+  -mhard-float                		[enabled]
+  -mieee-fp                   		[enabled]
+  -mlong-double-80            		[enabled]
+  -mmmx                       		[enabled]
+  -mno-sse4                   		[enabled]
+  -mpush-args                 		[enabled]
+  -mred-zone                  		[enabled]
+  -msse                       		[enabled]
+  -msse2                      		[enabled]
+  -mstv                       		[enabled]
+  -mtls-direct-seg-refs       		[enabled]
+  -mvzeroupper                		[enabled]
+ */
+
 int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr) 
 {
   int demotions=0;
   SAFE_DEBUG("handling fp register demotions\n");
+  /*
 #define _XMM(id) X86_REG_XMM##id
   int allxmm[32] = {_XMM(0), _XMM(1), _XMM(2), _XMM(3), _XMM(4), _XMM(5), _XMM(6), _XMM(7),
     _XMM(8), _XMM(9), _XMM(10), _XMM(11), _XMM(12), _XMM(13), _XMM(14), _XMM(15), _XMM(16),
     _XMM(17), _XMM(18), _XMM(19), _XMM(20), _XMM(21), _XMM(22), _XMM(23), _XMM(24), _XMM(25),
     _XMM(26), _XMM(27), _XMM(28), _XMM(29), _XMM(30), _XMM(31)};
   for (int i = 0; i < 32; i++) {
-      uint64_t *xmm_addr = (uint64_t *) (fr->fprs + fr->fpr_size * (allxmm[i] - X86_REG_XMM0));
-      // invoke the altmath package to convert numbers back to doubles
+  */
+
+  // just assume SSE2 and demote only 16 128 bit registers => 16*2 values
+  for (int i = 0; i < 16*2; i++) {
+    uint64_t *addr = (uint64_t *) (fr->fprs + fr->fpr_size * i);
+    // invoke the altmath package to convert numbers back to doubles
 #if CONFIG_TELEMETRY_PROMOTIONS
-      uint64_t old[2] = {xmm_addr[0],xmm_addr[1]};
+    uint64_t old = *addr;
 #endif
-      //SAFE_DEBUG("Invoking restore_xmm\n");
-      restore_xmm(xmm_addr);
+    restore_double_in_place(addr);
 #if CONFIG_TELEMETRY_PROMOTIONS
-      demotions += xmm_addr[0]!= old[0];
-      demotions += xmm_addr[1]!= old[1];
+    demotions += *addr!= old;
 #endif
   }
   SAFE_DEBUG("demotions done\n");
