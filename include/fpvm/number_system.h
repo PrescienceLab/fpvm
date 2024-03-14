@@ -111,8 +111,7 @@ FPVM_MATH_DECL_VANILLA_ALT(move, float);
 // restore from nanbox
 FPVM_RESTORE_DECL(restore, float);
 FPVM_RESTORE_DECL(restore, double);
-int restore_xmm(void *);
-void fpvm_alt_apply_sign(void *, unsigned sign);
+void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *);
 
 // math functions
 //  no float now

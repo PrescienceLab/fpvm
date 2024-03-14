@@ -578,29 +578,24 @@ int restore_float(
   return 0;
 }
 
-int NO_TOUCH_FLOAT restore_xmm(void *xmm_ptr) {
-  uint64_t *cur = (uint64_t *)xmm_ptr;
-  uint64_t *end = cur+2;
-  for (;cur<end;cur++) {
-    uint64_t *ptr;
-    int s;
-    ptr = UNBOX(cur,s);
-    if (ptr) {
+void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
+  uint64_t *np;
+  int s;
+  np = UNBOX(p,s);
+  if (np) {
 #if CONFIG_DEBUG
-      // the following is a redundant check
-      // basically to just let us play with it
-      if (fpvm_memaddr_probe_readable_long(ptr)) { 
-	*cur = s ? (*ptr) ^ (0x1UL<<63) : (*ptr);
-      } else {
-	ERROR("cannot read through tracked value (%016lx => %016lx)\n", (uint64_t) *cur, (uint64_t) ptr);
-      }
-#else
-      // just do the ref
-      *cur = s ? (*ptr) ^ (0x1UL<<63) : (*ptr);
-#endif
+    // the following is a redundant check
+    // basically to just let us play with it
+    if (fpvm_memaddr_probe_readable_long(np)) { 
+      *p = s ? (*np) ^ (0x1UL<<63) : (*np);
+    } else {
+      SAFE_DEBUG_QUAD("cannot read through tracked value addr",np);
     }
+#else
+    // just do the ref
+    *p = s ? (*np) ^ (0x1UL<<63) : (*np);
+#endif
   }
-  return 0;
 }
 
 #define ORIG_IF_CAN(func, ...)                                          \
