@@ -26,12 +26,29 @@
 #define gettid() syscall(SYS_gettid)
 #endif
 
+
+// Private output formatting routines since we
+// do not want to reply on printf being functional
+#define DB(x)  { char _buf=x;  syscall(SYS_write,2,&_buf,1); }
+#define DHN(x) DB((((x & 0xF) >= 10) ? (((x & 0xF) - 10) + 'a') : ((x & 0xF) + '0')))
+#define DHB(x) DHN(x >> 4) ; DHN(x);
+#define DHW(x) DHB(x >> 8) ; DHB(x);
+#define DHL(x) DHW(x >> 16) ; DHW(x);
+#define DHQ(x) DHL(x >> 32) ; DHL(x);
+#define DSTR(x) { char *__curr = x; while(*__curr) { DB(*__curr); __curr++; } }
+
+#define _SAFE_DEBUG(s) DSTR("fpvm safe debug: "); DSTR(s)
+#define _SAFE_DEBUG_QUAD(s,x) DSTR("fpvm safe debug: "); DSTR(s); DSTR(": "); DHQ(((uint64_t)x)); DB('\n')
+
+
 #if DEBUG_OUTPUT
 #define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__)
-#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: " S,strlen("fpvm safe debug: " S))
+#define SAFE_DEBUG(S) _SAFE_DEBUG(S)
+#define SAFE_DEBUG_QUAD(S,X) _SAFE_DEBUG_QUAD(S,X)
 #else
 #define DEBUG(S, ...)
-#define SAFE_DEBUG(S) 
+#define SAFE_DEBUG(S)
+#define SAFE_DEBUG_QUAD(S,X)
 #endif
 
 #if NO_OUTPUT
