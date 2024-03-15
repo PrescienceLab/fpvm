@@ -1,5 +1,6 @@
 # Toy example
-#  foobar
+foobar
+whizbang
 
 # From lorenz
 _ZNSt8ios_base4InitC1Ev	4	1
@@ -17,3 +18,22 @@ __printf_chk	4	10000
 # Handled internally as part of libm support
 #sin	4	160000
 #sincos	4	99998
+#
+
+# From three-body
+#__fprintf_chk	4	8203
+__printf_chk	4	12
+#fclose	1	2
+#fopen	2	2
+#fputc	2	1262
+#free	1	3154
+#localtime	1	2
+# used pre boot
+#malloc	1	3154
+#memcpy	3	3418
+# handled internally as part of libm suppot
+#pow	4	65012
+#putchar	4	15
+#puts	1	25
+#strftime	4	2
+#time	1	2

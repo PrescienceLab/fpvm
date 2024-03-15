@@ -202,6 +202,10 @@ typedef struct execution_context {
   enum { INIT, AWAIT_FPE, AWAIT_TRAP, ABORT } state;
   int aborting_in_trap;
   int tid;
+
+  uint32_t foreign_return_mxcsr;
+  void    *foreign_return_addr;
+  
   uint64_t fp_traps;
   uint64_t promotions;
   uint64_t demotions;
@@ -496,7 +500,7 @@ static void show_current_fe_exceptions()
 }
 */
 
-static __attribute__((constructor)) void fpvm_init(void);
+static __attribute__((constructor )) void fpvm_init(void);
 
 #if DEBUG_OUTPUT
 
@@ -629,6 +633,13 @@ static void abort_operation(char *reason) {
   aborted = 1;
   DEBUG("Aborted operation because %s\n", reason);
 }
+
+static void fpvm_panic(void)
+{
+  abort_operation("panicing!");
+  abort();
+}
+
 
 static int bringup_execution_context(int tid);
 
@@ -1229,9 +1240,24 @@ void fpvm_magic_trap_entry(void *priv)
 }
 #endif
 
+static  void hard_fail_show_foreign_func(char *str, void *func)
+{
+  Dl_info dli;
+  dladdr(func,&dli);
+  char buf[256];
+  if (dli.dli_sname) {
+    snprintf(buf,255,"fpvm hard failure: %s: %s\n",str,dli.dli_sname);
+  } else {
+    snprintf(buf,255,"fpvm hard failure: %s: %p\n",str,func);
+  }
+  // note that we have clobbered a lot of state in the
+  // previous few lines
+  DSTR(2,buf);
+  abort();
+}
 
 
-uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
+void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp)
 { 
   execution_context_t *mc = find_my_execution_context();
   struct _libc_fpstate fstate;
@@ -1239,11 +1265,11 @@ uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
   int demotions=0;
 
   if (!inited) {
-    SAFE_DEBUG_QUAD("ignoring pre-boot foreign call from unknown execution context for",f);
-    return -1;
+    hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - trampoline", tramp);
+    return ;
   }
 
-  SAFE_DEBUG_QUAD("handling correctness for foreign call",f);
+  SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
 
   mc->correctness_foreign_calls++;
   
@@ -1260,7 +1286,7 @@ uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
   if (demotions<0) {
     ERROR("demotions in foreign call somehow failed\n");
     abort_operation("demotions in foreign call somehow failed\n");
-    return -1;
+    return;
   }
 
 #if CONFIG_TELEMETRY_PROMOTIONS
@@ -1280,11 +1306,33 @@ uint32_t NO_TOUCH_FLOAT  __fpvm_foreign_entry(void *f)
   
   set_mxcsr(mxcsr); // Write the new mxcsr, with traps disabled
 
-  // return the value to restore to after the call
-  return oldmxcsr;
+  // stash the mxcsr we will enable on return
+  mc->foreign_return_mxcsr = oldmxcsr;
+  // stash the return address of the caller of the wrapper
+  // we will ultimately want to return there
+  mc->foreign_return_addr = *ret;
+  // modify the current return address to return back to the
+  // wrapper
+  *ret = tramp;
   
 }
 
+void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
+{
+  execution_context_t *mc = find_my_execution_context();
+
+  SAFE_DEBUG("In foreign exit\n");
+  
+  // do mxcsr restore
+  set_mxcsr(mc->foreign_return_mxcsr);
+
+  // now modify the return address to go back to
+  // the original caller
+  *ret = mc->foreign_return_addr;
+
+  mc->foreign_return_addr=&fpvm_panic;
+
+}
 
 
 inline static uint64_t decode_cache_hash_rip(void *rip, uint64_t table_len) {
@@ -1872,6 +1920,8 @@ static int bringup_execution_context(int tid) {
   }
 
   c->state = INIT;
+  c->foreign_return_mxcsr=0;
+  c->foreign_return_addr=&fpvm_panic;
   c->aborting_in_trap = 0;
   c->fp_traps = 0;
   c->demotions = 0;
@@ -1937,7 +1987,7 @@ extern void * _user_fpvm_entry;
 #endif
 
 // these are auto-generated
-#include <fpvm/additional_wrappers.h>
+#include <fpvm/additional_wrappers.inc>
 
 static int bringup() {
   // fpvm_gc_init();
@@ -2142,6 +2192,8 @@ static void config_round_daz_ftz(char *buf) {
 // Called on load of preload library
 static __attribute__((constructor)) void fpvm_init(void) {
   INFO("init\n");
+  SAFE_DEBUG("we are not in crazy town, ostensibly\n");
+
   if (!inited) {
     if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
       DEBUG("Attempting to use FPVM kernel suppport\n");
