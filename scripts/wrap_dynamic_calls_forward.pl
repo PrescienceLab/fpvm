@@ -7,6 +7,7 @@ $stem=shift;
 
 $preorig="__fpvm_orig_";
 
+$prefpvm="fpvm_";
 
 $entry = "*__fpvm_foreign_entry\@GOTPCREL(%rip)";
 $exit = "*__fpvm_foreign_exit\@GOTPCREL(%rip)";
@@ -205,6 +206,12 @@ $func:
 	
   popq %rbp        # tear down frame
   ret
+
+# and a wrapper to make it easier to call from in FPVM
+.globl $prefpvm$func
+$prefpvm$func:
+  movq $preorig$func\@GOTPCREL(%rip), %r11
+  jmp *(%r11)
 	
 	
 ENDS
