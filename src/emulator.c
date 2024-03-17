@@ -163,7 +163,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     count = fi->operand_sizes[0] / fi->common->op_size;
     dest_step = fi->common->op_size;
     src_step = fi->common->op_size;  // PAD: these can technically be different - FIX FIX FIX
-    // ERROR("Doing vector instruction - this might break!\n");
+    DEBUG("Doing vector instruction - this might break (dest operand size=%lu common operand size=%lu computed count=%lu dest_step=%lu src_step=%lu)\n",fi->operand_sizes[0],fi->common->op_size,count,dest_step,src_step);
+  } else {
+    DEBUG("Doing scalar instruction - (common operand size=%lu)\n",fi->common->op_size);
   }
 
   switch (fi->common->op_type) {
@@ -435,7 +437,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
     //            If this begins to cause problems, we will have to fix that
-    if (special.byte_width > 8) special.byte_width = 8;
+    if (special.byte_width > 8) {
+      DEBUG("forcing byte width to 8 (was %lu)\n", special.byte_width);
+      special.byte_width = 8;
+    }
 
 #if CONFIG_TELEMETRY_PROMOTIONS
     uint64_t d=0, s1=0, s2=0, s3=0, s4=0;

@@ -727,7 +727,14 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
-
+  
+  // operand sizes for memory operands cannot be determined
+  // trivially, so the idea here is to make memory operands
+  // correspond to the largest operand size we encounter
+  // in the instruction.   This is done in two passes
+  uint8_t max_operand_size=0;
+#define UPDATE_MAX_OPERAND_SIZE(s) max_operand_size = ((s)>max_operand_size) ? (s) : max_operand_size;
+  
   int i;
 
   DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n", fr->mcontext, fr->fprs,
@@ -771,6 +778,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
                   fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
               if (fr->fpr_size >= 16) {
                 fi->operand_sizes[fi->operand_count] = 16;
+		UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
               } else {
                 ERROR("incompatable fpr size for xmm\n");
                 return -1;
@@ -782,6 +790,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
                   fr->fprs + fr->fpr_size * (o->reg - X86_REG_YMM0);
               if (fr->fpr_size >= 32) {
                 fi->operand_sizes[fi->operand_count] = 32;
+		UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
               } else {
                 ERROR("incompatable fpr size for ymm\n");
                 return -1;
@@ -794,6 +803,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
                   fr->fprs + fr->fpr_size * (o->reg - X86_REG_ZMM0);
               if (fr->fpr_size >= 64) {
                 fi->operand_sizes[fi->operand_count] = 64;
+		UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
               } else {
                 ERROR("incompatable fpr size for zmm\n");
                 return -1;
@@ -834,6 +844,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
           fi->operand_addrs[fi->operand_count] =
               (void *)(((uint64_t)(&(fr->mcontext->gregs[MCREG(m)]))) + MCOFF(m));
           fi->operand_sizes[fi->operand_count] = MCSIZE(m);
+	  UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
 
           DEBUG("Mapped GPR %d (%s) to %p (%d)\n", o->reg, reg_name(o->reg),
               fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
@@ -849,6 +860,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         // an immediate!\n");
         fi->operand_addrs[fi->operand_count] = &o->imm;
         fi->operand_sizes[fi->operand_count] = 8;
+	UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
         DEBUG("Mapped immediate %016lx at %p (%u)\n", o->imm, fi->operand_addrs[fi->operand_count],
             fi->operand_sizes[fi->operand_count]);
         fi->operand_count++;
@@ -934,11 +946,11 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         // PAD: the following assumes there is no operand size override for
         // integer and it assumes that for FP we are always talking about 8 byte
         // quantities
-        fi->operand_sizes[fi->operand_count] = 8;  // PAD: THIS IS BOGUS
+        fi->operand_sizes[fi->operand_count] = 0;  // to be filled in later
+	UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
 
-        DEBUG("Mapped memory operand to %p (%u) [SIZE BOGUS!] data %016lx (%lf)\n",
-            fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count],
-            *(uint64_t *)addr, *(double *)addr);
+        DEBUG("Mapped memory operand to %p (size TBD)\n",
+	      fi->operand_addrs[fi->operand_count]);
         fi->operand_count++;
       } break;
 
@@ -950,6 +962,74 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
     }
   }
 
+  // update memory operand sizes
+  for (i = 0; i < fi->operand_count; i++) {
+    if (!fi->operand_sizes[i]) {
+      fi->operand_sizes[i] = max_operand_size;
+      void    *addr=fi->operand_addrs[i];
+      uint64_t size=fi->operand_sizes[i];
+      switch (size) {
+      case 1:
+	DEBUG("Mapped memory operand to %p (%lu) data %02x\n",
+	      addr,
+	      size,
+	      *(uint8_t *)addr);
+	break;
+      case 2:
+	DEBUG("Mapped memory operand to %p (%lu) data %04x\n",
+	      addr,
+	      size,
+	      *(uint16_t *)addr);
+	break;
+      case 4:
+	DEBUG("Mapped memory operand to %p (%lu) data %08x (%f)\n",
+	      addr,
+	      size,
+	      *(uint32_t *)addr, *(float *)addr);
+	break;
+      case 8:
+	DEBUG("Mapped memory operand to %p (%lu) data %016lx (%lf)\n",
+	      addr,
+	      size,
+	      *(uint64_t *)addr, *(double *)addr);
+	break;
+      case 16:
+	DEBUG("Mapped memory operand to %p (%lu) data %016lx %016lx (%lf %lf)\n",
+	      addr,
+	      size,
+	      *(uint64_t *)addr, *(uint64_t*)(addr+8),
+	      *(double *)addr, *(double*)(addr+8));
+	break;
+      case 32:
+	DEBUG("Mapped memory operand to %p (%lu) data %016lx %016lx %016lx %016lx (%lf %lf %lf %lf)\n",
+	      addr,
+	      size,
+	      *(uint64_t *)addr, *(uint64_t*)(addr+8),
+	      *(uint64_t*)(addr+16), *(uint64_t*)(addr+24),
+	      *(double *)addr, *(double*)(addr+8),
+	      *(double *)(addr+16), *(double*)(addr+24));
+      case 64:
+	DEBUG("Mapped memory operand to %p (%lu) data %016lx %016lx %016lx %016lx %016lx %016lx %016lx %016lx (%lf %lf %lf %lf %lf %lf %lf %lf)\n",
+	      addr,
+	      size,
+	      *(uint64_t *)addr, *(uint64_t*)(addr+8),
+	      *(uint64_t*)(addr+16), *(uint64_t*)(addr+24),
+	      *(uint64_t*)(addr+32), *(uint64_t*)(addr+40),
+	      *(uint64_t*)(addr+48), *(uint64_t*)(addr+56),
+	      *(double *)addr, *(double*)(addr+8),
+	      *(double *)(addr+16), *(double*)(addr+24),
+	      *(double *)(addr+32), *(double*)(addr+40),
+	      *(double *)(addr+48), *(double*)(addr+56));
+	break;
+      default:
+	DEBUG("Mapped memory operand to %p (%lu [weird]) data ?\n",
+	      addr,
+	      size);
+	
+	break;
+      }
+    }
+  }
   return 0;
 }
 

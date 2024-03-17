@@ -106,24 +106,24 @@
     UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (*(TYPE *)src1)OP(*(TYPE *)src2);				\
-    BOX(result,dest);							\
     DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n", \
-	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, *(void**)dest); \
+	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, dest);	\
+    BOX(result,dest);							\
     return 0;								\
-    }
+  }
 
-#define UN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                           \
-  int NAME##_##TYPE(                                                                            \
-      op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
+#define UN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)			\
+  int NAME##_##TYPE(							\
+		    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     double t1;								\
     DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1));					\
-    BOX(result,dest);							\
     DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
-	  *(TYPE *)src1, *result, *(ITYPE *)result, *(void**)dest);	\
-    return 0;                                                                                   \
+	  *(TYPE *)src1, *result, *(ITYPE *)result, dest);			\
+    BOX(result,dest);							\
+    return 0;								\
   }
 
 #define BIN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                      \
@@ -136,9 +136,9 @@
     UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1), (*(TYPE *)src2));			\
-    BOX(result,dest);							\
     DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ", " SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
-	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, *(void**)dest); \
+	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, dest);	\
+    BOX(result,dest);							\
     return 0;								\
   }
 
@@ -154,11 +154,10 @@
     UNBOX_TRACKED(src3,t3);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (NEGOP((*(TYPE *)src1)OP1(*(TYPE *)src2)))OP2(*(TYPE *)src3); \
-    BOX(result,dest);							\
     DEBUG(#NAME "_" #TYPE ": (" #NEGOP "( " SPEC " " #OP1 " " SPEC " ) ) " #OP2 " " SPEC \
 	  " = " SPEC " [" ISPEC "] (%p)\n",				\
-	  *(TYPE *)src1, *(TYPE *)src2, *(TYPE *)src3, *result, *(ITYPE *)result, *(void**)dest); \
-    *(TYPE *)dest = *result;						\
+	  *(TYPE *)src1, *(TYPE *)src2, *(TYPE *)src3, *result, *(ITYPE *)result, dest); \
+    BOX(result,dest);							\
     return 0;                                                                                      \
   }
 
