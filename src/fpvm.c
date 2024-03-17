@@ -1257,19 +1257,28 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 }
 
 
-void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp)
+void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 { 
   execution_context_t *mc = find_my_execution_context();
   struct _libc_fpstate fstate;
   fpvm_regs_t regs;
   int demotions=0;
 
+  SAFE_DEBUG("foreign entry\n");
+  
   if (!inited) {
-    hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - trampoline", tramp);
+    hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - function ", func);
     return ;
   }
 
-  SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
+  if (mc->foreign_return_addr!=&fpvm_panic) {
+    hard_fail_show_foreign_func("recursive foreign entry detected - function ",func);
+    return;
+  }
+
+
+  //  SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
+  //SAFE_DEBUG_QUAD("handling correctness for foreign call - function",func);
 
   mc->correctness_foreign_calls++;
   
@@ -1314,6 +1323,8 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp)
   // modify the current return address to return back to the
   // wrapper
   *ret = tramp;
+
+  SAFE_DEBUG("foreign call begins\n");
   
 }
 
@@ -1321,7 +1332,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
 {
   execution_context_t *mc = find_my_execution_context();
 
-  SAFE_DEBUG("In foreign exit\n");
+  SAFE_DEBUG("foreign call ends\n");
   
   // do mxcsr restore
   set_mxcsr(mc->foreign_return_mxcsr);
@@ -1331,6 +1342,8 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   *ret = mc->foreign_return_addr;
 
   mc->foreign_return_addr=&fpvm_panic;
+
+  SAFE_DEBUG("foreign exit\n");
 
 }
 
@@ -2192,7 +2205,7 @@ static void config_round_daz_ftz(char *buf) {
 // Called on load of preload library
 static __attribute__((constructor)) void fpvm_init(void) {
   INFO("init\n");
-  SAFE_DEBUG("we are not in crazy town, ostensibly\n");
+  //  SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
   if (!inited) {
     if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
