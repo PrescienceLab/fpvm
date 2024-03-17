@@ -29,20 +29,29 @@
 
 // Private output formatting routines since we
 // do not want to reply on printf being functional
-#define DB(x)  { char _buf=x;  syscall(SYS_write,2,&_buf,1); }
-#define DHN(x) DB((((x & 0xF) >= 10) ? (((x & 0xF) - 10) + 'a') : ((x & 0xF) + '0')))
-#define DHB(x) DHN(x >> 4) ; DHN(x);
-#define DHW(x) DHB(x >> 8) ; DHB(x);
-#define DHL(x) DHW(x >> 16) ; DHW(x);
-#define DHQ(x) DHL(x >> 32) ; DHL(x);
-#define DSTR(x) { char *__curr = x; while(*__curr) { DB(*__curr); __curr++; } }
+// and we need to be able to intercept printf/fprintf/etc
+#define DB(fd,x)  { char _buf=x;  syscall(SYS_write,fd,&_buf,1); }
+#define DHN(fd,x) DB(fd,(((x & 0xF) >= 10) ? (((x & 0xF) - 10) + 'a') : ((x & 0xF) + '0')))
+#define DHB(fd,x) DHN(fd,x >> 4) ; DHN(fd,x);
+#define DHW(fd,x) DHB(fd,x >> 8) ; DHB(fd,x);
+#define DHL(fd,x) DHW(fd,x >> 16) ; DHW(fd,x);
+#define DHQ(fd,x) DHL(fd,x >> 32) ; DHL(fd,x);
+#define DSTR(fd,x) { char *__curr = x; uint64_t __count=0; while(*__curr++) { __count++; } syscall(SYS_write,fd,x,__count); }
 
-#define _SAFE_DEBUG(s) DSTR("fpvm safe debug: "); DSTR(s)
-#define _SAFE_DEBUG_QUAD(s,x) DSTR("fpvm safe debug: "); DSTR(s); DSTR(": "); DHQ(((uint64_t)x)); DB('\n')
+#define _SAFE_DEBUG(s) DSTR(2,"fpvm safe debug: "); DSTR(2,s)
+#define _SAFE_DEBUG_QUAD(s,x) DSTR(2,"fpvm safe debug: "); DSTR(2,s); DSTR(2,": "); DHQ(2,((uint64_t)x)); DB(2,'\n')
+
+// if enabled, try to limit output to "safe" functions as
+// much as possible
+#define TRY_RESTRICT_TO_SAFE 0
 
 
 #if DEBUG_OUTPUT
+#if TRY_RESTRICT_TO_SAFE
+#define DEBUG(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) }
+#else
 #define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): " S, gettid(), ##__VA_ARGS__)
+#endif
 #define SAFE_DEBUG(S) _SAFE_DEBUG(S)
 #define SAFE_DEBUG_QUAD(S,X) _SAFE_DEBUG_QUAD(S,X)
 #else
@@ -55,10 +64,14 @@
 #define INFO(S, ...)
 #define ERROR(S, ...)
 #else
+#if TRY_RESTRICT_TO_SAFE
+#define INFO(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) } 
+#define ERROR(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm ERROR(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) }
+#else
 #define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__)
 #define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): " S, gettid(), ##__VA_ARGS__)
 #endif
-
+#endif
 // eventually make this a menuconfig option
 #define CONFIG_ASSERTIONS 1
 
