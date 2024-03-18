@@ -22,24 +22,21 @@
 
 
 #if CONFIG_DEBUG_ALT_ARITH
-#ifdef DEBUG
-#undef DEBUG
-#endif
-#define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
-#ifdef SAFE_DEBUG
-#undef SAFE_DEBUG
-#endif
-#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: boxed: " S, strlen("fpvm safe debug: boxed: " S))
+#define MATH_DEBUG(S, ...) DEBUG("boxed: " S, ##__VA_ARGS__)
+#define MATH_SAFE_DEBUG(S) SAFE_DEBUG("boxed: " S)
+#define MATH_SAFE_DEBUG_QUAD(S,X) SAFE_DEBUG_QUAD("boxed: " S, X)
 #else
-#define DEBUG(S, ...)
-#define SAFE_DEBUG(S)
+#define MATH_DEBUG(S, ...)
+#define MATH_SAFE_DEBUG(S)
+#define MATH_SAFE_DEBUG_QUAD(S,X)
 #endif
 
 #if !NO_OUTPUT
-#undef INFO
-#undef ERROR
-#define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
-#define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): boxed: " S, gettid(), ##__VA_ARGS__)
+#define MATH_INFO(S, ...) INFO("boxed: " S, ##__VA_ARGS__)
+#define MATH_ERROR(S, ...) ERROR("boxed: " S, ##__VA_ARGS__)
+#else
+#define MATH_INFO(S, ...)
+#define MATH_ERROR(S, ...)
 #endif
 
 #define EXIT(d) exit(d)  // not exit , what if there is really a nan
@@ -86,12 +83,12 @@
 
 #define IEEE_REVERT_SIGN(ITYPE, TYPE, ptr_val, dest)                                              \
   {                                                                                               \
-    DEBUG("REVERT_SIGN %016lx (potential corruption)\n", *(uint64_t *)dest);                                  \
+    MATH_DEBUG("REVERT_SIGN %016lx (potential corruption)\n", *(uint64_t *)dest);                                  \
     volatile TYPE *_per_result = (TYPE *)ALLOC(sizeof(TYPE));                           \
     memset(_per_result, 0, sizeof(TYPE));                                                         \
     *_per_result = -*(TYPE *)ptr_val;                                                             \
     volatile ITYPE _nan_encoded = NANBOX_ENCODE((uint64_t)_per_result, *(uint64_t *)_per_result); \
-    DEBUG("Nanbox result addr %p value %lf  \n", _per_result, *_per_result);                      \
+    MATH_DEBUG("Nanbox result addr %p value %lf  \n", _per_result, *_per_result);                      \
     NANBOX(ITYPE, dest, _nan_encoded);                                                            \
     ptr_val = _per_result;                                                                        \
   }
@@ -100,13 +97,13 @@
   int NAME##_##TYPE(							\
 		    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     double t1, t2;							\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (*(TYPE *)src1)OP(*(TYPE *)src2);				\
-    DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n", \
+    MATH_DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n", \
 	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, dest);	\
     BOX(result,dest);							\
     return 0;								\
@@ -116,11 +113,11 @@
   int NAME##_##TYPE(							\
 		    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     double t1;								\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1));					\
-    DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
+    MATH_DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
 	  *(TYPE *)src1, *result, *(ITYPE *)result, dest);			\
     BOX(result,dest);							\
     return 0;								\
@@ -130,13 +127,13 @@
   int NAME##_##TYPE(                                                                        \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {  \
     double t1, t2;							\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     UNBOX_TRACKED(src2,t2);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = FUNC((*(TYPE *)src1), (*(TYPE *)src2));			\
-    DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ", " SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
+    MATH_DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ", " SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
 	  *(TYPE *)src1, *(TYPE *)src2, *result, *(ITYPE *)result, dest);	\
     BOX(result,dest);							\
     return 0;								\
@@ -146,15 +143,15 @@
   int NAME##_##TYPE(                                                                               \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {         \
     double t1, t2, t3;							\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
-    DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
-    DEBUG("src3 tracked: %s\n", TRACKED(src3) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	\
+    MATH_DEBUG("src3 tracked: %s\n", TRACKED(src3) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     UNBOX_TRACKED(src2,t2);						\
     UNBOX_TRACKED(src3,t3);						\
     TYPE *result = (TYPE *)ALLOC(sizeof(TYPE));				\
     *result = (NEGOP((*(TYPE *)src1)OP1(*(TYPE *)src2)))OP2(*(TYPE *)src3); \
-    DEBUG(#NAME "_" #TYPE ": (" #NEGOP "( " SPEC " " #OP1 " " SPEC " ) ) " #OP2 " " SPEC \
+    MATH_DEBUG(#NAME "_" #TYPE ": (" #NEGOP "( " SPEC " " #OP1 " " SPEC " ) ) " #OP2 " " SPEC \
 	  " = " SPEC " [" ISPEC "] (%p)\n",				\
 	  *(TYPE *)src1, *(TYPE *)src2, *(TYPE *)src3, *result, *(ITYPE *)result, dest); \
     BOX(result,dest);							\
@@ -162,7 +159,7 @@
   }
 
 static inline double maxd(double a, double b) {
-  DEBUG("maxd \n");
+  MATH_DEBUG("maxd \n");
   if (a > b) {
     return a;
   } else {
@@ -170,7 +167,7 @@ static inline double maxd(double a, double b) {
   }
 }
 static inline double mind(double a, double b) {
-  DEBUG("mind \n");
+  MATH_DEBUG("mind \n");
 
   if (a < b) {
     return a;
@@ -197,7 +194,7 @@ static inline float minf(float a, float b) {
  * *src4) */
 /* { */
 /*   double result =  sqrt(*(double*)src1); */
-/*   DEBUG("sqrt_double: sqrt(%lf) = %lf [%016lx] (%p)\n", *(double*)src1,
+/*   MATH_DEBUG("sqrt_double: sqrt(%lf) = %lf [%016lx] (%p)\n", *(double*)src1,
  * result, *(uint64_t*)&result, dest ); */
 /*   *(double*)dest = result; */
 /*   return 0; */
@@ -213,9 +210,9 @@ static inline float minf(float a, float b) {
 
 // should not fire
 #define CONVERT_F2I(FTYPE, ITYPE, FSPEC, ISPEC)				\
-  { ERROR("convert_f2i float should not happen\n");			\
+  { MATH_ERROR("convert_f2i float should not happen\n");			\
     ITYPE result = (ITYPE)(*(FTYPE *)src1);				\
-    DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
+    MATH_DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
 	  dest);							\
     *(ITYPE *)dest = result;						\
     return 0;								\
@@ -224,11 +221,11 @@ static inline float minf(float a, float b) {
 // unbox src, int output
 #define DOUBLE_CONVERT_F2I(FTYPE, ITYPE, FSPEC, ISPEC)			\
   {									\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     double t1;								\
     UNBOX_TRACKED(src1,t1);						\
     ITYPE result = (ITYPE)(*(FTYPE *)src1);                                                        \
-    DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
+    MATH_DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
         dest);                                                                                     \
     *(ITYPE *)dest = result;                                                                       \
     return 0;                                                                                      \
@@ -246,7 +243,7 @@ int f2i_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     case 8:
       DOUBLE_CONVERT_F2I(double, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -265,7 +262,7 @@ int f2u_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     case 8:
       DOUBLE_CONVERT_F2I(double, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -283,7 +280,7 @@ int f2u_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
     case 8:
       CONVERT_F2I(float, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -291,9 +288,9 @@ int f2u_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
 
 // produces an unboxed result
 #define CONVERT_I2F(FTYPE, ITYPE, FSPEC, ISPEC)				\
-  { ERROR("convert_i2f float should not happen\n");			\
+  { MATH_ERROR("convert_i2f float should not happen\n");			\
     FTYPE result = (FTYPE)(*(ITYPE *)src1);				\
-    DEBUG("i2f[" #ITYPE " to " #FTYPE "](" #ISPEC ") = " #FSPEC " (%p)\n", (*(ITYPE *)src1), \
+    MATH_DEBUG("i2f[" #ITYPE " to " #FTYPE "](" #ISPEC ") = " #FSPEC " (%p)\n", (*(ITYPE *)src1), \
 	  result, dest);						\
     *(uint64_t *)dest = *(uint64_t *)&result;				\
     return 0;								\
@@ -312,7 +309,7 @@ int i2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     case 8:
       CONVERT_I2F(double, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -331,7 +328,7 @@ int u2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     case 8:
       CONVERT_I2F(double, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -342,19 +339,19 @@ int u2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *
 #define DOUBLE_CONVERT_F2F(FITYPE, FOTYPE, FISPEC, FOSPEC)		\
   {									\
     double t1;								\
-    DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
+    MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	\
     UNBOX_TRACKED(src1,t1);						\
     FOTYPE result = (FOTYPE)(*(FITYPE *)src1);                                                  \
-    DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
+    MATH_DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
         result, dest);                                                                          \
     *(FOTYPE *)dest = result;                                                                   \
     return 0;                                                                                   \
   }
 
 #define CONVERT_F2F(FITYPE, FOTYPE, FISPEC, FOSPEC)			\
-  { ERROR("convert_f2f float should not happen\n");			\
+  { MATH_ERROR("convert_f2f float should not happen\n");			\
   FOTYPE result = *(FITYPE*)src1;					\
-  DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
+  MATH_DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
 	  result, dest);						\
   *(FOTYPE *)dest = result;						\
   return 0;								\
@@ -366,7 +363,7 @@ int f2f_double(op_special_t *special, void *dest, void *src1, void *src2, void *
       DOUBLE_CONVERT_F2F(double, float, "%lf", "%f");
     // case 4: CONVERT_F2F(double,float,"%lf","%f");
     default:
-      ERROR("Cannot handle double->float(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->float(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -377,7 +374,7 @@ int f2f_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
     case 8:
       CONVERT_F2F(float, double, "%f", "%lf");
     default:
-      ERROR("Cannot handle float->float(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->float(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -394,7 +391,7 @@ int f2i_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
     case 8:
       CONVERT_F2I(float, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -407,17 +404,18 @@ int f2i_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
 
 int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   double t1, t2;
-  DEBUG("CMP !!!!! WTF deal with it\n");
-  DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
-  DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
+  MATH_DEBUG("CMP !!!!! WTF deal with it\n");
+  MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
+  MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
   UNBOX_TRACKED(src1,t1);							
   UNBOX_TRACKED(src2,t2);							
   double a = *(double *)src1;
   double b = *(double *)src2;
   uint64_t *rflags = special->rflags;
   int which;
-  (void)which;
 
+  MATH_DEBUG("on entry, rflags=%016lx\n",*rflags);
+  
   *rflags &= ~(RFLAGS_OF | RFLAGS_AF | RFLAGS_SF | RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);
 
   if (isnan(a) || isnan(b)) {
@@ -436,12 +434,15 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *
     }
   }
   
-  DEBUG("double %s compare %lf %lf => flags %lx (%s)\n",
-      special->unordered ? "unordered" : "ordered", a, b, *rflags,
-      which == -2   ? "unordered"
-      : which == -1 ? "less"
-      : which == 0  ? "equal"
-                    : "greater");
+  MATH_DEBUG("double %s compare %lf %lf => flags %016lx (%s)\n",
+	     special->unordered ? "unordered" : "ordered", a, b, *rflags,
+	     which == -2   ? "unordered"
+	     : which == -1 ? "less"
+	     : which == 0  ? "equal"
+	     : which == +1 ? "greater"
+	     : "BUG BUG BUG");
+
+  (void)which;
 
   return 0;
 }
@@ -449,13 +450,13 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *
 int ltcmp_double(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   double t1, t2;
-  DEBUG("LTCMP !!!!! WTF deal with it (this is likely crazy code...) \n");
+  MATH_DEBUG("LTCMP !!!!! WTF deal with it (this is likely crazy code...) \n");
 #if 1
-  DEBUG("LTCMP !!!!! Treating like cmp\n");
+  MATH_DEBUG("LTCMP !!!!! Treating like cmp\n");
   return cmp_double(special,dest,src1,src2,src3,src4);
 #else 
-  DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
-  DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
+  MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
+  MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
   UNBOX_TRACKED(src1,t1);							
   UNBOX_TRACKED(src2,t2);							
   double a = *(double *)src1;
@@ -467,24 +468,24 @@ int ltcmp_double(
   // RFLAGS_CF);
 
   if (isnan(a) || isnan(b)) {
-    DEBUG("fault here -1 %p \n", dest);
+    MATH_DEBUG("fault here -1 %p \n", dest);
     // *rflags |= (RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);
     which = -2;
   } else {
     if (a < b) {
-      DEBUG("fault here 1 %p \n", dest);
+      MATH_DEBUG("fault here 1 %p \n", dest);
       *(uint64_t *)dest = 0xffffffffffffffffUL;
       // *(uint64_t*)dest = 0x0000000000000000UL;
       // *(uint64_t*)dest = 0x1UL<<64;
       which = -1;
     } else {  // a>b
       // set nothing
-      DEBUG("fault here 2 %p \n", dest);
+      MATH_DEBUG("fault here 2 %p \n", dest);
       *(uint64_t *)dest = 0x0000000000000000UL;
       which = 1;
     }
   }
-  DEBUG("double %s compare %lf %lf => flags %lx (%s)\n", special->unordered ?
+  MATH_DEBUG("double %s compare %lf %lf => flags %lx (%s)\n", special->unordered ?
 	"unordered" : "ordered", a,b,*rflags, which==-2 ? "unordered" : which==-1 ?
 	"less" :  "equal/greater");
 
@@ -518,7 +519,7 @@ UN_FUNC(double, uint64_t, sqrt, sqrt, "%lf", "%016lx");
 
 #define DECL_DEFINITION(FUNC, TYPE) \
   FPVM_MATH_DECL(FUNC, TYPE) {      \
-    ERROR("huh?  %s invoked\n", #FUNC);	\
+    MATH_ERROR("huh?  %s invoked\n", #FUNC);	\
     return 0;                       \
   }
 
@@ -582,13 +583,13 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
   int s;
   np = UNBOX(p,s);
   if (np) {
-#if CONFIG_DEBUG
+#if CONFIG_DEBUG_ALT_ARITH
     // the following is a redundant check
     // basically to just let us play with it
     if (fpvm_memaddr_probe_readable_long(np)) { 
       *p = s ? (*np) ^ (0x1UL<<63) : (*np);
     } else {
-      SAFE_DEBUG_QUAD("cannot read through tracked value addr",np);
+      MATH_SAFE_DEBUG_QUAD("cannot read through tracked value addr",np);
     }
 #else
     // just do the ref
@@ -599,13 +600,13 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 
 #define ORIG_IF_CAN(func, ...)                                          \
   if (orig_##func) {                                                    \
-    if (!DEBUG_OUTPUT) {                                                \
+    if (!CONFIG_DEBUG_ALT_ARITH) {					\
       orig_##func(__VA_ARGS__);                                         \
     } else {                                                            \
-      DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
+      MATH_DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
     }                                                                   \
   } else {                                                              \
-    DEBUG("cannot call orig_" #func " - skipping\n");                   \
+    MATH_DEBUG("cannot call orig_" #func " - skipping\n");		\
   }
 
 #define RECOVER(a, xmm)                                                                      \
@@ -621,7 +622,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
     UNBOX_VAL(a);				 \
     RET ori = orig_##NAME(a);                    \
-    DEBUG(#NAME "(%lf) = " RSPEC "\n", a,ori);	 \
+    MATH_DEBUG(#NAME "(%lf) = " RSPEC "\n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);   \
     return ori;                                  \
@@ -632,7 +633,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
     UNBOX_VAL(a);				 \
     RET ori = orig_##NAME(a);                    \
-    DEBUG(#NAME "(%lf) = %lf \n", a,ori);	 \
+    MATH_DEBUG(#NAME "(%lf) = %lf \n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);   \
     return ori;                                  \
@@ -644,7 +645,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     UNBOX_VAL(a);						\
     UNBOX_VAL(b);						\
     RET ori = orig_##NAME(a, b);                                \
-    DEBUG(#NAME "(%lf, %lf) = %lf \n", a, b, ori);		\
+    MATH_DEBUG(#NAME "(%lf, %lf) = %lf \n", a, b, ori);		\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                 \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                  \
     return ori;                                                 \
@@ -655,7 +656,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
     UNBOX_VAL(a);					       \
     RET ori = orig_##NAME(a, b);                               \
-    DEBUG(#NAME "(%lf , %d) = %lf \n", a, b, ori);	       \
+    MATH_DEBUG(#NAME "(%lf , %d) = %lf \n", a, b, ori);	       \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                 \
     return ori;                                                \
@@ -665,7 +666,7 @@ void sincos(double a, double *sin, double *cos) {
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   UNBOX_VAL(a);
   orig_sincos(a, sin, cos);
-  DEBUG("sincos(%lf) = (%lf, %lf)\n", a, *sin, *cos);
+  MATH_DEBUG("sincos(%lf) = (%lf, %lf)\n", a, *sin, *cos);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   return;

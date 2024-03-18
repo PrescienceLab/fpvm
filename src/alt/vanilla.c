@@ -9,33 +9,29 @@
 #include <fpvm/number_system.h>
 
 #if CONFIG_DEBUG_ALT_ARITH
-#ifdef DEBUG
-#undef DEBUG
-#endif
-#define DEBUG(S, ...) fprintf(stderr, "fpvm debug(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
-#ifdef SAFE_DEBUG
-#undef SAFE_DEBUG
-#endif
-#define SAFE_DEBUG(S) syscall(SYS_write,2,"fpvm safe debug: vanilla: " S, strlen("fpvm safe debug: boxed: " S))
+#define MATH_DEBUG(S, ...) DEBUG("vanilla: " S, ##__VA_ARGS__)
+#define MATH_SAFE_DEBUG(S) SAFE_DEBUG("vanilla: " S)
+#define MATH_SAFE_DEBUG_QUAD(S,X) SAFE_DEBUG_QUAD("vanilla: " S, X)
 #else
-#define DEBUG(S, ...)
-#define SAFE_DEBUG(S)
+#define MATH_DEBUG(S, ...)
+#define MATH_SAFE_DEBUG(S)
+#define MATH_SAFE_DEBUG_QUAD(S,X)
 #endif
 
 #if !NO_OUTPUT
-#undef INFO
-#undef ERROR
-#define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
-#define ERROR(S, ...) fprintf(stderr, "fpvm ERROR(%8ld): vanilla: " S, gettid(), ##__VA_ARGS__)
+#define MATH_INFO(S, ...) INFO("vanilla: " S, ##__VA_ARGS__)
+#define MATH_ERROR(S, ...) ERROR("vanilla: " S, ##__VA_ARGS__)
+#else
+#define MATH_INFO(S, ...)
+#define MATH_ERROR(S, ...)
 #endif
-
 
 #define BIN_OP(TYPE, ITYPE, NAME, OP, SPEC, ISPEC)                                         \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     TYPE result = (*(TYPE *)src1)OP(*(TYPE *)src2);                                        \
                                                                                            \
-    DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n",     \
+    MATH_DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n",     \
         *(TYPE *)src1, *(TYPE *)src2, result, *(ITYPE *)&result, dest);                    \
     *(TYPE *)dest = result;                                                                \
                                                                                            \
@@ -47,7 +43,7 @@
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
     TYPE result = FUNC((*(TYPE *)src1));                                                        \
                                                                                                 \
-    DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ") = " SPEC " [" ISPEC "] (%p)\n", *(TYPE *)src1, \
+    MATH_DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ") = " SPEC " [" ISPEC "] (%p)\n", *(TYPE *)src1, \
         result, *(ITYPE *)&result, dest);                                                       \
     *(TYPE *)dest = result;                                                                     \
                                                                                                 \
@@ -59,7 +55,7 @@
   int vanilla_move_##TYPE(						                        \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {      \
                                                                                                 \
-    DEBUG("move_" #TYPE ": " SPEC " = " SPEC " [" ISPEC "] (%p)\n", *(TYPE *)src1,*(TYPE *)src1, \
+    MATH_DEBUG("move_" #TYPE ": " SPEC " = " SPEC " [" ISPEC "] (%p)\n", *(TYPE *)src1,*(TYPE *)src1, \
         *(ITYPE *)src1, dest);                                                                  \
     *(ITYPE *)dest = *(ITYPE *)src1;					                        \
                                                                                                 \
@@ -71,7 +67,7 @@
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     TYPE result = FUNC((*(TYPE *)src1), (*(TYPE *)src2));                                  \
                                                                                            \
-    DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ", " SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
+    MATH_DEBUG(#NAME "_" #TYPE ": " #FUNC "(" SPEC ", " SPEC ") = " SPEC " [" ISPEC "] (%p)\n", \
         *(TYPE *)src1, *(TYPE *)src2, result, *(ITYPE *)&result, dest);                    \
     *(TYPE *)dest = result;                                                                \
                                                                                            \
@@ -83,7 +79,7 @@
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
     TYPE result = (NEGOP((*(TYPE *)src1)OP1(*(TYPE *)src2)))OP2(*(TYPE *)src3);            \
                                                                                            \
-    DEBUG(#NAME "_" #TYPE ": (" #NEGOP "( " SPEC " " #OP1 " " SPEC " ) ) " #OP2 " " SPEC   \
+    MATH_DEBUG(#NAME "_" #TYPE ": (" #NEGOP "( " SPEC " " #OP1 " " SPEC " ) ) " #OP2 " " SPEC   \
                 " = " SPEC " [" ISPEC "] (%p)\n",                                          \
         *(TYPE *)src1, *(TYPE *)src2, *(TYPE *)src3, result, *(ITYPE *)&result, dest);     \
     *(TYPE *)dest = result;                                                                \
@@ -152,7 +148,7 @@ BIN_FUNC(float, uint32_t, min, minf, "%f", "%08x");
  */
 /* { */
 /*   double result =  sqrt(*(double*)src1); */
-/*   DEBUG("sqrt_double: sqrt(%lf) = %lf [%016lx] (%p)\n", *(double*)src1,
+/*   MATH_DEBUG("sqrt_double: sqrt(%lf) = %lf [%016lx] (%p)\n", *(double*)src1,
  * result, *(uint64_t*)&result, dest ); */
 /*   *(double*)dest = result; */
 /*   return 0; */
@@ -161,7 +157,7 @@ BIN_FUNC(float, uint32_t, min, minf, "%f", "%08x");
 /* int sqrt_float(void *dest, void *src1, void *src2, void *src3, void *src4) */
 /* { */
 /*   float result = sqrtf(*(float*)src1); */
-/*   DEBUG("sqrt_single: sqrt(%f) = %f [%08x] (%p)\n", *(float*)src1,result,
+/*   MATH_DEBUG("sqrt_single: sqrt(%f) = %f [%08x] (%p)\n", *(float*)src1,result,
  * *(uint32_t*)&result, dest ); */
 /*   *(float*)dest = result; */
 /*   return 0; */
@@ -177,7 +173,7 @@ BIN_FUNC(float, uint32_t, min, minf, "%f", "%08x");
 #define CONVERT_F2I(FTYPE, ITYPE, FSPEC, ISPEC)                                                    \
   {                                                                                                \
     ITYPE result = (ITYPE)(*(FTYPE *)src1);                                                        \
-    DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
+    MATH_DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
         dest);                                                                                     \
     *(ITYPE *)dest = result;                                                                       \
     return 0;                                                                                      \
@@ -196,7 +192,7 @@ int vanilla_f2i_double(
     case 8:
       CONVERT_F2I(double, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -216,7 +212,7 @@ int vanilla_f2u_double(
     case 8:
       CONVERT_F2I(double, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -236,7 +232,7 @@ int vanilla_f2i_float(
     case 8:
       CONVERT_F2I(float, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -256,7 +252,7 @@ int vanilla_f2u_float(
     case 8:
       CONVERT_F2I(float, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -265,7 +261,7 @@ int vanilla_f2u_float(
 #define CONVERT_I2F(FTYPE, ITYPE, FSPEC, ISPEC)                                              \
   {                                                                                          \
     FTYPE result = (FTYPE)(*(ITYPE *)src1);                                                  \
-    DEBUG("i2f[" #ITYPE " to " #FTYPE "](" #ISPEC ") = " #FSPEC " (%p)\n", (*(ITYPE *)src1), \
+    MATH_DEBUG("i2f[" #ITYPE " to " #FTYPE "](" #ISPEC ") = " #FSPEC " (%p)\n", (*(ITYPE *)src1), \
         result, dest);                                                                       \
     *(ITYPE *)dest = result;                                                                 \
     return 0;                                                                                \
@@ -284,7 +280,7 @@ int vanilla_i2f_double(
     case 8:
       CONVERT_I2F(double, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -304,7 +300,7 @@ int vanilla_u2f_double(
     case 8:
       CONVERT_I2F(double, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -324,7 +320,7 @@ int vanilla_i2f_float(
     case 8:
       CONVERT_I2F(float, int64_t, "%lf", "%ld");
     default:
-      ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->signed(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -344,7 +340,7 @@ int vanilla_u2f_float(
     case 8:
       CONVERT_I2F(float, uint64_t, "%lf", "%lu");
     default:
-      ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->unsigned(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -353,7 +349,7 @@ int vanilla_u2f_float(
 #define CONVERT_F2F(FITYPE, FOTYPE, FISPEC, FOSPEC)                                             \
   {                                                                                             \
     FOTYPE result = (FOTYPE)(*(FITYPE *)src1);                                                  \
-    DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
+    MATH_DEBUG("f2f[" #FITYPE " to " #FOTYPE "](" FISPEC ") = " FOSPEC " (%p)\n", (*(FITYPE *)src1), \
         result, dest);                                                                          \
     *(FOTYPE *)dest = result;                                                                   \
     return 0;                                                                                   \
@@ -365,7 +361,7 @@ int vanilla_f2f_double(
     case 4:
       CONVERT_F2F(double, float, "%lf", "%f");
     default:
-      ERROR("Cannot handle double->float(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle double->float(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -377,7 +373,7 @@ int vanilla_f2f_float(
     case 8:
       CONVERT_F2F(float, double, "%f", "%lf");
     default:
-      ERROR("Cannot handle float->float(%d)\n", special->byte_width);
+      MATH_ERROR("Cannot handle float->float(%d)\n", special->byte_width);
       return -1;
       break;
   }
@@ -425,7 +421,7 @@ int vanilla_cmp_double(
     }
   }
 
-  DEBUG("double %s compare %lf %lf => flags %lx (%s)\n",
+  MATH_DEBUG("double %s compare %lf %lf => flags %lx (%s)\n",
       special->unordered ? "unordered" : "ordered", a, b, *rflags,
       which == -2   ? "unordered"
       : which == -1 ? "less"
@@ -462,7 +458,7 @@ int vanilla_cmp_float(
     }
   }
 
-  DEBUG("float %s compare %f %f => flags %lx (%s)\n", special->unordered ? "unordered" : "ordered",
+  MATH_DEBUG("float %s compare %f %f => flags %lx (%s)\n", special->unordered ? "unordered" : "ordered",
       a, b, *rflags,
       which == -2   ? "unordered"
       : which == -1 ? "less"
@@ -479,20 +475,20 @@ int vanilla_cmp_float(
 
 #define ORIG_IF_CAN(func, ...)                                          \
   if (orig_##func) {                                                    \
-    if (!DEBUG_OUTPUT) {                                                \
+    if (!MATH_DEBUG_OUTPUT) {                                                \
       orig_##func(__VA_ARGS__);                                         \
     } else {                                                            \
-      DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
+      MATH_DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
     }                                                                   \
   } else {                                                              \
-    DEBUG("cannot call orig_" #func " - skipping\n");                   \
+    MATH_DEBUG("cannot call orig_" #func " - skipping\n");                   \
   }
 
 #define MATH_STUB_ONE(NAME, TYPE, RET)                    \
   RET NAME(TYPE a) {                                      \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);          \
     RET ori = orig_##NAME(a);                             \
-    DEBUG(#NAME " input (%lf ) result (%lf) \n", a, ori); \
+    MATH_DEBUG(#NAME " input (%lf ) result (%lf) \n", a, ori); \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);           \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);            \
     return ori;                                           \
@@ -502,7 +498,7 @@ int vanilla_cmp_float(
   RET NAME(TYPE a, TYPE b) {                                    \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);                \
     RET ori = orig_##NAME(a, b);                                \
-    DEBUG(#NAME " input (%lf , %lf) result %lf \n", a, b, ori); \
+    MATH_DEBUG(#NAME " input (%lf , %lf) result %lf \n", a, b, ori); \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                 \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                  \
     return ori;                                                 \
@@ -512,7 +508,7 @@ int vanilla_cmp_float(
   RET NAME(TYPE1 a, TYPE2 b) {                                 \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
     RET ori = orig_##NAME(a, b);                               \
-    DEBUG(#NAME " input (%lf , %d) result %lf \n", a, b, ori); \
+    MATH_DEBUG(#NAME " input (%lf , %d) result %lf \n", a, b, ori); \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                 \
     return ori;                                                \
@@ -521,7 +517,7 @@ int vanilla_cmp_float(
 void sincos(double a, double *sin, double *cos) {
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   orig_sincos(a, sin, cos);
-  // DEBUG(#NAME " input (%lf , %d) result %lf \n", a, , ori);
+  // MATH_DEBUG(#NAME " input (%lf , %d) result %lf \n", a, , ori);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   return;

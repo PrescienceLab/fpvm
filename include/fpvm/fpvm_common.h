@@ -43,7 +43,7 @@
 
 // if enabled, try to limit output to "safe" functions as
 // much as possible
-#define TRY_RESTRICT_TO_SAFE 0
+#define TRY_RESTRICT_TO_SAFE 1
 
 
 #if DEBUG_OUTPUT
@@ -61,6 +61,14 @@
 #endif
 
 #if NO_OUTPUT
+#if DEBUG_OUTPUT
+#undef DEBUG
+#undef SAFE_DEBUG
+#undef SAFE_DEBUG_QUAD
+#endif
+#define DEBUG(S, ...)
+#define SAFE_DEBUG(S)
+#define SAFE_DEBUG_QUAD(S,X)
 #define INFO(S, ...)
 #define ERROR(S, ...)
 #else
