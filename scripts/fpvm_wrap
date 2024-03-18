@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+
+from lief import *
+import argparse
+import os
+import stat
+
+# Create an argument parser
+parser = argparse.ArgumentParser(
+                    prog='fpvm_wrap',
+                    description='Rewrite a set of imported symbols to use <symbol>$fpvm')
+
+parser.add_argument('input')
+parser.add_argument('-o', dest='output', default='a.out')
+parser.add_argument('-s', dest='symbols', default="", help="comma-seperated list of symbols")
+parser.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
+
+args = parser.parse_args()
+
+symbols = set()
+for s in args.symbols.split(','):
+  symbols.add(s)
+
+
+if args.from_file is not None:
+  with open(args.from_file) as f:
+    for line in f:
+      symbols.add(line.strip())
+
+# Load the input binary
+elf = ELF.parse(args.input)
+
+# Iterate over the imported symbols of the elf binary. If the symbol's
+# name is in our set of symbols, append $fpvm to it
+for s in elf.imported_symbols:
+  if s.name in symbols:
+    print('wrapping ', s)
+    s.name += "$fpvm"
+
+# Save the modifed binary
+elf.write(args.output)
+
+# Do a 'chmod +x'
+st = os.stat(args.output)
+os.chmod(args.output, st.st_mode | stat.S_IEXEC)
