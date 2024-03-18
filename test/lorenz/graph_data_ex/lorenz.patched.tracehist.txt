@@ -1,0 +1,11 @@
+#benchmark	factors	length	cumprob	prob	count
+lorenz	patched	1	22.221630	22.221630	100002
+lorenz	patched	16	33.335778	11.114148	50016
+lorenz	patched	2	44.446592	11.110815	50001
+lorenz	patched	5	55.557185	11.110593	50000
+lorenz	patched	6	66.667778	11.110593	50000
+lorenz	patched	15	77.778370	11.110593	50000
+lorenz	patched	227	88.888963	11.110593	50000
+lorenz	patched	21	99.996000	11.107037	49984
+lorenz	patched	3	99.999778	0.003778	17
+lorenz	patched	4	100.000000	0.000222	1

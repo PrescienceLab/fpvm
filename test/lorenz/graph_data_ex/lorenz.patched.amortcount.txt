@@ -1,0 +1,2 @@
+#benchmark	factors	fptraps	promotions	clobbers	demotions	correctnesstraps	foreigncalls	correctnessdemotions
+lorenz	patched	0.0306137172032695	0.598638746354672	0.785712482990622	0	0	0.00340156948523532	0.0544207580160489

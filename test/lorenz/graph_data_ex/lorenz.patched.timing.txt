@@ -1,0 +1,2 @@
+#benchmark	factors	base_real	base_user	base_sys	base_sum	fpvm_real	fpvm_user	fpvm_sys	fpvm_sum	slowdown_real	slowdown_user	slowdown_sys	slowdown_sum
+lorenz	patched	0.049	0.049	0.000	0.049	2.479	1.798	0.681	2.479	50.5918367346939	36.6938775510204	0	50.5918367346939
