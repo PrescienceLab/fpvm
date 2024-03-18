@@ -239,18 +239,20 @@ typedef struct execution_context {
   perf_stat_t decode_stat;
   perf_stat_t bind_stat;
   perf_stat_t emulate_stat;
-  perf_stat_t patch_stat;
+  perf_stat_t correctness_stat;
+  perf_stat_t foreign_call_stat;
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
 #define PRINT_PERF(c, x) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): perf: ",(c)->tid); perf_stat_print(&(c)->x##_stat, stderr, _buf); }
-#define PRINT_PERFS(c)       \
+#define PRINT_PERFS(c)         \
   PRINT_PERF(c, gc);           \
   PRINT_PERF(c, decode_cache); \
   PRINT_PERF(c, decode);       \
   PRINT_PERF(c, bind);         \
   PRINT_PERF(c, emulate);      \
-  PRINT_PERF(c, patch);
+  PRINT_PERF(c, correctness);  \
+  PRINT_PERF(c, foreign_call); 
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -437,7 +439,8 @@ static execution_context_t *alloc_execution_context(int tid) {
       perf_stat_init(&context[i].decode_stat, "decoder");
       perf_stat_init(&context[i].bind_stat, "bind");
       perf_stat_init(&context[i].emulate_stat, "emulate");
-      perf_stat_init(&context[i].patch_stat, "patched trap");
+      perf_stat_init(&context[i].correctness_stat, "correctness");
+      perf_stat_init(&context[i].foreign_call_stat, "foreign call");
 #endif
       return &context[i];
     }
@@ -1027,7 +1030,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
   }
 
 
-#if DEBUG_OUTPUT
+#if 0 && DEBUG_OUTPUT
   DEBUG("detailed instruction dump:\n");
   fpvm_decoder_print_inst(fi, stderr);
 #endif
@@ -1153,9 +1156,9 @@ static int correctness_trap_handler(ucontext_t *uc)
   case AWAIT_FPE:
     // this must be a correctness trap from the patched binary
     DEBUG("correctness patch-driven trap received\n");
-    START_PERF(mc, patch);
+    START_PERF(mc, correctness);
     rc = correctness_handler(uc,mc);
-    END_PERF(mc, patch);
+    END_PERF(mc, correctness);
     if (rc) {
       ERROR("correctness handler failed\n");
     }
@@ -1264,6 +1267,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   fpvm_regs_t regs;
   int demotions=0;
 
+
   SAFE_DEBUG("foreign entry\n");
   
   if (!inited) {
@@ -1271,8 +1275,11 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     return ;
   }
 
+  START_PERF(mc, foreign_call);
+
   if (mc->foreign_return_addr!=&fpvm_panic) {
     hard_fail_show_foreign_func("recursive foreign entry detected - function ",func);
+    END_PERF(mc, foreign_call);
     return;
   }
 
@@ -1295,6 +1302,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   if (demotions<0) {
     ERROR("demotions in foreign call somehow failed\n");
     abort_operation("demotions in foreign call somehow failed\n");
+    END_PERF(mc, foreign_call);
     return;
   }
 
@@ -1325,12 +1333,16 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   *ret = tramp;
 
   SAFE_DEBUG("foreign call begins\n");
+
+  END_PERF(mc, foreign_call);
   
 }
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
 {
   execution_context_t *mc = find_my_execution_context();
+
+  START_PERF(mc, foreign_call);
 
   SAFE_DEBUG("foreign call ends\n");
   
@@ -1344,6 +1356,8 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   mc->foreign_return_addr=&fpvm_panic;
 
   SAFE_DEBUG("foreign exit\n");
+
+  END_PERF(mc, foreign_call);
 
 }
 
@@ -1453,7 +1467,7 @@ static void fp_trap_handler(ucontext_t *uc)
 
 #define ON_SAME_PAGE(x,y) ((((uint64_t)(x))&(~0xfffUL))==(((uint64_t)(y))&(~0xfffUL)))
   
-#if 1 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
+#if 0 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
 #define DUMP_SEQUENCE_ENDING_INSTR()					\
   if (instindex>0) {							\
     void *__startrip=rip;						\
