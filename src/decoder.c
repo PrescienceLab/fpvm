@@ -391,24 +391,53 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_UNPCKHPD] = {FPVM_OP_WARN, 1, 0, 8, 8},
 
     // call instructions and related
-    // push is included here because that is
+    // by "call instructions", we mean instructions that
+    // are identifed by fpvm_patch.sh as being departures
+    // from the patched codebase (i.e., foreign calls)
+    // such departures can come due to calls, jumps, and
+    // conditional jumps.  
+    // push is also included here because that is
     // instruction that the patcher marks, instead of
     // the call following it
     [X86_INS_CALL] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_PUSH] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // or we might tail-call to foreign function
     [X86_INS_JMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-    [X86_INS_JLE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // a foreign function tail-call might involve a conditional jump as well
+    [X86_INS_JA] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JAE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JB] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JBE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // 1[X86_INS_JC] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JB
+    [X86_INS_JCXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JECXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JRCXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // JZ
+    [X86_INS_JG] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JGE] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_JL] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    [X86_INS_JLE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // [X86_INS_JNA] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JBE
+    // [X86_INS_JNAE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JB
+    // [X86_INS_JNB] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JAE
+    // [X86_INS_JNBE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JA
+    // [X86_INS_JNC] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JAE
     [X86_INS_JNE] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // [X86_INS_JNG] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JLE
+    // [X86_INS_JNGE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JL
+    // [X86_INS_JNL] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JGE
+    // [X86_INS_JNLE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JG
     [X86_INS_JNO] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_JNS] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // [X86_INS_JNZ] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JNE
     [X86_INS_JO] = {FPVM_OP_CALL, 0, 0, 0, 0},
-    [X86_INS_JRCXZ] = {FPVM_OP_CALL, 0, 0, 0, 0},
     [X86_INS_JP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-    [X86_INS_JNP] = {FPVM_OP_CALL, 0, 0, 0, 0},
-    [X86_INS_LJMP] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // [X86_INS_JPE] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JP "parity even"
+    //[X86_INS_JPO] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JNP "parity odd"
+    [X86_INS_JS] = {FPVM_OP_CALL, 0, 0, 0, 0},
+    // [X86_INS_JZ] = {FPVM_OP_CALL, 0, 0, 0, 0}, // synonymed to JE
 
     // rounding
     // [X86_INS_ROUNDSD] = {FPVM_OP_ROUND, 0, 0, 8, 8},

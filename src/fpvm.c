@@ -1023,6 +1023,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
     fi = fpvm_decoder_decode_inst(rip);
     if (!fi) {
       ERROR("cannot decode instruction\n");
+      fpvm_decoder_decode_and_print_any_inst(rip,stderr,"undecodable instruction: "); \
       rc = -1;
       goto out;
     }
@@ -1227,8 +1228,11 @@ void fpvm_magic_trap_entry(void *priv)
   // This is to handle e9patch's lea instruction
   uc->uc_mcontext.gregs[REG_RIP] += 8;
 
-  correctness_trap_handler(uc);
- 
+  if (correctness_trap_handler(uc)) {
+    abort_operation("correctness trap handler failed\n");
+    ASSERT(0);
+  }
+
   // restore GP state
   // consider memcpy
   for (int i = 0; i < 18; i++) {
