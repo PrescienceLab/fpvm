@@ -632,11 +632,14 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 fpvm_emulator_correctness_response_t
 fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions)
 {
-  DEBUG("handling problematic instruction of type %d (%s)\n", fi->common->op_type,
+  DEBUG("handling problematic instruction of type %d (%s) is_vector=%d has_mask=%d op_size=%u dest_size=%u\n",
+	fi->common->op_type,
 	fi->common->op_type == FPVM_OP_MOVE ? "MOVE" :
 	fi->common->op_type == FPVM_OP_CALL ? "CALL" :
 	fi->common->op_type == FPVM_OP_WARN ? "WARN" :
-	fi->common->op_type == FPVM_OP_UNKNOWN ? "UNKNOWN" : "**SURPRISE!**");
+	fi->common->op_type == FPVM_OP_UNKNOWN ? "UNKNOWN" : "**SURPRISE!**",
+	fi->common->is_vector, fi->common->has_mask,
+	fi->common->op_size, fi->common->dest_size);
 
 #if CONFIG_TELEMETRY_PROMOTIONS  
   *demotions=0;
@@ -737,24 +740,30 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 
   if (fi->common->op_type==FPVM_OP_MOVE) {
     if (fi->is_simple_mov) {
-      DEBUG("handling simple move\n");
       if (fi->operand_count != 2) {
 	ERROR("simple move has %d operands... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->operand_count);
 	goto complex_transforms_sources_yikes;
       }
+      DEBUG("handling simple move src=%u bytes dest=%u bytes\n",fi->operand_sizes[1],fi->operand_sizes[0]);
       if (fi->common->op_size != 8 ) {
 	ERROR("simple move with operand size %d ... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->common->op_size);
 	goto complex_transforms_sources_yikes;
       }
+      
       // because this is a mov, there is only one source, and it is not the destination
       // note that this is different from the emulation code below, which
       // We have previously decoded mov dest|src1, src2, thus we need to convert src2
-      uint64_t temp = *(uint64_t*)src2;
+      
+      // copy out entire quantity, assuming we are talking about
+      // a double at the address/location
+      uint64_t temp=*(uint64_t*)src2;
       uint64_t old = temp;
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
-      // and write it to the destination
-      *(uint64_t*)dest = temp;
+      // and write it to the destination based on size
+      // note that this ignores sign extension or zero extension
+      // for copying small into large integer
+      memcpy(dest,&temp,fi->operand_sizes[0]);
       DEBUG("completed emulation of simple mov successully\n");
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {
