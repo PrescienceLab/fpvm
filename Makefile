@@ -31,8 +31,9 @@ foo:
 	@echo "objects:  $(OBJS)"
 	@echo "includes: $(INCS)"
 
-include/fpvm/additional_wrappers.h src/additional_wrappers.S : wrap.list
+include/fpvm/additional_wrappers.inc src/additional_wrappers.S include/fpvm/fpvm_wrappers.h : wrap.list
 	scripts/wrap_dynamic_calls.pl wrap.list additional_wrappers
+	mv additional_wrappers.inc include/fpvm
 	mv additional_wrappers.h include/fpvm
 	mv additional_wrappers.S src
 
@@ -59,7 +60,6 @@ $(BUILD)/%.cpp.o: %.cpp
 $(TARGET): $(BUILD) $(OBJS) 
 	@echo "Linking"
 	$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
-	
 
 build/test_fpvm: test_fpvm.c
 	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test_fpvm.c -lm -o $@
