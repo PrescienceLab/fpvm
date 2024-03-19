@@ -34,3 +34,5 @@ analysis/src/a.out
 analysis/e9patch
 
 analysis/workspace
+/include/fpvm/additional_wrappers.h
+/src/additional_wrappers.S
