@@ -9,7 +9,7 @@ FROM ubuntu:22.04 as build
 # Install base utilities
 RUN apt-get update \
     && apt-get install -y build-essential git \
-    && apt-get install -y wget xxd unzip \
+    && apt-get install -y wget xxd unzip time \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
