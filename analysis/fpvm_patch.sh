@@ -6,6 +6,8 @@ if [[ -z "${FPVM_HOME}" ]] ; then
 fi
 
 
+
+
 PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
 
 
@@ -18,7 +20,7 @@ workspace="${PFX}/workspace/"
 memonly="no"
 
 # Parse command-line arguments
-while getopts "w:m" opt; do
+while getopts "w:m?" opt; do
   case ${opt} in
     w )
       workspace=$(realpath "$OPTARG")
@@ -44,7 +46,7 @@ BIN=$(realpath $1)
 echo $BIN
 echo $workspace
 
-[[ -z "${BIN}" ]] && { echo "No binary provided" ; exit 1; }
+[[ -z "${BIN}" ]] && { echo "No binary provided" ; fpvm_patch.sh -? ; exit 1; }
 
 
 
