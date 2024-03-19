@@ -1,0 +1,23 @@
+F77 = f77
+FLINK	= f77
+
+F_LIB  =
+
+F_INC =
+FFLAGS = -O3 -fno-pic -no-pie
+
+FLINKFLAGS = -fno-pic -no-pie
+
+CC = clang
+CLINK	= clang -fno-pic -no-pie
+
+C_LIB  = -lm
+
+C_INC = -I../common
+
+CFLAGS = -O3 -pthread -fno-pic -no-pie
+CLINKFLAGS = -lm
+UCC	= cc -O
+BINDIR	= ../bin
+RAND   = randdp
+WTIME  = wtime.c
