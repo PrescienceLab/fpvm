@@ -18,5 +18,7 @@ fi
 
 export GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX512_Usable
 
+TIMEFORMAT='fpvm time: real %R user %U sys %S'
+
 time LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRESSIVE=y $@
 

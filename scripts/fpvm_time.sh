@@ -5,5 +5,6 @@ if [ -z "$1" ] ; then
   exit -1
 fi    
 
-time $@
+TIMEFORMAT='fpvm time: real %R user %U sys %S'
 
+time $@
