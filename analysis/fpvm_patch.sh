@@ -63,8 +63,6 @@ pushd ${PFX}
   mkdir -p ${workspace}
   # Copy the binary into the right location
   cp $BIN ${workspace}/input
-  # Copy other stuff we will want
-  cp /usr/bin/time ${workspace}
   # Run the patch, copying the results to the workspace folder
   docker buildx build --progress=plain -o $workspace .
 
@@ -110,9 +108,9 @@ pushd ${PFX}
   cp fpvm_magic.c ${BIN}.fpvm_magic.c
   cp fpvm_magic.h ${BIN}.fpvm_magic.h
   cp input ${BIN}.original
-  cp generate.profile ${BIN}.generate.profile
-  cp taintsource.profile ${BIN}.taintsource.profile
-  cp taintsink.profile ${BIN}.taintsink.profile
+  # cp generate.profile ${BIN}.generate.profile
+  # cp taintsource.profile ${BIN}.taintsource.profile
+  # cp taintsink.profile ${BIN}.taintsink.profile
   cp generate.timing ${BIN}.generate.timing
   cp taintsource.timing ${BIN}.taintsource.timing
   cp taintsink.timing ${BIN}.taintsink.timing
