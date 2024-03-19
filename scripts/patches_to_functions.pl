@@ -9,7 +9,7 @@ $ex=shift;
 
 open(PF,"$pf") or die "cannot open $pf\n";
 
-system "objdump -d $ex > _$ex.dis";
+system "objdump -d -w $ex > _$ex.dis";
 
 while ($cur=<PF>) {
     # dedos
@@ -26,8 +26,12 @@ sub get_instruction
 {
     my ($e,$a)=@_;
     my @d = `grep $a _$ex.dis`;
-    chomp($d[0]);
-    return $d[0];
+    if ($#d==-1) {
+	return "(instruction not found)";
+    } else {
+	chomp($d[0]);
+	return $d[0];
+    }
 }
 
 sub get_containing_func
