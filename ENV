@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-FPVM_HOME=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
+export FPVM_HOME=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
 export PATH=$FPVM_HOME/analysis:$FPVM_HOME/scripts:$FPVM_HOME/analysis/dep/e9patch:$PATH
 echo "You must have docker access in order to run analyses"
 
