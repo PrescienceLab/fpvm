@@ -13,15 +13,13 @@ CLASS=S
 #
 # exit
 
-cp config/make-clang.def config/make.def
+cp config/make-gcc.def config/make.def
+
+make ${b^^} CLASS=$CLASS clean
 
 for b in mg bt sp lu ft is cg ep; do
-  make ${b^^} CLASS=$CLASS
   mkdir -p bin/${b}
-  mv bin/${b}.${CLASS} bin/${b}/${b}
-
   pushd bin/${b}
-    mkdir -p work
-    fpvm_patch.sh -m -w work ${b}
+    rm -f *
   popd
 done

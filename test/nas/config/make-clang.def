@@ -17,7 +17,7 @@ C_INC = -I../common
 
 CFLAGS = -O3 -pthread -fno-pic -no-pie
 CLINKFLAGS = -lm
-UCC	= cc -O
+UCC	= clang -O -fno-pic -no-pie
 BINDIR	= ../bin
 RAND   = randdp
 WTIME  = wtime.c

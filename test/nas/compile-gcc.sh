@@ -13,7 +13,7 @@ CLASS=S
 #
 # exit
 
-cp config/make-clang.def config/make.def
+cp config/make-gcc.def config/make.def
 
 for b in mg bt sp lu ft is cg ep; do
   make ${b^^} CLASS=$CLASS

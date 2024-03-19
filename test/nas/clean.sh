@@ -15,13 +15,11 @@ CLASS=S
 
 cp config/make-clang.def config/make.def
 
-for b in mg bt sp lu ft is cg ep; do
-  make ${b^^} CLASS=$CLASS
-  mkdir -p bin/${b}
-  mv bin/${b}.${CLASS} bin/${b}/${b}
+make ${b^^} CLASS=$CLASS clean
 
+for b in mg bt sp lu ft is cg ep; do
+  mkdir -p bin/${b}
   pushd bin/${b}
-    mkdir -p work
-    fpvm_patch.sh -m -w work ${b}
+    rm -f *
   popd
 done
