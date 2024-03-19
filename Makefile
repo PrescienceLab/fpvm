@@ -3,6 +3,8 @@
 #  Copyright (c) 2021 Peter Dinda - see LICENSE
 #
 
+export FPVM_HOME:=$(shell pwd)
+export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
 
 
 SRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
