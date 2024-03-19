@@ -350,6 +350,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         src1 = fi->operand_addrs[0];
         src2 = fi->operand_addrs[1];
         // PAD: these comparisons must modify rflags
+	// note that CMP and UCMP only differ as to whether
+	// a QNAN can cause a fault, so really can be treated identically
+	// from FPVM's perspective
         special.unordered = fi->common->op_type == FPVM_OP_UCMP;
         special.rflags = fi->side_effect_addrs[0];
       } else {
