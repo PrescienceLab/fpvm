@@ -795,8 +795,6 @@ class VFG(ForwardAnalysis, Analysis):   # pylint:disable=abstract-method
         #mjc
         addr = job.addr #job.state.solver.eval(job.state.regs.ip)
 
-        print("handle", hex(addr), job.call_stack_suffix )
-
         input_state = job.state
         block_id = BlockID.new(addr, job.call_stack_suffix, job.jumpkind)
 
