@@ -114,6 +114,7 @@ pushd ${PFX}
   cp generate.timing ${BIN}.generate.timing
   cp taintsource.timing ${BIN}.taintsource.timing
   cp taintsink.timing ${BIN}.taintsink.timing
+  cp analysis.out ${BIN}.analysis.out
   
   if [ "${memonly}" = "no" ]; then
       echo "Patched executables for memory and calls"
