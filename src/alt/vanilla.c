@@ -475,7 +475,7 @@ int vanilla_cmp_float(
 
 #define ORIG_IF_CAN(func, ...)                                          \
   if (orig_##func) {                                                    \
-    if (!MATH_DEBUG_OUTPUT) {                                                \
+    if (!CONFIG_DEBUG_ALT_ARITH) {                                                \
       orig_##func(__VA_ARGS__);                                         \
     } else {                                                            \
       MATH_DEBUG("orig_" #func " returns 0x%x\n", orig_##func(__VA_ARGS__)); \
