@@ -20,7 +20,7 @@ while (<L>) {
 close(L);
 @funcs = sort keys %fs;
 
-open(I,">$stem.inc") or die "cannot open $stem.h\n";
+open(I,">$stem.inc") or die "cannot open $stem.inc\n";
 
 print I "// This file is auto-generated and\n";
 print I "// conforms with $stem.S\n";
@@ -175,7 +175,7 @@ $func:
   jmp *(%r11)
 
 # for testing
-#  jmp __fpvm_foreign_debug;
+#  jmp __fpvm_f_debug;
 
 # the original function  will return here...
 .tramp$func:

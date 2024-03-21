@@ -4,6 +4,7 @@ from lief import *
 import argparse
 import os
 import stat
+import re
 
 # Create an argument parser
 parser = argparse.ArgumentParser(
@@ -21,11 +22,19 @@ symbols = set()
 for s in args.symbols.split(','):
   symbols.add(s)
 
-
 if args.from_file is not None:
   with open(args.from_file) as f:
     for line in f:
-      symbols.add(line.strip())
+      raw=line.strip()
+      if re.search("^\s*\#",raw) :
+#        print('skipping comment ',raw)
+        continue
+      match = re.search("^\s*(\S+)",raw)
+      if (match) :
+        name = match.group(1)
+#        print('adding',name)
+        symbols.add(name)
+
 
 # Load the input binary
 elf = ELF.parse(args.input)
@@ -33,6 +42,7 @@ elf = ELF.parse(args.input)
 # Iterate over the imported symbols of the elf binary. If the symbol's
 # name is in our set of symbols, append $fpvm to it
 for s in elf.imported_symbols:
+#  print('considering ', s)
   if s.name in symbols:
     print('wrapping ', s)
     s.name += "$fpvm"

@@ -19,7 +19,7 @@ while (<L>) {
 close(L);
 @funcs = sort keys %fs;
 
-open(I,">$stem.inc") or die "cannot open $stem.h\n";
+open(I,">$stem.inc") or die "cannot open $stem.inc\n";
 
 print I "// This file is auto-generated and\n";
 print I "// conforms with $stem.S\n";
@@ -53,11 +53,7 @@ open(H,">$stem.h") or die "cannot open $stem.h\n";
 print H "// This file is auto-generated and\n";
 print H "// conforms with $stem.inc\n";
 print H "// conforms with $stem.S\n\n";
-print H "// NOTE THIS ONLY WORKS WITH integral return functions!\n\n";
-    
-foreach $func (@funcs) {
-    print H "uint64_t fpvm_$func)();\n";
-}
+print H "// This is intentionally blank since reverse wrappers are in use\n";
 print H "\n";
 
 close(H);
@@ -70,7 +66,7 @@ print S "# This file is auto-generated and\n";
 print S "# conforms with include/fpvm/additional_wrappers.h\n\n";
 
 #                                                                                             
-#       rdi, rsi, rdx, rcx, r8, r9, xmm0..xmm7 => rax or rdx::rax or xmm0
+#       rdi, rsi, rdx, rcx, r8, r9, xmm0..xmm7 => rax or rdx::rax or xmm0::xmm1
 #          for varargs, rax is INPUT as well, passing number
 #          of vector registers used
 #       scratch: rax, r10, r11  (rax, r11 safest, r10 
@@ -124,22 +120,36 @@ foreach $func (@funcs) {
 .weak $func
 .globl $func\$fpvm
 $func\$fpvm:
-  jmp .	
-  pushq %rbp
-  mov %rsp, %rbp
+  pushq %rbp            # temporary new stack frame
+  mov %rsp, %rbp        # with rbp so we can easily reference
 
-  pushq %rax
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  pushq %r8
-  pushq %r9
-  pushq %r11 # Enforce alignment
+  pushq %rax            # number of vector registers used in call
+  pushq %rdi            # 1st arg
+  pushq %rsi            # 2nd arg
+  pushq %rdx            # 3rd arg
+  pushq %rcx            # 4th arg
+  pushq %r8             # 5th arg
+  pushq %r9             # 6th arg
+  pushq %r11            # Enforce alignment of stack
+
+# r11 is a temporary reg not saved
+# note that rbx, r12,r13,r14,r15 are callee save, but we will not use them
+# r15 is GOT base pointer (optionally)
+# xmm0 is 1st float arg and return
+# xmm1 is 2nd float arg and return	
+# xmm2..7 are 3rd through 8th float args
+
+# invoke foreign_entry(addr_of_ret,addr_of_tramp,addr_of_func)
+# this will
+#  - demote argument registers
+#  - configure mxcsr and other FPVM state appropriately
+#  - stash state as needed
+#  - switch return address to tramp address
+#  - update return addressupdate the return address to the tramp address
 
   leaq 8(%rbp), %rdi
   movq .tramp$func\@GOTPCREL(%rip), %rsi
-
+  movq $func\@GOTPCREL(%rip), %rdx # for debugging
   call $entry
 
   popq  %r11 # undo alignment
@@ -157,6 +167,10 @@ $func\$fpvm:
   # Simply jump (tail-call) to the 'real' func
   jmp $func
 
+# for testing
+#  jmp __fpvm_f_debug;
+	
+# the original function  will return here...
 .tramp$func:
   pushq \$0         # The return address (alignment)
   movq %rsp, %rdi  # Point to the ret addr slot
@@ -172,8 +186,14 @@ $func\$fpvm:
   pushq %r9
   pushq %r11 # Enforce alignment
 
+#
+# invoke foreign_exit(addr_of_ret)
+#  
+# This will update the FP state (e.g., mxcsr)
+# and modify the return address back to the original
+# which was captured earlier
+#
   leaq 8(%rbp), %rdi
-
   call $exit
 
   popq  %r11 # undo alignment
@@ -185,41 +205,11 @@ $func\$fpvm:
   popq  %rdi
   popq  %rax
 
+# Calgon, take us away (back to the original caller)
+
   popq %rbp        # tear down frame
   ret
 	
-# # for the application
-# #	
-# .global $func
-# $func:
-#     pushq %rbp           # -8
-#     movq %rsp, %rbp    
-#     subq \$8, %rsp        # -16 space for mxcsr at -8(%rbp) 
-#     pushq %rax
-#     pushq %rdi
-#     pushq %rsi
-#     pushq %rdx
-#     pushq %rcx
-#     pushq %r8
-#     pushq %r9            # odd number of pushes -> OK
-#     movq $func\@GOTPCREL(%rip), %rdi # for debugging
-#     call $entry          # returns with desired mxcsr in eax
-#     movl %eax, -8(%rbp)  # stash exit msr for later
-#     popq  %r9
-#     popq  %r8
-#     popq  %rcx
-#     popq  %rdx
-#     popq  %rsi
-#     popq  %rdi
-#     popq  %rax           # now at even number of pushes
-#     subq \$8, %rsp        # now odd
-#     movq $preorig$func\@GOTPCREL(%rip), %r11
-#     call *(%r11)         # lookup func and call
-#     ldmxcsr -8(%rbp)     # restore mxcsr as required
-#     movq %rbp, %rsp      # unwind stack frame
-#     popq %rbp
-#     retq
-
 	
 ENDS
 ;

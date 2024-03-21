@@ -5,6 +5,10 @@ if [[ -z "${FPVM_HOME}" ]] ; then
     exit 1;
 fi
 
+if [[ -z "${FPVM_WRAP}" ]] ; then
+    echo "Please set FPVM_WRAP"
+    exit 1;
+fi
 
 
 
@@ -71,10 +75,27 @@ pushd ${PFX}
 
   pushd $workspace
 
+  # do forward wrapping if necessary
+  if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
+      cp input input.prewrapped
+      echo "Modifying binary to support reverse wrappers"
+      fpvm_wrap -o input.wrapped -f ${FPVM_HOME}/wrap.list input.prewrapped
+      if [ $? -ne 0 ]; then
+	  echo "Failed to modify binary to support reverse wrappers"
+	  exit -1;
+      fi
+      cp input.wrapped input
+      echo "Replaced temporary executable with wrapped version"
+  fi
+  
+  
   # Build magic
+  echo "Building magic"
   cp ${FPVM_HOME}/analysis/magictrap/fpvm_magic.[ch] .
   e9compile.sh fpvm_magic.c
-  
+
+  echo "Patching executable"
+  # patch the executable
   if [ "${memonly}" = "no" ]; then
       # patch mem and call insts with traps
       e9tool -M 'addr=call_patches[0]' -P 'before trap' \
@@ -117,6 +138,14 @@ pushd ${PFX}
   cp taintsource.timing ${BIN}.taintsource.timing
   cp taintsink.timing ${BIN}.taintsink.timing
   cp analysis.out ${BIN}.analysis.out
+  
+  if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
+      cp input.prewrapped ${BIN}.prewrapped
+      cp input.prewrapped ${BIN}.original
+      cp input.wrapped ${BIN}.wrapped
+      printf '\e[31mExecutable is reverse wrapped\e[0m\n'
+  fi
+  
   
   if [ "${memonly}" = "no" ]; then
       echo "Patched executables for memory and calls"
