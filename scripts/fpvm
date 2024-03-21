@@ -41,7 +41,12 @@ for loc in fpvm_locations:
 
 # Expand a binary path using PATH
 def path_expand(binary):
-  return shutil.which(binary)
+  bin = shutil.which(binary)
+
+  if bin is None:
+    print(f'Could not find binary, {binary}')
+    exit(-1)
+  return bin
 
 
 
@@ -172,28 +177,29 @@ def get_wrapped_binary(binary: Path, version: str='magic', mode: str = 'reverse'
 # Run a binary with FPVM.
 def cmd_run(args):
   bin = path_expand(args.binary)
-  if bin is None:
-    print(f'Could not find binary, {args.binary}')
-    exit(-1)
-
 
   # Construct the environ the binary should be run with
   env = os.environ.copy() # Copy the current environment variables.
   env['LD_PRELOAD'] = args.fpvm + ' ' + str(get_additional_wrappers(WRAP_LIST)) # most importantly, setup FPVM's LD_PRELOAD
   bin = get_wrapped_binary(bin) # Patch the binary as needed
-  print([bin, *args.argv])
   cmd = subprocess.Popen([bin, *args.argv], env=env)
   cmd.wait()
 
 
 
+# Patch a binary with FPVM and print out where it lives
+def cmd_patch(args):
+  bin = path_expand(args.binary)
+  print(get_patched_binary(bin))
+
+
+# Wrap a binary with FPVM and print out where it lives
+def cmd_wrap(args):
+  bin = path_expand(args.binary)
+  print(get_wrapped_binary(bin, 'magic', args.mode))
 
 def cmd_benchmark(args):
   bin = path_expand(args.binary)
-  if bin is None:
-    print(f'Could not find binary, {args.binary}')
-    exit(-1)
-
 
   # Construct the environ the binary should be run with
   fpvm_env = os.environ.copy()
@@ -223,42 +229,13 @@ def cmd_benchmark(args):
     if name == 'baseline':
       continue
     this = res[res['name'] == name]['time'].mean()
-
-
     print(f'{name}: slowdown={this / base:.2f}x')
-
   res.to_csv(args.output, index=False)
 
 
-
-
-
-
-# Patch a binary with FPVM
-def cmd_patch(args):
-  bin = path_expand(args.binary)
-  if bin is None:
-    print(f'Could not find binary, {args.binary}')
-    exit(-1)
-
-  print(get_patched_binary(bin))
-
-
-
-def cmd_wrap(args):
-  bin = path_expand(args.binary)
-  if bin is None:
-    print(f'Could not find binary, {args.binary}')
-    exit(-1)
-
-  print(get_wrapped_binary(bin, 'magic', args.mode))
-
-
-
-
-
 def clear_cache(args):
-  shutil.rmtree(CACHE_DIR)
+  # Simply delete where the cache is
+  shutil.rmtree(CACHE_DIR, ignore_errors=True)
 
 
 
@@ -273,49 +250,49 @@ parser = argparse.ArgumentParser(
   prog='FPVM',
   description='The floating point virtual machine')
 
+parser.add_argument('--cachedir', help='Where the cache should be located', required=False, default=CACHE_DIR)
 parser.add_argument('--fpvm', help='Path to FPVM', required=False, default=FPVM_LOCATION)
-
 parser.add_argument('--wrap-list', help='The wrap list to use when generating wrappers', default=FPVM_HOME / 'wrap.list')
+
 sub = parser.add_subparsers(required=True, title='action')
 
-
 # The run subcommand
-parser_run = sub.add_parser('run', help='run a binary')
-parser_run.add_argument('-o', help='Optional argument')
-parser_run.add_argument('binary', help='Binary to run')
-parser_run.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
-parser_run.set_defaults(func=cmd_run)
-
+p = sub.add_parser('run', help='run a binary')
+p.add_argument('-o', help='Optional argument')
+p.add_argument('binary', help='Binary to run')
+p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
+p.set_defaults(func=cmd_run)
 
 # The benchmark subcommand
-parser_benchmark = sub.add_parser('benchmark', help='benchmark FPVM\'s overhead on a binary')
-parser_benchmark.add_argument('-c', '--count', type=int, help='How many runs', default=1)
-parser_benchmark.add_argument('-o', '--output', help='Destination for the CSV file', required=True)
-parser_benchmark.add_argument('binary', help='Binary to run')
-parser_benchmark.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
-parser_benchmark.set_defaults(func=cmd_benchmark)
+p = sub.add_parser('benchmark', help='benchmark FPVM\'s overhead on a binary')
+p.add_argument('-c', '--count', type=int, help='How many runs', default=1)
+p.add_argument('-o', '--output', help='Destination for the CSV file', required=True)
+p.add_argument('binary', help='Binary to run')
+p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
+p.set_defaults(func=cmd_benchmark)
 
 
 # The patch subcommand
-parser_patch = sub.add_parser('patch', help='patch a binary')
-parser_patch.add_argument('-o', '--output', help='output binary', default='fpvm.out')
-parser_patch.add_argument('binary', help='Binary to patch')
-parser_patch.set_defaults(func=cmd_patch)
+p = sub.add_parser('patch', help='patch a binary')
+p.add_argument('-o', '--output', help='output binary', default='fpvm.out')
+p.add_argument('binary', help='Binary to patch')
+p.set_defaults(func=cmd_patch)
 
 
 # The wrap subcommand
-parser_wrap = sub.add_parser('wrap', help='wrap the symbols in a binary')
-parser_wrap.add_argument('-o', '--output', help='output binary', default='fpvm.out')
-parser_wrap.add_argument('-m', '--mode', help='The wrap mode to use (forward/reverse)', default='reverse')
-parser_wrap.add_argument('-s', dest='symbols', default="", help="comma-seperated list of symbols")
-parser_wrap.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
-parser_wrap.add_argument('binary', help='Binary to wrap')
-parser_wrap.set_defaults(func=cmd_wrap)
+p = sub.add_parser('wrap', help='wrap the symbols in a binary')
+p.add_argument('-o', '--output', help='output binary', default='fpvm.out')
+p.add_argument('-m', '--mode', help='The wrap mode to use (forward/reverse)', default='reverse')
+p.add_argument('-s', dest='symbols', default="", help="comma-seperated list of symbols")
+p.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
+p.add_argument('binary', help='Binary to wrap')
+p.set_defaults(func=cmd_wrap)
 
+# The clear-cache command
+p = sub.add_parser('clear-cache', help='Delete the FPVM cache directory')
+p.set_defaults(func=clear_cache)
 
-parser_clear = sub.add_parser('clear-cache', help='Delete the FPVM cache directory')
-parser_clear.set_defaults(func=clear_cache)
-
+# Parse the commands
 args = parser.parse_args()
 
 if args.fpvm is None:
@@ -326,6 +303,9 @@ if args.fpvm is None:
 args.fpvm = os.path.realpath(args.fpvm)
 FPVM_LOCATION = args.fpvm
 WRAP_LIST = args.wrap_list
+CACHE_DIR = os.path.realpath(os.path.expanduser(args.cachedir))
+
+print(CACHE_DIR)
 
 
 if hasattr(args, 'func'):
