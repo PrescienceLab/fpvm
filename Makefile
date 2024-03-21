@@ -21,7 +21,7 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CC = gcc
 AS = gcc
 CXX = g++
-CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	
+CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
 TARGET=build/fpvm.so
@@ -121,6 +121,11 @@ test_fbench: $(TARGET) build/test_fpvm
 
 menuconfig:
 	@scripts/menuconfig.py
+
+defconfig:
+	@rm -f .config
+	@echo "Using default configuration"
+	@echo "q" | env TERM=xterm-256color python3 scripts/menuconfig.py >/dev/null
 
 cfg:
 	@scripts/menuconfig.py
