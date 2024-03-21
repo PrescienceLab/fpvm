@@ -6,6 +6,11 @@ from angr import SimProcedure
 import bshelve as shelve  # berkeley db as backends
 import pickle
 
+
+from taint_source import taint_source
+from taint_sink import taint_sink
+from bridge_e9patch import bridge_e9patch
+
 sys.setrecursionlimit(150)
 
 class DevNull(object):
@@ -47,16 +52,13 @@ def analyze(binary_path, restart_analysis):
     print("proj inited", proj)
     # state = proj.factory.blank_state() # mode="fastpath_static")
     state = proj.factory.blank_state(mode="fastpath_static")
-    print(len(pickle.dumps(state, -1)))
-    print(len(pickle.dumps(proj.loader, -1)))
-    print(len(pickle.dumps(proj.loader.memory, -1)))
+    # print(len(pickle.dumps(state, -1)))
+    # print(len(pickle.dumps(proj.loader, -1)))
+    # print(len(pickle.dumps(proj.loader.memory, -1)))
 
     name = str(binary_path).split(".")[0] + "-storage"
-    print("proposed name for database ", name)
-
     extern_ranges = []
     obj = proj.loader.extern_object
-    print(obj, obj.min_addr, obj.max_addr)
     extern_ranges.append((obj.min_addr, obj.max_addr))
     extern = ExternRange(extern_ranges)
 
@@ -242,9 +244,6 @@ def analyze(binary_path, restart_analysis):
     return proj, infos, extern, taint_whole_escape_functions, known_functions_dict
 
 
-from taint_source import taint_source
-from taint_sink import taint_sink
-from bridge_e9patch import bridge_e9patch
 
 # python parse_vfg.py application 1 --> store vfg in disk
 # python parse_vfg.py application 0 --> prepare taint source
@@ -252,6 +251,8 @@ from bridge_e9patch import bridge_e9patch
 
 if __name__ == "__main__":
 
+    print('=============================================================================')
+    print()
     if len(sys.argv) < 3:
         print("Please give a binary path + restart(1) or not(0)")
         exit(0)
@@ -272,7 +273,7 @@ if __name__ == "__main__":
                 pass
         exit()
 
-    print(" begin source analysis")
+    print("begin source analysis")
 
     filename = os.path.basename(sys.argv[1])
 
@@ -285,8 +286,7 @@ if __name__ == "__main__":
     with open(f"sources-{filename}", "rb") as f:
         sources = pickle.load(f)
 
-    print(sources)
-    print(" begin sink analysis")
+    print("begin sink analysis")
 
     sinks, func_sinks = taint_sink(
         proj, infos, sources, extern, taint_whole_escape_functions
@@ -298,8 +298,8 @@ if __name__ == "__main__":
     for e in sinks:
         dicts[hex(e.address)] = e.mnemonic + " " + e.op_str
 
-    for key in dicts.keys():
-        print(key, dicts[key])
+    # for key in dicts.keys():
+    #     print(key, dicts[key])
 
     exclude_list = ["_Znam", "_Znwm", "_ZdlPv", "memcpy", "memmove", "__stack_chk_fail"]
     to_remove = []

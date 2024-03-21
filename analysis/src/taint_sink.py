@@ -77,6 +77,8 @@ def taint_sink(
         proj, sortedlist, extern_functions, taint_whole_escape_functions
     )
 
+    print(f'tailt functions: {taint_func}')
+
     last_addr = 0
     SKIP_COUNT = 0
 
@@ -84,6 +86,8 @@ def taint_sink(
     # key is block id as a key; key == blockid
     for node_idx, (askey, blockid) in enumerate(sortedlist):
 
+
+        
         callstack = CallStack(blockid.callsite_tuples[-2:])
 
         if blockid.addr == last_addr:
@@ -118,13 +122,12 @@ def taint_sink(
             continue
         else:
             insn = insns[0]
-        print(insn)
 
-        if not sink_interest(insn) and taint_whole is False:
-            SKIP_COUNT += 1
-            if SKIP_COUNT % 1000 == 0:
-                print("SKIPPED ", SKIP_COUNT)
-            continue
+        # if not sink_interest(insn) and taint_whole is False:
+        #     SKIP_COUNT += 1
+        #     if SKIP_COUNT % 1000 == 0:
+        #         print("SKIPPED ", SKIP_COUNT)
+        #     continue
 
         # states correspond to insn
         node = nodes[askey]
@@ -150,20 +153,23 @@ def taint_sink(
                     _state = _node.final_states[0]
                     last_state = _state
 
+            # Just a list of all the jump mnemonic
+            jumps = [
+                'jcxz', 'je', 'jnb', 'jns', 'jl', 'jc', 'jg', 'jnc',
+                'jb', 'ja', 'jo', 'jge', 'jnp', 'jle', 'jz', 'jna',
+                'jbe', 'jnl', 'jng', 'jrcxz', 'jecxz', 'jpe', 'jnz',
+                'js', 'jpo', 'jnae', 'jne', 'jnbe', 'jnge', 'jae',
+                'jno', 'jp', 'jnle'
+            ]
             # handle calling a function which calls into a unsoveled function
-            if (
-                insn.mnemonic == "call" or "j" in insn.mnemonic
-            ):  # call or any sorts of jumps
-
+            if (insn.mnemonic == "call" or insn.mnemonic in jumps):
                 if insn.operands[0].type == X86_OP_IMM:
-
                     # this is not complete, what if call *rax
                     call_to = insn.operands[0].imm
                     if call_to in extern_func:
                         func_sinks[insn.address] = call_to
 
             if len(insn.operands) > 1:  # dst, src1, src2 ...
-
                 if taint_whole:
                     skip = False
                     for i in insn.operands:
@@ -171,11 +177,7 @@ def taint_sink(
                             skip = ~skip
 
                     # enforce src is xmm
-                    if (
-                        skip
-                        and insn.operands[0].type == X86_OP_REG
-                        and "xmm" in insn.reg_name(insn.operands[0].reg)
-                    ):
+                    if (skip and insn.operands[0].type == X86_OP_REG and "xmm" in insn.reg_name(insn.operands[0].reg)):
                         skip = False
 
                     if skip:
@@ -188,7 +190,8 @@ def taint_sink(
                 if not sink_interest(insn):
                     last_state = state
                     continue
-
+                print()
+                print('SINK:', insn)
                 for idx, i in enumerate(insn.operands):
 
                     use_state = state
@@ -197,10 +200,6 @@ def taint_sink(
                     else:
                         # why would you care about destination, which is going to be overwrite anyway
                         continue
-                    # if len(insn.operands) == 1:
-                    #     i = insn.operands[0]
-                    # else:
-                    #     i = insn.operands[1]
                     if i.type == X86_OP_REG:
                         reg = insn.reg_name(i.reg)
                         try:
@@ -209,18 +208,17 @@ def taint_sink(
                                     getattr(use_state.regs, reg), upto
                                 )
                             )
-                            print(value_set)
+                            print('vs:', value_set)
                             # value = use_state.solver.eval(getattr(use_state.regs, reg))
                         except Exception:
                             print(f"fail {reg} and set to 0")
                             value_set = ValueSet([0])
 
-                        # print(insn.mnemonic, )
+                        print(f'OP_REG: {insn.mnemonic} vs:{value_set}')
 
                     elif i.type == X86_OP_IMM:
                         value_set = ValueSet([i.imm])
-
-                        # print(insn.mnemonic, value_set)
+                        print(f'OP_IMM: {insn.mnemonic} vs:{value_set}')
 
                     elif i.type == X86_OP_MEM:
                         if insn.reg_name(i.mem.index) != None:
@@ -251,26 +249,21 @@ def taint_sink(
                                 )
                                 scale_expr = getattr(use_state.regs, reg)
 
-                            except Exception:
-                                print(f"scale except of {reg}, set to 0")
+                            except Exception as e:
+                                print(f"scale except of {reg}, set to 0. e = {e}")
                                 scale = ValueSet([0])
                                 scale_expr = 0
                         else:
                             scale = ValueSet([i.mem.scale])
                             scale_expr = i.mem.scale
-                        # if insn.reg_name(i.mem.disp) != None:
-                        #     reg = insn.reg_name(i.mem.scale)
-                        #     disp = use_state.solver.eval(getattr(use_state.regs, reg ))
-                        # else:
+                        
                         disp = ValueSet([i.mem.disp])
                         disp_expr = i.mem.disp
 
                         offset = index * scale + disp
-                        # print( insn.reg_name(i.mem.segment), insn.reg_name(i.mem.base) )
                         if insn.reg_name(i.mem.segment) != None:
                             reg = insn.reg_name(i.mem.segment)
                         else:
-                            # print("regstate", regstate.access(insn.reg_name(i.mem.base)) )
                             reg = insn.reg_name(i.mem.base)
 
                         try:
@@ -285,12 +278,14 @@ def taint_sink(
                             base_expr = 0
 
                         value_set = base + offset
-                        # print(insn.mnemonic, value_set)
+                        print(f'OP_MEM {insn.mnemonic} vs:{value_set}')
 
-                    if (
-                        sink_interest(insn)
-                        and len(value_set._set.intersection(all_taint_sources)) != 0
-                    ):
+                    print('  vs:', value_set)
+                    print('  th:', taint_whole)
+
+                    if (sink_interest(insn) and len(value_set._set.intersection(all_taint_sources)) != 0):
+
+                        print('  Good!')
                         sinks.append(insn)
                         break
 

@@ -44,7 +44,6 @@ def taint_source(proj, infos, upto=1):
         else:
             insn = insns[0]
 
-        print(insn)
 
         if len(insn.operands) <= 0:
             continue
@@ -58,7 +57,12 @@ def taint_source(proj, infos, upto=1):
 
         node = nodes[askey]
 
-        print(f"separate====== {len(node.final_states)}")
+        # print(f"separate====== {len(node.final_states)}")
+        print()
+        print("Found a source:", insn)
+
+
+
         if len(node.final_states) >= 1:
             # if node.state is not None:
 
@@ -89,26 +93,24 @@ def taint_source(proj, infos, upto=1):
 
                     if i.type == X86_OP_REG:
                         reg = insn.reg_name(i.reg)
-                        # print()
-                        # print(getattr(state.regs, reg))
                         try:
                             value_set = ValueSet(
                                 use_state.solver.eval_upto(
                                     getattr(use_state.regs, reg), upto
                                 )
                             )
-                            # print(value_set)
+                            print(f'vs from solver {value_set}')
                             # value = use_state.solver.eval(getattr(use_state.regs, reg))
                         except Exception:
                             print(f"fail {reg} and set to 0")
                             value_set = ValueSet([0])
 
-                        print(insn.mnemonic, value_set)
+                        print(f'OP_REG: {insn.mnemonic} vs:{value_set}')
 
                     elif i.type == X86_OP_IMM:
                         value_set = ValueSet([i.imm])
 
-                        print(insn.mnemonic, value_set)
+                        print('OP_IMM: {insn.mnemonic} vs:{value_set}')
 
                     elif i.type == X86_OP_MEM:
                         if insn.reg_name(i.mem.index) != None:
@@ -141,17 +143,12 @@ def taint_source(proj, infos, upto=1):
 
                             except Exception:
                                 print(f"scale except of {reg}, set to 0")
-                                scale = ValueSet([0])
-                                scale_expr = 0
+                                scale = ValueSet([1])
+                                scale_expr = 1
                         else:
                             scale = ValueSet([i.mem.scale])
                             scale_expr = i.mem.scale
 
-                        # is it possible that disp is reg ???
-                        # if insn.reg_name(i.mem.disp) != None:
-                        #     reg = insn.reg_name(i.mem.scale)
-                        #     disp = use_state.solver.eval(getattr(use_state.regs, reg ))
-                        # else:
                         disp = ValueSet([i.mem.disp])
                         disp_expr = i.mem.disp
 
@@ -174,7 +171,7 @@ def taint_source(proj, infos, upto=1):
                             base = ValueSet([0])
                             base_expr = 0
                         value_set = base + offset
-                        # print(base_expr, disp_expr)
+                        # print(base_expr, disp_expr, scale_expr)
                         # print(insn.mnemonic,value, "base", base, "offset", offset, "index", index, "scale", scale, "disp", disp)
 
                         # if use_state.mem[base_expr+disp_expr].resolvable:
@@ -194,7 +191,7 @@ def taint_source(proj, infos, upto=1):
                         except Exception as e:
                             print("retrieve mem error", e)
 
-                        print(insn.mnemonic, value_set)
+                        print(f'OP_MEM {insn.mnemonic} vs:{value_set}')
 
                     if source_key and idx == insert_place:
                         ori_value = getattr(taint_state, source_key)
@@ -205,6 +202,7 @@ def taint_source(proj, infos, upto=1):
             print("reset")
             last_state = None
 
+    print(taint_state)
     return taint_state
     # elif i.type ==
     # a.op_str
