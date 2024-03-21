@@ -143,12 +143,14 @@ pushd ${PFX}
     cp taintsource.timing ${BIN}.taintsource.timing
     cp taintsink.timing ${BIN}.taintsink.timing
     cp analysis.out ${BIN}.analysis.out
+    if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
+	cp input.prewrapped ${BIN}.prewrapped
+	cp input.prewrapped ${BIN}.original
+	cp input.wrapped ${BIN}.wrapped
+    fi
   fi
   
   if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
-      cp input.prewrapped ${BIN}.prewrapped
-      cp input.prewrapped ${BIN}.original
-      cp input.wrapped ${BIN}.wrapped
       printf '\e[31mExecutable is reverse wrapped\e[0m\n'
   fi
   
