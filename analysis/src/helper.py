@@ -115,7 +115,7 @@ def taint_functions(proj, sorted_nodes, extern_functions, taint_whole_escape_fun
     taint_func = set()
     extern_func = []
     for askey, blockid in sorted_nodes:
-        print(hex(blockid.addr))
+        # print(hex(blockid.addr))
         assert len(blockid.callsite_tuples) >= 2
         callstack = CallStack(blockid.callsite_tuples[-2:])
         if extern_functions.isextern(blockid.addr):
@@ -134,14 +134,11 @@ def taint_functions(proj, sorted_nodes, extern_functions, taint_whole_escape_fun
         else:
             insn = insns[0]
 
-        if (
-            insn.mnemonic == "call" or "j" in insn.mnemonic
-        ):  # capture any kinds of jump/calls
+        if (insn.mnemonic == "call" or insn.mnemonic[0] == 'j'):  # capture any kinds of jump/calls
             if insn.operands[0].type == X86_OP_IMM:
                 call_to = insn.operands[0].imm
                 if call_to in extern_func:
                     callstack = CallStack(blockid.callsite_tuples[-2:])
                     taint_func.add(callstack.func_addr)
 
-    print("taint_func", [hex(addr) for addr in taint_func])
     return taint_func, extern_func

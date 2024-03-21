@@ -22,15 +22,19 @@ OLD_DIR=$PWD
 BIN=""
 workspace="${PFX}/workspace/"
 memonly="no"
+copyout="yes"
 
 # Parse command-line arguments
-while getopts "w:m?" opt; do
+while getopts "nw:m?" opt; do
   case ${opt} in
     w )
       workspace=$(realpath "$OPTARG")
       ;;
     m )
       memonly="yes"
+      ;;
+    n )
+      copyout="no"
       ;;
     \? )
       echo "Usage: $(basename $0) [-w WORKSPACE] [-m] <binary>"
@@ -117,27 +121,29 @@ pushd ${PFX}
   #
   # Generate function info
   #
-  patches_to_functions.pl mem_patches.csv input > input.mem_patch.info
-  patches_to_functions.pl call_patches.csv input > input.call_patch.info
-  
-  # copy out working files for sanity
-  cp input.patched_trap ${BIN}.patched_trap
-  cp input.patched_magic ${BIN}.patched_magic
-  cp call_patches.csv ${BIN}.call_patches.csv
-  cp mem_patches.csv ${BIN}.mem_patches.csv
-  cp input.mem_patch.info ${BIN}.mem_patch.info
-  cp input.call_patch.info ${BIN}.call_patch.info
-  cp fpvm_magic ${BIN}.fpvm_magic
-  cp fpvm_magic.c ${BIN}.fpvm_magic.c
-  cp fpvm_magic.h ${BIN}.fpvm_magic.h
-  cp input ${BIN}.original
-  # cp generate.profile ${BIN}.generate.profile
-  # cp taintsource.profile ${BIN}.taintsource.profile
-  # cp taintsink.profile ${BIN}.taintsink.profile
-  cp generate.timing ${BIN}.generate.timing
-  cp taintsource.timing ${BIN}.taintsource.timing
-  cp taintsink.timing ${BIN}.taintsink.timing
-  cp analysis.out ${BIN}.analysis.out
+  if [ "${copyout}" = "yes" ]; then
+    patches_to_functions.pl mem_patches.csv input > input.mem_patch.info
+    patches_to_functions.pl call_patches.csv input > input.call_patch.info
+    
+    # copy out working files for sanity
+    cp input.patched_trap ${BIN}.patched_trap
+    cp input.patched_magic ${BIN}.patched_magic
+    cp call_patches.csv ${BIN}.call_patches.csv
+    cp mem_patches.csv ${BIN}.mem_patches.csv
+    cp input.mem_patch.info ${BIN}.mem_patch.info
+    cp input.call_patch.info ${BIN}.call_patch.info
+    cp fpvm_magic ${BIN}.fpvm_magic
+    cp fpvm_magic.c ${BIN}.fpvm_magic.c
+    cp fpvm_magic.h ${BIN}.fpvm_magic.h
+    cp input ${BIN}.original
+    # cp generate.profile ${BIN}.generate.profile
+    # cp taintsource.profile ${BIN}.taintsource.profile
+    # cp taintsink.profile ${BIN}.taintsink.profile
+    cp generate.timing ${BIN}.generate.timing
+    cp taintsource.timing ${BIN}.taintsource.timing
+    cp taintsink.timing ${BIN}.taintsink.timing
+    cp analysis.out ${BIN}.analysis.out
+  fi
   
   if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
       cp input.prewrapped ${BIN}.prewrapped

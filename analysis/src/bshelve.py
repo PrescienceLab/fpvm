@@ -285,7 +285,7 @@ class DbfilenameShelf(Shelf):
         buffer=0,
     ):
         # print("use berkeleydb")
-        print("use dump db; install libdb-dev to use berkeleydb")
+        # print("use dump db; install libdb-dev to use berkeleydb")
         import dbm
 
         # import berkeleydb as dbm
