@@ -124,17 +124,24 @@ foreach $func (@funcs) {
 
 .globl $func
 $func:
-  pushq %rbp
-  mov %rsp, %rbp
+  pushq %rbp            # temporary new stack frame
+  mov %rsp, %rbp        # with rbp so we can easily reference
 
-  pushq %rax
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  pushq %r8
-  pushq %r9
-  pushq %r11 # Enforce alignment
+  pushq %rax            # number of vector registers used in call
+  pushq %rdi            # 1st arg
+  pushq %rsi            # 2nd arg
+  pushq %rdx            # 3rd arg
+  pushq %rcx            # 4th arg
+  pushq %r8             # 5th arg
+  pushq %r9             # 6th arg
+  pushq %r11            # Enforce alignment of stack
+
+# r11 is a temporary reg not saved
+# note that rbx, r12,r13,r14,r15 are callee save, but we will not use them
+# r15 is GOT base pointer (optionally)
+# xmm0 is 1st float arg and return
+# xmm1 is 2nd float arg and return	
+# xmm2..7 are 3rd through 8th float args
 
 # invoke foreign_entry(addr_of_ret,addr_of_tramp,addr_of_func)
 # this will
@@ -166,7 +173,10 @@ $func:
 # wrapper did not exist
   movq $preorig$func\@GOTPCREL(%rip), %r11
   jmp *(%r11)
-	
+
+# for testing
+#  jmp __fpvm_foreign_debug;
+
 # the original function  will return here...
 .tramp$func:
   pushq \$0        # The return address (alignment)

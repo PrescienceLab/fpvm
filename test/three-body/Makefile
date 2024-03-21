@@ -1,4 +1,4 @@
-CXX = g++ -lm -O2 -mfpmath=sse -msse2 -fno-pic -no-pie
+CXX = gcc -O2 -mfpmath=sse -msse2 -fno-pic -no-pie
 
 EXEC = three_body_simulation
 
@@ -17,7 +17,7 @@ run_fpvm_magic: $(EXEC).patched_magic
 	fpvm_run.sh ./$(EXEC).patched_magic > $(EXEC).patched_magic.out 2>&1
 
 $(EXEC): $(EXEC).c rkf45.c
-	$(CXX) $(EXEC).c rkf45.c -o $(EXEC)
+	$(CXX) $(EXEC).c rkf45.c -lm -o $(EXEC)
 
 $(EXEC).patched_trap $(EXEC).patched_magic : $(EXEC)
 	fpvm_patch.sh -m $(EXEC)

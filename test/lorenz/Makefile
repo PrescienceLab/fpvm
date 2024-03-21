@@ -1,4 +1,4 @@
-CXX = g++ -lm -O3 -fno-pic -no-pie
+CXX = g++ -O3 -fno-pic -no-pie
 
 EXEC = lorenz_attractor
 
@@ -17,7 +17,7 @@ run_fpvm_magic: $(EXEC).patched_magic
 	fpvm_run.sh ./$(EXEC).patched_magic > $(EXEC).patched_magic.out 2>&1
 
 $(EXEC): $(EXEC).cpp
-	$(CXX) $(EXEC).cpp -o $(EXEC)
+	$(CXX) $(EXEC).cpp -lm -o $(EXEC)
 
 $(EXEC).patched_trap $(EXEC).patched_magic : $(EXEC)
 	fpvm_patch.sh -m $(EXEC)

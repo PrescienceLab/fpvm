@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include <fpvm/fpvm_common.h>
+
 typedef struct perf_stat {
   char *name;
   uint64_t start;  // last starting rdtsc
@@ -21,11 +23,14 @@ static inline void perf_stat_init(perf_stat_t *p, char *name) {
   p->name = name;
 }
 
-static inline void perf_stat_start(perf_stat_t *p) {
+// The start and end routines are "NO_TOUCH_FLOAT" so they can be used
+// to measure anywhere
+
+static inline void NO_TOUCH_FLOAT perf_stat_start(perf_stat_t *p) {
   p->start = rdtsc();
 }
 
-static inline void perf_stat_end(perf_stat_t *p) {
+static inline void NO_TOUCH_FLOAT perf_stat_end(perf_stat_t *p) {
   uint64_t end = rdtsc();
   uint64_t dur = end - p->start;
 
@@ -41,8 +46,8 @@ static inline void perf_stat_end(perf_stat_t *p) {
 }
 
 static inline void perf_stat_print(perf_stat_t *p, FILE *f, char *prefix) {
-  double mean = (double)p->sum / p->n;
-  double std = sqrt((double)p->sum2 / p->n - mean * mean);
+  double mean = DIVF((double)p->sum,(double)p->n);
+  double std = sqrt(DIVF((double)p->sum2,(double)p->n) - mean * mean);
   fprintf(f, "%s%s : count=%lu sum=%lu sum2=%lu avg=%lf std=%lf min=%lu max=%lu\n", prefix, p->name, p->n,
 	  p->sum, p->sum2, mean, std, p->min_val, p->max_val);
 }

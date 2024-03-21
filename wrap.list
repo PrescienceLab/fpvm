@@ -21,6 +21,7 @@ __printf_chk	4	10000
 #
 
 # From three-body
+# note that we also need this function for some of our output
 #__fprintf_chk	4	8203
 __printf_chk	4	12
 #fclose	1	2
@@ -37,3 +38,15 @@ __printf_chk	4	12
 #puts	1	25
 #strftime	4	2
 #time	1	2
+#
+
+# From MG
+fopen	2	1
+#gettimeofday	2	4
+#malloc	1	4611
+#memset	3	9316
+printf	2	20
+#printf	4	1
+#printf	5	1
+#puts	1	6
+

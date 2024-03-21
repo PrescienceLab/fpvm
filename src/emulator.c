@@ -135,19 +135,21 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
   DEBUG("Emulating instruction\n");
 
+  //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
+  
 #if CONFIG_TELEMETRY_PROMOTIONS
   // currently only promotions will be tracked
   *promotions = *demotions = *clobbers = 0;
 #endif  
   
   if (fi->common->has_mask) {
-    // ERROR("Cannot handle masks yet\n");
+    ERROR("Cannot handle masks yet\n");
     // ASSERT(0);
     return -1;
   }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    // ERROR("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
+    ERROR("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
     // ASSERT(0);
     return -1;
   }
@@ -576,26 +578,21 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 {
   int demotions=0;
   SAFE_DEBUG("handling fp register demotions\n");
-  /*
-#define _XMM(id) X86_REG_XMM##id
-  int allxmm[32] = {_XMM(0), _XMM(1), _XMM(2), _XMM(3), _XMM(4), _XMM(5), _XMM(6), _XMM(7),
-    _XMM(8), _XMM(9), _XMM(10), _XMM(11), _XMM(12), _XMM(13), _XMM(14), _XMM(15), _XMM(16),
-    _XMM(17), _XMM(18), _XMM(19), _XMM(20), _XMM(21), _XMM(22), _XMM(23), _XMM(24), _XMM(25),
-    _XMM(26), _XMM(27), _XMM(28), _XMM(29), _XMM(30), _XMM(31)};
-  for (int i = 0; i < 32; i++) {
-  */
 
+  int i;
+  uint64_t *addr;
   // just assume SSE2 and demote only 16 128 bit registers => 16*2 values
-  for (int i = 0; i < 16*2; i++) {
-    uint64_t *addr = (uint64_t *) (fr->fprs + fr->fpr_size * i);
+  for (i = 0, addr = (uint64_t *)fr->fprs;
+       i < 16*2;
+       i++, addr++) {
     // invoke the altmath package to convert numbers back to doubles
-#if CONFIG_TELEMETRY_PROMOTIONS
     uint64_t old = *addr;
-#endif
     restore_double_in_place(addr);
+    //    DEBUG("%d %p from %016lx to %016lx (%s)\n",i,addr,old,*addr,*addr!=old ? "DEMOTED" : "not demoted");
 #if CONFIG_TELEMETRY_PROMOTIONS
     demotions += *addr!= old;
 #endif
+    (void)old;
   }
   SAFE_DEBUG("demotions done\n");
   return demotions;
@@ -647,11 +644,13 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   
   if (fi->common->has_mask) {
     ERROR("Cannot handle masks yet\n");
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     return -1;
   }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     ERROR("problematic instruction is of unknown type - simply allowing it to execute, but this is LIKELY BOGUS\n");
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     return FPVM_CORRECT_CONTINUE;
   }
 
@@ -670,7 +669,8 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   }
 
   if (fi->common->op_type == FPVM_OP_WARN) { 
-    ERROR("instruction decodes to warning type - this is LIKELY BOGUS\n");
+    ERROR("instruction decodes to warning type, treating as move - this is LIKELY BOGUS\n");
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     // fall through, treat as move
   }
 
@@ -689,10 +689,11 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     count = fi->operand_sizes[0] / fi->common->op_size;
     dest_step = fi->common->op_size;
     src_step = fi->common->op_size;  // these can technically be different - FIX FIX FIX
-    ERROR("problematic instruction is vector instruction - SKIPPING, WHICH IS BOGUS\n");
+    ERROR("problematic instruction is vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS\n");
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     // fpvm_decoder_print_inst(fi,stderr);
     // this would normally fall through instead of stopping here
-    return FPVM_CORRECT_CONTINUE;
+    //return FPVM_CORRECT_CONTINUE;
   }
 
   switch (fi->operand_count) {
@@ -716,6 +717,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     break;
   default:
     ERROR("instruction has %d operands - SKIPPING, WHICH IS BOGUS\n",fi->operand_count);
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     return FPVM_CORRECT_CONTINUE;
     break;
   }
@@ -734,6 +736,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     } else {
       ERROR("cannot handle instruction trapped with op_size = %d mnemonic=%d, continuing, which is BOGUS\n",
             fi->common->op_size, fi->common->op_type);
+      fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
       return FPVM_CORRECT_CONTINUE;
     }
   }
@@ -742,11 +745,13 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     if (fi->is_simple_mov) {
       if (fi->operand_count != 2) {
 	ERROR("simple move has %d operands... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->operand_count);
+	fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
 	goto complex_transforms_sources_yikes;
       }
       DEBUG("handling simple move src=%u bytes dest=%u bytes\n",fi->operand_sizes[1],fi->operand_sizes[0]);
       if (fi->common->op_size != 8 ) {
 	ERROR("simple move with operand size %d ... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->common->op_size);
+	fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
 	goto complex_transforms_sources_yikes;
       }
       
@@ -778,7 +783,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   }
 
  complex_transforms_sources_yikes:
-  
+
+  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr (YIKES): ");
+    
   int rc = 0;
 
 #define increment(a, step) (void *)(a ? (char *)a + step : 0)

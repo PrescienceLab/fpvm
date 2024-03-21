@@ -220,7 +220,7 @@ typedef struct execution_context {
   uint64_t decode_cache_hits;
   uint64_t decode_cache_unique;
 
-#ifdef CONFIG_INSTR_TRACES
+#if CONFIG_INSTR_TRACES
   fpvm_instr_trace_context_t *trace_context;
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
 #define DEINIT_TRACER(c) fpvm_instr_tracer_destroy((c)->trace_context)
@@ -233,7 +233,7 @@ typedef struct execution_context {
 #define PRINT_TRACES(c)
 #endif
   
-#ifdef CONFIG_PERF_STATS
+#if CONFIG_PERF_STATS
   perf_stat_t gc_stat;
   perf_stat_t decode_cache_stat;
   perf_stat_t decode_stat;
@@ -260,10 +260,11 @@ typedef struct execution_context {
 #define PRINT_PERFS(c)
 #endif
 
+  
 #if CONFIG_TELEMETRY_PROMOTIONS
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #else
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, (c)->emulated_inst/(c)->fp_traps, (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #endif
   
 } execution_context_t;
@@ -328,13 +329,19 @@ static execution_context_t context[MAX_CONTEXTS];
 __thread execution_context_t *__fpvm_current_execution_context=0;
 
 
-static uint32_t get_mxcsr() {
+static uint64_t NO_TOUCH_FLOAT get_xmm0() {
+  uint64_t val = 0;
+  __asm__ __volatile__("movq %%xmm0, %0" : "=r"(val) : : "memory");
+  return val;
+}
+
+static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
   uint32_t val = 0;
   __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
   return val;
 }
 
-static void set_mxcsr(uint32_t val) {
+static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
   __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
 }
 
@@ -350,19 +357,15 @@ static void mxcsr_restore(uint32_t old) {
   set_mxcsr(old);
 }
 
-void fpvm_demote_machine_registers(void)
+
+static inline void NO_TOUCH_FLOAT fxsave(struct _libc_fpstate *fpvm_fpregs)
 {
-  ERROR("machine register remotion is UNIMPLEMENTED\n");
+  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
 }
 
-static inline void fxsave(struct _libc_fpstate *fpvm_fpregs)
+static inline void NO_TOUCH_FLOAT fxrstor(const struct _libc_fpstate *fpvm_fpregs)
 {
-  __asm__ __volatile__("fxsave (%0)" :: "r"(fpvm_fpregs));
-}
-
-static inline void fxrstor(const struct _libc_fpstate *fpvm_fpregs)
-{
-  __asm__ __volatile__("fxrstor (%0)" :: "r"(fpvm_fpregs));
+  __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
 }
 
 static void init_execution_contexts() {
@@ -379,7 +382,7 @@ static void unlock_contexts() {
   __sync_and_and_fetch(&context_lock, 0);
 }
 
-static execution_context_t *find_execution_context(int tid) {
+static execution_context_t * find_execution_context(int tid) {
   int i;
   lock_contexts();
   for (i = 0; i < MAX_CONTEXTS; i++) {
@@ -392,7 +395,7 @@ static execution_context_t *find_execution_context(int tid) {
   return 0;
 }
 
-execution_context_t *find_my_execution_context(void)
+static inline execution_context_t *find_my_execution_context(void)
 {
   return __fpvm_current_execution_context;
 }
@@ -433,7 +436,7 @@ static execution_context_t *alloc_execution_context(int tid) {
       context[i].tid = tid;
       unlock_contexts();
       INIT_TRACER(&context[i]);
-#ifdef CONFIG_PERF_STATS
+#if CONFIG_PERF_STATS
       perf_stat_init(&context[i].gc_stat, "garbage collector");
       perf_stat_init(&context[i].decode_cache_stat, "decode cache");
       perf_stat_init(&context[i].decode_stat, "decoder");
@@ -1205,12 +1208,12 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
 // Entry via magic (e9patch call)
 static void *magic_page=0;
 
-void fpvm_magic_trap_entry(void *priv)
+void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
 {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state 
-  struct _libc_fpstate fpvm_fpregs;
+  struct _libc_fpstate fpvm_fpregs FXSAVE_ALIGN;
   ucontext_t fake_ucontext;
   
   // capture FP state (note that this eventually needs to do xsave)
@@ -1264,10 +1267,19 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 }
 
 
+void __fpvm_foreign_debug(void)
+{
+  SAFE_DEBUG_QUAD("fpvm_print_xmm0: ",get_xmm0());
+  //  ERROR("args are %lf (%016lx), %lf, %lf, %lf\n",a,*(uint64_t*)&a,b,c,d);
+}
+
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
-{ 
+{
+  struct _libc_fpstate fstate FXSAVE_ALIGN;
+  uint32_t oldmxcsr;
+
   execution_context_t *mc = find_my_execution_context();
-  struct _libc_fpstate fstate;
+  
   fpvm_regs_t regs;
   int demotions=0;
 
@@ -1281,30 +1293,29 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 
   START_PERF(mc, foreign_call);
 
+
+  oldmxcsr = get_mxcsr();
+  fxsave(&fstate);
+
   if (mc->foreign_return_addr!=&fpvm_panic) {
     hard_fail_show_foreign_func("recursive foreign entry detected - function ",func);
     END_PERF(mc, foreign_call);
     return;
   }
 
-
-  //  SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
+  //SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
   //SAFE_DEBUG_QUAD("handling correctness for foreign call - function",func);
 
   mc->correctness_foreign_calls++;
   
-  uint32_t oldmxcsr = get_mxcsr();
-
-  fxsave(&fstate);
 
   regs.mcontext = 0;        // nothing should need this state
-  regs.fprs = fstate._xmm;  // note xmm only
+  regs.fprs = &fstate._xmm[0];  // note xmm only
   regs.fpr_size = 16;       // note bogus
     
   demotions = fpvm_emulator_demote_registers(&regs);
 
   if (demotions<0) {
-    ERROR("demotions in foreign call somehow failed\n");
     abort_operation("demotions in foreign call somehow failed\n");
     END_PERF(mc, foreign_call);
     return;
@@ -1316,16 +1327,6 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   // DEBUG("handling foreign call resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
 #endif
 
-  // disable our traps
-  uint32_t mxcsr = oldmxcsr | MXCSR_MASK_MASK;
-
-  // NOT SAFE TO DO HERE WILL POLLUTE FPRS
-  //DEBUG("setting mxcsr to %08x (previously %08x)\n", mxcsr, oldmxcsr);
-  SAFE_DEBUG("setting mxcsr\n");
-
-  fxrstor(&fstate);  // restore demoted registers to machine
-  
-  set_mxcsr(mxcsr); // Write the new mxcsr, with traps disabled
 
   // stash the mxcsr we will enable on return
   mc->foreign_return_mxcsr = oldmxcsr;
@@ -1336,10 +1337,20 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   // wrapper
   *ret = tramp;
 
+  // disable our traps
+  uint32_t newmxcsr = oldmxcsr | MXCSR_MASK_MASK;
+  
+  // NOT SAFE TO DO HERE WILL POLLUTE FPRS
+  //DEBUG("setting mxcsr to %08x (previously %08x)\n", mxcsr, oldmxcsr);
+  SAFE_DEBUG("setting fp regs and mxcsr\n");
+
+  fxrstor(&fstate);  // restore demoted registers to machine
+  set_mxcsr(newmxcsr); // Write the new mxcsr, with traps disabled
+
   SAFE_DEBUG("foreign call begins\n");
 
   END_PERF(mc, foreign_call);
-  
+
 }
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
@@ -1499,8 +1510,8 @@ static void fp_trap_handler(ucontext_t *uc)
   int do_insert = 0;
   char instbuf[256];
   int instindex = 0;
-  int end_reason = TRACE_END_INSTR_SEQUENCE_MAX;
   
+  int end_reason = TRACE_END_INSTR_SEQUENCE_MAX;
   
   // repeat until we run out of instructions that
   // need to be emulated or we run off the page
@@ -1690,6 +1701,8 @@ static void fp_trap_handler(ucontext_t *uc)
   // At this point, we have successfully finished at least one instruction
   RECORD_TRACE(mc,end_reason,(uint64_t)start_rip,instindex);
 
+  (void)end_reason;
+  
 
 #if CONFIG_TELEMETRY
   if (CONFIG_TELEMETRY_PERIOD && !(mc->fp_traps % CONFIG_TELEMETRY_PERIOD)) {
@@ -1934,9 +1947,10 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
       return;
     } else {
       // exit - our deinit will be called
-      DEBUG("not our segfault, and don't know what to do with it!\n");
-      exit(-1);
-      //abort();
+      ERROR("not our segfault and don't know what to do with it:  rip=%p addr=%p reason: %d (%s)\n",
+	    rip,addr,  si->si_code, si->si_code==SEGV_MAPERR ? "MAPERR" : si->si_code==SEGV_ACCERR ? "PERM" : "UNKNOWN");
+      //exit(-1);
+      abort();
     }
   }
 }

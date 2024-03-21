@@ -121,7 +121,8 @@ void r8mat_write ( char *output_filename, int m, int n, double table[] )
   {
     for ( i = 0; i < m; i++ )
     {
-      fprintf ( output, "%24.16g,", table[i+j*m] );
+      //fprintf ( output, "%24.16g (%016lx),", table[i+j*m], *(unsigned long *)&table[i+j*m] );
+      fprintf ( output, "%24.16g,", table[i+j*m]);
     }
     fprintf ( output, "\n" );
   }
@@ -261,6 +262,10 @@ void three_body_simulation_run ( )
 
   return;
 }
+
+volatile double two=2.0;
+volatile double three=3.0;
+
 /******************************************************************************/
 
 void simple_f ( double t, double y[], double yp[] )
@@ -318,9 +323,9 @@ void simple_f ( double t, double y[], double yp[] )
   x2 = y[8];
   y2 = y[9];
 
-  n0 = sqrt ( pow ( pow ( x2 - x1, 2 ) + pow ( y2 - y1, 2 ), 3 ) );
-  n1 = sqrt ( pow ( pow ( x0 - x2, 2 ) + pow ( y0 - y2, 2 ), 3 ) );
-  n2 = sqrt ( pow ( pow ( x1 - x0, 2 ) + pow ( y1 - y0, 2 ), 3 ) ); 
+  n0 = sqrt ( pow ( pow ( x2 - x1, two ) + pow ( y2 - y1, two ), three ) );
+  n1 = sqrt ( pow ( pow ( x0 - x2, two ) + pow ( y0 - y2, two ), three ) );
+  n2 = sqrt ( pow ( pow ( x1 - x0, two ) + pow ( y1 - y0, two ), three ) ); 
 
   yp[0]  =  y[2];
   yp[1]  =  y[3];
