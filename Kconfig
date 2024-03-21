@@ -62,13 +62,13 @@ config INSTR_TRACES_PERIOD
 
 config TRAP_SHORT_CIRCUITING
     bool "Trap short-circuiting (kernel support)"
-    default n
+    default y
     help
        Use the FPVM kernel support to do much faster trap delivery
 
 config INSTR_SEQ_EMULATION
     bool "Instruction sequence emulation"
-    default n
+    default y
     help
        Emulate as many instructions as possible per trap
 
