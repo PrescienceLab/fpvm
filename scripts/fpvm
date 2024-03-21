@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+
+import argparse
+import shutil
+from pathlib import Path
+import os
+import subprocess
+import hashlib
+# import lief # TODO
+import time
+import pandas as pd
+
+
+CACHE_DIR = os.path.expanduser('~/.cache/fpvm')
+SCRIPT_DIR = Path(os.path.realpath(os.path.dirname(__file__)))
+FPVM_HOME = SCRIPT_DIR / '../' # TODO: this FPVM_HOME thing makes distribution later really annoying
+
+
+# First, attempt to find where FPVM is.
+FPVM_LOCATION = None
+
+
+fpvm_locations = [
+    # Currently, only look in a few locations.
+
+    # When developing...
+    FPVM_HOME / 'build/fpvm.so',
+
+    # When installed to $DIR, $DIR/bin and $DIR/lib are next to eachother, as is the case in nix
+    FPVM_HOME / 'lib/fpvm.so', 
+]
+
+for loc in fpvm_locations:
+    loc = os.path.realpath(os.path.expanduser(loc))
+    if os.path.isfile(loc):
+        FPVM_LOCATION = str(Path(loc).resolve())
+        break
+
+
+# Expand a binary path using PATH
+def path_expand(binary):
+  return shutil.which(binary)
+
+
+
+
+# The point of this class is to provide a way to get a temporary directory
+# which is keyed to the content hash of input files or strings
+class ContentHashDir:
+  def __init__(self, name):
+    self._hash = hashlib.sha1()
+    self._name = name
+
+  def hash_file(self, path):
+    self.hash(f'FILE: {path}') # Just record that we hash a file
+    with open(path, "rb") as f:
+      # Read the file in chunks to avoid loading the entire file into memory
+      chunk = 0
+      while chunk := f.read(4096):
+          self._hash.update(chunk)
+
+
+  def hash(self, s):
+    self._hash.update(s.encode())
+
+
+  def digest(self):
+    return self._hash.hexdigest()
+
+  # Create the directory on disk, and return a Path to it.
+  def get(self, file=None):
+    hash = self.digest()
+    dir = os.path.expanduser(f'{CACHE_DIR}/{hash}-{self._name}')
+    os.makedirs(dir, exist_ok=True)
+    if file is not None:
+      return Path(dir) / file
+    return Path(dir)
+
+  def exists(self, name):
+    dir = self.get()
+    return os.path.isfile(dir / name)
+
+
+
+
+
+# Given a binary, return a full path to a patched version of it
+# @binary: A path to the binary we are interested in
+# @version: either 'magic' or 'trap'
+def get_patched_binary(binary: Path, version: str='magic') -> Path:
+  name = os.path.basename(binary)
+
+
+  ch = ContentHashDir(f'patch-{name}')
+  ch.hash_file(binary) # The key is simply the file itself.
+
+  if version not in ['magic', 'trap']:
+    raise ValueError(f'Invalid version, {version}')
+
+  magic = name + '.magic'
+  trap = name + '.trap'
+
+  if not ch.exists(trap) or not ch.exists(magic):
+    # Generate the patch in right place.
+    os.system(f'env FPVM_WRAP=disable fpvm_patch.sh -n -w {ch.get()} {binary} >&2')
+    shutil.copy(ch.get('input.patched_magic'), ch.get(magic))
+    shutil.copy(ch.get('input.patched_trap'), ch.get(trap))
+
+  return ch.get(f'{name}.{version}')
+
+
+
+
+
+
+
+# ===============================================================
+# The following functions are callbacks from the argument parser:
+# ===============================================================
+
+
+# Run a binary with FPVM.
+# TODO: check that the binary has been patched somehow. Probably just
+# by adding an elf section, and making sure it exists before running?
+def cmd_run(args):
+  bin = path_expand(args.binary)
+  if bin is None:
+    print(f'Could not find binary, {args.binary}')
+    exit(-1)
+
+
+  # Construct the environ the binary should be run with
+  env = os.environ.copy() # Copy the current environment variables.
+  env['LD_PRELOAD'] = args.fpvm # most importantly, setup FPVM's LD_PRELOAD
+  bin = get_patched_binary(bin) # Patch the binary as needed
+  cmd = subprocess.Popen([bin, *args.argv], env=env, shell=True)
+  cmd.wait()
+
+
+
+
+def cmd_benchmark(args):
+  bin = path_expand(args.binary)
+  if bin is None:
+    print(f'Could not find binary, {args.binary}')
+    exit(-1)
+
+
+  # Construct the environ the binary should be run with
+  fpvm_env = os.environ.copy()
+  fpvm_env['LD_PRELOAD'] = args.fpvm
+
+  runs = [
+    ('baseline', bin, os.environ.copy()),
+    ('magic', get_patched_binary(bin, 'magic'), fpvm_env),
+    ('trap', get_patched_binary(bin, 'trap'), fpvm_env),
+  ]
+
+  results = []
+
+  for name, bin, env in runs:
+    for run_idx in range(args.count):
+      start = time.time()
+      cmd = subprocess.Popen([bin, *args.argv], env=env, shell=True, stdout=subprocess.DEVNULL)
+      cmd.wait()
+      end = time.time()
+
+      results.append({'name': name, 'time': (end - start), 'run': run_idx})
+  res = pd.DataFrame(results)
+
+  base = res[res['name'] == 'baseline']['time'].mean()
+
+  for name, _, _ in runs:
+    if name == 'baseline':
+      continue
+    this = res[res['name'] == name]['time'].mean()
+
+
+    print(f'{name}: slowdown={this / base:.2f}x')
+
+  res.to_csv(args.output, index=False)
+
+
+
+
+
+
+# Patch a binary with FPVM
+def cmd_patch(args):
+  bin = path_expand(args.binary)
+  if bin is None:
+    print(f'Could not find binary, {args.binary}')
+    exit(-1)
+
+  ch = ContentHashDir()
+  ch.hash_file(FPVM_LOCATION)
+  ch.hash_file(bin)
+
+  b = get_patched_binary(bin)
+  print(b)
+
+
+
+
+
+
+
+
+
+
+
+def cmd_wrap(args):
+  bin = path_expand(args.binary)
+  if bin is None:
+    print(f'Could not find binary, {args.binary}')
+    exit(-1)
+  print(args)
+
+  ch = ContentHashDir()
+  ch.hash_file(FPVM_LOCATION)
+  ch.hash_file(bin)
+  if args.from_file is not None:
+    ch.hash_file(args.from_file)
+
+  if ch.exists('wrapped'):
+    print('Has file! Early return!')
+  else:
+    shutil.copy(bin, ch.get('wrapped'))
+
+
+  shutil.copy(ch.get('wrapped'), args.output)
+
+  print(f'Wrapping foreign calls in {bin} and outputting to {args.output}')
+  print(f'Hash = {ch.digest()}')
+  print(f'Dir = {ch.get()}')
+  shutil.copy(ch.get() / 'wrapped', args.output)
+
+
+
+
+
+
+
+def clear_cache(args):
+  shutil.rmtree(CACHE_DIR)
+
+
+
+
+
+# ===============================================================
+# Arg parsing and dispatch below:
+# ===============================================================
+
+
+parser = argparse.ArgumentParser(
+  prog='FPVM',
+  description='The floating point virtual machine')
+
+parser.add_argument('--fpvm', help='Path to FPVM', required=False, default=FPVM_LOCATION)
+
+sub = parser.add_subparsers(required=True, title='action')
+
+
+# The run subcommand
+parser_run = sub.add_parser('run', help='run a binary')
+parser_run.add_argument('-o', help='Optional argument')
+parser_run.add_argument('binary', help='Binary to run')
+parser_run.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
+parser_run.set_defaults(func=cmd_run)
+
+
+# The benchmark subcommand
+parser_benchmark = sub.add_parser('benchmark', help='benchmark FPVM\'s overhead on a binary')
+parser_benchmark.add_argument('-c', '--count', type=int, help='How many runs', default=1)
+parser_benchmark.add_argument('-o', '--output', help='Destination for the CSV file', required=True)
+parser_benchmark.add_argument('binary', help='Binary to run')
+parser_benchmark.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
+parser_benchmark.set_defaults(func=cmd_benchmark)
+
+
+# The patch subcommand
+parser_patch = sub.add_parser('patch', help='patch a binary')
+parser_patch.add_argument('-o', '--output', help='output binary', default='fpvm.out')
+parser_patch.add_argument('binary', help='Binary to patch')
+parser_patch.set_defaults(func=cmd_patch)
+
+
+# The wrap subcommand
+parser_wrap = sub.add_parser('wrap', help='wrap the symbols in a binary')
+parser_wrap.add_argument('-o', '--output', help='output binary', default='fpvm.out')
+parser_wrap.add_argument('-m', '--mode', help='The wrap mode to use (forward/backward)', default='forward')
+parser_wrap.add_argument('-s', dest='symbols', default="", help="comma-seperated list of symbols")
+parser_wrap.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
+parser_wrap.add_argument('binary', help='Binary to wrap')
+parser_wrap.set_defaults(func=cmd_wrap)
+
+
+parser_clear = sub.add_parser('clear-cache', help='Delete the FPVM cache directory')
+parser_clear.set_defaults(func=clear_cache)
+
+args = parser.parse_args()
+
+if args.fpvm is None:
+  print('Could not find an fpvm.so installed. Aborting')
+  exit(-1)
+
+# If fpvm is found (or provided), make it an absolute path
+args.fpvm = os.path.realpath(args.fpvm)
+FPVM_LOCATION=args.fpvm
+
+
+if hasattr(args, 'func'):
+  args.func(args)
