@@ -58,8 +58,8 @@ class ContentHashDir:
     self._hash = hashlib.sha1()
     self._name = name
 
-  def hash_file(self, path):
-    self.hash(f'FILE: {path}') # Just record that we hash a file
+  def file_input(self, path):
+    self.string_input(f'FILE: {path}') # Just record that we hash a file
     with open(path, "rb") as f:
       # Read the file in chunks to avoid loading the entire file into memory
       chunk = 0
@@ -67,7 +67,7 @@ class ContentHashDir:
           self._hash.update(chunk)
 
 
-  def hash(self, s):
+  def string_input(self, s: str):
     self._hash.update(s.encode())
 
 
@@ -102,7 +102,7 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
 
 
   ch = ContentHashDir(f'patch-{name}')
-  ch.hash_file(binary) # The key is simply the file itself.
+  ch.file_input(binary) # The key is simply the file itself.
 
   if version not in ['magic', 'trap']:
     raise ValueError(f'Invalid version, {version}')
@@ -121,7 +121,7 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
 
 def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
   ch = ContentHashDir(f'additional_wrappers_{mode}')
-  ch.hash_file(wrap_list)
+  ch.file_input(wrap_list)
 
 
   so = ch / 'wrappers.so'
@@ -149,7 +149,7 @@ def get_wrapped_binary(binary: Path, version: str='magic', mode: str = 'reverse'
   patched = get_patched_binary(binary, version)
 
   ch = ContentHashDir(f'{mode}-wrap-{name}')
-  ch.hash_file(patched)
+  ch.file_input(patched)
 
   get_additional_wrappers(WRAP_LIST)
 
