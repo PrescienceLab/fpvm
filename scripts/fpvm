@@ -16,6 +16,8 @@ SCRIPT_DIR = Path(os.path.realpath(os.path.dirname(__file__)))
 FPVM_HOME = SCRIPT_DIR / '../' # TODO: this FPVM_HOME thing makes distribution later really annoying
 
 
+WRAP_LIST = FPVM_HOME / 'wrap.list'
+
 # First, attempt to find where FPVM is.
 FPVM_LOCATION = None
 
@@ -80,6 +82,9 @@ class ContentHashDir:
     dir = self.get()
     return os.path.isfile(dir / name)
 
+  def __truediv__(self, name):
+    return self.get(name)
+
 
 
 
@@ -109,6 +114,51 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
   return ch.get(f'{name}.{version}')
 
 
+def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
+  ch = ContentHashDir(f'additional_wrappers_{mode}')
+  ch.hash_file(wrap_list)
+
+
+  so = ch / 'wrappers.so'
+
+  os.system(f'cd {ch.get()} && wrap_dynamic_calls_{mode}.pl {wrap_list} wrap')
+
+  # Generate a c file which pulls it all together
+  with open(ch / 'wrap.c', 'w') as f:
+    f.write(f'#define _GNU_SOURCE\n')
+    f.write(f'#include <dlfcn.h>\n')
+    f.write(f'#include "{FPVM_HOME / "include/fpvm/fpvm_common.h"}"\n')
+    f.write(f'#include "{ch / "wrap.h"}"\n')
+    f.write(f'#include "{ch / "wrap.inc"}"\n')
+
+  os.system(f'cd {ch.get()} && gcc -fPIC -shared -o {so} wrap.c wrap.S')
+
+  return so
+
+
+
+
+def get_wrapped_binary(binary: Path, version: str='magic', mode: str = 'reverse') -> Path:
+  name = os.path.basename(binary)
+  # The wrapped binary is keyed on the hash of the patched binary
+  patched = get_patched_binary(binary, version)
+
+  ch = ContentHashDir(f'{mode}-wrap-{name}')
+  ch.hash_file(patched)
+
+  get_additional_wrappers(WRAP_LIST)
+
+  if mode == 'reverse':
+    if not ch.exists(name):
+      os.system(f'fpvm_wrap -o {ch/name} -f {WRAP_LIST} {patched}')
+    return ch.get(name)
+
+
+  raise ValueError('We only support the reverse mode in the fpvm script for now')
+
+
+
+
 
 
 
@@ -120,8 +170,6 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
 
 
 # Run a binary with FPVM.
-# TODO: check that the binary has been patched somehow. Probably just
-# by adding an elf section, and making sure it exists before running?
 def cmd_run(args):
   bin = path_expand(args.binary)
   if bin is None:
@@ -131,9 +179,10 @@ def cmd_run(args):
 
   # Construct the environ the binary should be run with
   env = os.environ.copy() # Copy the current environment variables.
-  env['LD_PRELOAD'] = args.fpvm # most importantly, setup FPVM's LD_PRELOAD
-  bin = get_patched_binary(bin) # Patch the binary as needed
-  cmd = subprocess.Popen([bin, *args.argv], env=env, shell=True)
+  env['LD_PRELOAD'] = args.fpvm + ' ' + str(get_additional_wrappers(WRAP_LIST)) # most importantly, setup FPVM's LD_PRELOAD
+  bin = get_wrapped_binary(bin) # Patch the binary as needed
+  print([bin, *args.argv])
+  cmd = subprocess.Popen([bin, *args.argv], env=env)
   cmd.wait()
 
 
@@ -152,8 +201,8 @@ def cmd_benchmark(args):
 
   runs = [
     ('baseline', bin, os.environ.copy()),
-    ('magic', get_patched_binary(bin, 'magic'), fpvm_env),
-    ('trap', get_patched_binary(bin, 'trap'), fpvm_env),
+    ('magic', get_wrapped_binary(bin, 'magic'), fpvm_env),
+    ('trap', get_wrapped_binary(bin, 'trap'), fpvm_env),
   ]
 
   results = []
@@ -161,7 +210,7 @@ def cmd_benchmark(args):
   for name, bin, env in runs:
     for run_idx in range(args.count):
       start = time.time()
-      cmd = subprocess.Popen([bin, *args.argv], env=env, shell=True, stdout=subprocess.DEVNULL)
+      cmd = subprocess.Popen([bin, *args.argv], env=env, stdout=subprocess.DEVNULL)
       cmd.wait()
       end = time.time()
 
@@ -192,20 +241,7 @@ def cmd_patch(args):
     print(f'Could not find binary, {args.binary}')
     exit(-1)
 
-  ch = ContentHashDir()
-  ch.hash_file(FPVM_LOCATION)
-  ch.hash_file(bin)
-
-  b = get_patched_binary(bin)
-  print(b)
-
-
-
-
-
-
-
-
+  print(get_patched_binary(bin))
 
 
 
@@ -214,28 +250,8 @@ def cmd_wrap(args):
   if bin is None:
     print(f'Could not find binary, {args.binary}')
     exit(-1)
-  print(args)
 
-  ch = ContentHashDir()
-  ch.hash_file(FPVM_LOCATION)
-  ch.hash_file(bin)
-  if args.from_file is not None:
-    ch.hash_file(args.from_file)
-
-  if ch.exists('wrapped'):
-    print('Has file! Early return!')
-  else:
-    shutil.copy(bin, ch.get('wrapped'))
-
-
-  shutil.copy(ch.get('wrapped'), args.output)
-
-  print(f'Wrapping foreign calls in {bin} and outputting to {args.output}')
-  print(f'Hash = {ch.digest()}')
-  print(f'Dir = {ch.get()}')
-  shutil.copy(ch.get() / 'wrapped', args.output)
-
-
+  print(get_wrapped_binary(bin, 'magic', args.mode))
 
 
 
@@ -259,6 +275,7 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--fpvm', help='Path to FPVM', required=False, default=FPVM_LOCATION)
 
+parser.add_argument('--wrap-list', help='The wrap list to use when generating wrappers', default=FPVM_HOME / 'wrap.list')
 sub = parser.add_subparsers(required=True, title='action')
 
 
@@ -289,7 +306,7 @@ parser_patch.set_defaults(func=cmd_patch)
 # The wrap subcommand
 parser_wrap = sub.add_parser('wrap', help='wrap the symbols in a binary')
 parser_wrap.add_argument('-o', '--output', help='output binary', default='fpvm.out')
-parser_wrap.add_argument('-m', '--mode', help='The wrap mode to use (forward/backward)', default='forward')
+parser_wrap.add_argument('-m', '--mode', help='The wrap mode to use (forward/reverse)', default='reverse')
 parser_wrap.add_argument('-s', dest='symbols', default="", help="comma-seperated list of symbols")
 parser_wrap.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
 parser_wrap.add_argument('binary', help='Binary to wrap')
@@ -307,7 +324,8 @@ if args.fpvm is None:
 
 # If fpvm is found (or provided), make it an absolute path
 args.fpvm = os.path.realpath(args.fpvm)
-FPVM_LOCATION=args.fpvm
+FPVM_LOCATION = args.fpvm
+WRAP_LIST = args.wrap_list
 
 
 if hasattr(args, 'func'):
