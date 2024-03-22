@@ -11,7 +11,8 @@ import time
 import pandas as pd
 import multiprocessing as mp
 import resource
-
+import re
+import math
 
 
 CACHE_DIR = os.path.expanduser('~/.cache/fpvm')
@@ -23,6 +24,12 @@ WRAP_LIST = FPVM_HOME / 'wrap.list'
 # First, attempt to find where FPVM is.
 FPVM_LOCATION = None
 
+
+
+# TODO: these metrics should be changed to match the real world.
+HW_TO_KERNEL_TIME=1000
+KERNEL_TO_USER_TIME=1000
+CALL_WRAP_TIME=40
 
 fpvm_locations = [
     # Currently, only look in a few locations.
@@ -232,7 +239,10 @@ def cmd_run(args):
     bin = get_wrapped_binary(bin)
 
   # Run the binary...
-  out = run_fpvm_binary(bin, args.argv, use_fpvm=not args.baseline, stdout=subprocess.DEVNULL)
+  out = run_fpvm_binary(bin,
+                        args.argv,
+                        # stdout=subprocess.DEVNULL
+                        use_fpvm=not args.baseline)
   print(out)
 
 
@@ -257,6 +267,63 @@ def cmd_wrap(args):
 
 
 
+def get_telemetry(file: Path):
+  t = {}
+  with open(file) as f:
+    for line in f:
+      # Check if the line is even interesting
+      m = re.match(r'^fpvm\s+info\(.*\):\s+telemetry:\s+(\S.*)$', line)
+      if not m:
+        continue
+      # Cut the front off
+      line = re.sub(r'^fpvm\s+info\(.*\):\s+telemetry:', '', line)
+
+      for p in line.split(','):
+        p = p.strip()
+        p = re.sub(r'\(.*\)', '', p)
+        match = re.match(r'^\d+', p)
+        val = int(match.group())
+        remainder = p[len(match.group()):].strip().replace(' ', '_')
+        t[remainder] = val
+  return t
+
+
+
+def get_performance(file: Path):
+  metrics = []
+  with open(file) as f:
+    for line in f:
+      # Check if the line is even interesting
+      m = re.match(r'^fpvm\s+info\(.*\):\s+perf:\s+(\S.*) :\s+(\S.*)$', line)
+      if not m:
+        continue
+      line = re.sub(r'^fpvm\s+info\(.*\):\s+perf:', '', line).strip()
+      bits = line.split(' : ')
+      
+      m = {}
+      m['name'] = bits[0].replace(' ', '_').strip()
+
+      for p in bits[1].split(' '):
+        name, val = p.split('=')
+        m[name] = float(val)
+
+      # Copmute avg, stddev ourselves just in case
+      if m['count'] == 0:
+        m['avg'] = 0.0;
+        m['std'] = 0.0;
+        m['min'] = 0;
+        m['max'] = 0;
+      else:
+        m['avg'] = m['sum'] / m['count']
+        m['std'] = math.sqrt(m['sum2'] / m['count'] - m['avg']*m['avg'])
+      metrics.append(m)
+  return metrics
+
+
+def div_clamp(a, b):
+  if b != 0:
+    return a / b
+  return 0
 
 
 def cmd_benchmark(args):
@@ -279,22 +346,67 @@ def cmd_benchmark(args):
 
   runs = [
     ('baseline', bin, os.environ.copy()),
-    (f'{name}_magic', get_wrapped_binary(bin, 'magic'), fpvm_env),
-    (f'{name}_trap', get_wrapped_binary(bin, 'trap'), fpvm_env),
+    ('magic', get_wrapped_binary(bin, 'magic'), fpvm_env),
+    # (f'{name}_trap', get_wrapped_binary(bin, 'trap'), fpvm_env),
   ]
 
   for run_name, bin, env in runs:
     usages = []
+    amortized = []
+    use_fpvm = run_name != 'baseline'
     for run_idx in range(args.count):
+      log = output / f'{run_name}_{run_idx}.fpvm_log'
       print(f'Running {run_name}.{run_idx}')
       usage = run_fpvm_binary(bin,
                               args.argv,
-                              use_fpvm=run_name != 'baseline',
-                              logfile=output / f'{run_name}_{run_idx}.fpvm_log',
+                              use_fpvm=use_fpvm,
+                              logfile=log,
                               stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL)
+      print(f'    time: {usage["time"]}s')
+      with open(log, "a") as f:
+        f.write(f'fpvm time: real {usage["time"]:.4f} user {usage["utime"]:.4f} sys {usage["stime"]:.4f}\n')
+
+
+      # If this run is using FPVM, make sure to record telemetry, perf, and amortized metrics.
+      if use_fpvm:
+        t = get_telemetry(log)
+        pd.DataFrame([t]).to_csv(output / f'{run_name}_{run_idx}_telem.csv', index=False)
+
+        perf_metrics = get_performance(log)
+        pd.DataFrame(perf_metrics).to_csv(output / f'{run_name}_{run_idx}_perf.csv', index=False)
+
+        # Create a nicer version of the perf data for use here:
+        perf = {}
+        for metric in perf_metrics:
+          perf[metric['name']] = metric
+
+        amor = {}
+
+        numfpe = t['fp_traps']
+        numcor = t['correctness_traps']
+        numfor = t['correctness_foreign_calls']
+        numinst = t['instructions_emulated']
+
+
+        amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*numfpe,numinst);
+        amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*numfpe,numinst);
+        amor['decache'] = div_clamp(perf['decode_cache']['sum'],numinst);
+        amor['decode'] = div_clamp(perf['decoder']['sum'],numinst);
+        amor['bind'] = div_clamp(perf['bind']['sum'],numinst);
+        amor['emul'] = div_clamp(perf['emulate']['sum'],numinst);
+        amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numinst);
+        amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numinst);
+        amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numinst);
+        amor['total'] = amor['hw']+amor['kern']+amor['decache']+amor['decode']+amor['bind']+amor['emul']+amor['gc']+amor['fcall']+amor['corr'];
+
+        amortized.append(amor)
+
       usages.append(usage)
 
+
+    if use_fpvm:
+      pd.DataFrame(amortized).to_csv(output / f'{run_name}_amortized.csv', index=False)
     pd.DataFrame(usages).to_csv(output / f'{run_name}_rusage.csv', index=False)
 
 
