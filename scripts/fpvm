@@ -388,7 +388,8 @@ def cmd_benchmark(args):
         numfor = t['correctness_foreign_calls']
         numinst = t['instructions_emulated']
 
-
+        amor['name'] = name
+        amor['run'] = run_name
         amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*numfpe,numinst);
         amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*numfpe,numinst);
         amor['decache'] = div_clamp(perf['decode_cache']['sum'],numinst);
