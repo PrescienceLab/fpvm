@@ -255,7 +255,7 @@ sub handle_trace {
     }
     $i++;
     open(G,">$tr") or die "cannot open $tr\n";
-    print G "#benchmark\tfactors\trank\tcumprob\tprob\tcount\tlength\n";
+    print G "benchmark\tfactors\trank\tcumprob\tprob\tcount\tlength\n";
     for (;$i<=$#{$dr};$i++) {
 	if ($dr->[$i]=~/rank\s+(\d+)\s+->\s+(\d+)\s\((\S+)\%\s+(\S+)\%\)\s+\[length\s+(\d+)\]/) {
 	    my ($r,$n,$p,$cp,$len) = ($1,$2,$3,$4,$5);
