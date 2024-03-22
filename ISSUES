@@ -1,22 +1,49 @@
-- how to handle comparisons that do not fault
-   possibly add a whole system patcher a la vmware
+===============================================================
+DONE - if we always generate an SNaN for encoding, we are fine
+  - how to handle comparisons that do not fault
+     possibly add a whole system patcher a la vmware
 
-COMISD - faults on SNan or Qnan
-UCOMISD - faults on SNan
+  COMISD - faults on SNan or Qnan
+  UCOMISD - faults on SNan
 
-These shouold be fine, but there may be others
+  These shouold be fine, but there may be others
+===============================================================
 
-
+===============================================================
 - Need to verify correct behavior for conversion operations 
 
 Note that f2i is only overwriting the part of the register target
 that is get the output.   This probably should handle zeroing the
 rest of the register in case this is the excepted behavior (not sure)
+===============================================================
 
 
-- Clearly document the compilation/etc technique that Alex found
+===============================================================
+DONE - Clearly document the compilation/etc technique that Alex found
   for forcing only SSE2 or other limits
-  
+===============================================================
+
+
+===============================================================
+Instructions that the analysis should catch:
+
+Instructions that move from xmm to gpr, such as:
+
+movmskpd        eax, xmm0  [intel format]
+movq            xmm0, %rax [at&t format]
+
+These should be demotions via temporary
+
+===============================================================
+Instructions analysis should NOT catch, but currently is:
+
+problematic correctness instr (YIKES): mulsd		xmm3, xmm7 (4 bytes)
+
+purely register/register, where the dest is not a gpr
+
+===============================================================
+
+
 
 
 
