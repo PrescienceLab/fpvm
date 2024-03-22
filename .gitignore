@@ -33,6 +33,8 @@ analysis/src/sources-*
 analysis/src/a.out
 analysis/e9patch
 
+.ipynb_checkpoints
+
 analysis/workspace
 /include/fpvm/additional_wrappers.h
 /src/additional_wrappers.S
