@@ -22,6 +22,11 @@ $(EXEC): $(EXEC).cpp
 $(EXEC).patched_trap $(EXEC).patched_magic : $(EXEC)
 	fpvm_patch.sh -m $(EXEC)
 
+
+diff:
+	diff $(EXEC).out $(EXEC).patched_trap.out
+
+
 clean:
 	rm -f $(EXEC) $(EXEC).patched_magic $(EXEC).patched_trap $(EXEC).out $(EXEC).patched_trap.out $(EXEC).patched_magic.out $(EXEC)*.timing $(EXEC)*fpvm_magic*  $(EXEC)*.csv $(EXEC).original
 
