@@ -79,6 +79,9 @@ class ContentHashDir:
     hash = self.digest()
     dir = os.path.expanduser(f'{CACHE_DIR}/{hash}-{self._name}')
     os.makedirs(dir, exist_ok=True)
+
+    shutil.copy(FPVM_HOME/'.config', Path(dir)/'config')
+    os.system(f'git -C {FPVM_HOME} rev-parse HEAD > {Path(dir) / "GIT"}')
     if file is not None:
       return Path(dir) / file
     return Path(dir)
