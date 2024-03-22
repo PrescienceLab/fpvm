@@ -42,6 +42,7 @@ while getopts "nw:m?" opt; do
       echo "                 instead of default shared workspace"
       echo "  -m           : do memory patching only"
       echo "                 for example to use wrapper method"
+      echo "  -n           : do not copy out intermediary files"
       exit 1
       ;;
   esac
