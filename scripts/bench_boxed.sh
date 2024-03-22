@@ -168,6 +168,12 @@ function do_all_graph_data() {
 
 }
 
+# Just removing in case it's loaded for some reason
+if [ `hostname` = "jarlsberg" ]; then
+  sudo rmmod fpvm_dev
+  sudo rm -f /dev/fpvm_dev
+fi
+
 init_test
 
 ### Test base (nothing turned on)
@@ -230,11 +236,82 @@ do_all_graph_data $bench $factors $outfile
 
 
 # LOAD KMOD
+echo "Loading kernel module for trap short-circuit"
+if [ `hostname` != "jarlsberg" ]; then
+  exit -1
+fi
 
-# TODO: KMOD
+pushd kernel/
+sudo ./kmod_build.sh
+sudo ./kmod_setup.sh
+popd
 
-# TODO: SEQ + KMOD
 
-# TODO: KMOD + MAGIC
+### KMOD
+## Correctness
+clear_config
+set_option "NO_OUTPUT"
+set_option "TRAP_SHORT_CIRCUIT"
+make
+FPVM_KERNEL=y run_test
+log_diffs "kmod"
+## Graph Data
+bench=${TEST_NAME}
+factors="kmod"
+outfile="${TEST_NAME}.patched_magic.out"
+FPVM_KERNEL=y do_all_graph_data $bench $factors $outfile
 
-# TODO: SEQ + KMOD + MAGIC
+
+
+### SEQ + KMOD
+## Correctness
+clear_config
+set_option "NO_OUTPUT"
+set_option "INSTR_SEQ_EMULATION"
+set_option "TRAP_SHORT_CIRCUIT"
+make
+FPVM_KERNEL=y run_test
+log_diffs "seq-kmod"
+## Graph Data
+bench=${TEST_NAME}
+factors="seq-kmod"
+outfile="${TEST_NAME}.patched_magic.out"
+FPVM_KERNEL=y do_all_graph_data $bench $factors $outfile
+
+
+
+### MAGIC + KMOD
+## Correctness
+clear_config
+set_option "NO_OUTPUT"
+set_option "MAGIC"
+set_option "TRAP_SHORT_CIRCUIT"
+make
+FPVM_KERNEL=y run_test
+log_diffs "magic-kmod"
+## Graph Data
+bench=${TEST_NAME}
+factors="magic-kmod"
+outfile="${TEST_NAME}.patched_magic.out"
+FPVM_KERNEL=y do_all_graph_data $bench $factors $outfile
+
+
+
+### SEQ + MAGIC + KMOD
+## Correctness
+clear_config
+set_option "NO_OUTPUT"
+set_option "INSTR_SEQ_EMULATION"
+set_option "MAGIC"
+set_option "TRAP_SHORT_CIRCUIT"
+make
+FPVM_KERNEL=y run_test
+log_diffs "seq-magic-kmod"
+## Graph Data
+bench=${TEST_NAME}
+factors="seq-magic-kmod"
+outfile="${TEST_NAME}.patched_magic.out"
+FPVM_KERNEL=y do_all_graph_data $bench $factors $outfile
+
+sudo rmmod fpvm_dev 
+sudo rm -f /dev/fpvm_dev

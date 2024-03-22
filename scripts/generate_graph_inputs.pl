@@ -81,7 +81,7 @@ close(O);
 $have_timing = 1;
 
 open(G,">$timing") or die "cannot open $timing\n";
-print G "#".join("\t","benchmark", "factors", "base_real","base_user","base_sys","base_sum","fpvm_real","fpvm_user","fpvm_sys","fpvm_sum","slowdown_real","slowdown_user","slowdown_sys", "slowdown_sum")."\n";
+print G "".join("\t","benchmark", "factors", "base_real","base_user","base_sys","base_sum","fpvm_real","fpvm_user","fpvm_sys","fpvm_sum","slowdown_real","slowdown_user","slowdown_sys", "slowdown_sum")."\n";
 print G join("\t", $benchmark, $factors, $time_base{real}, $time_base{user}, $time_base{sys},$time_base{sum},$time_fpvm{real},$time_fpvm{user},$time_fpvm{sys},$time_fpvm{sum},div_clamp($time_fpvm{real},$time_base{real}),div_clamp($time_fpvm{user},$time_base{user}),div_clamp($time_fpvm{sys},$time_base{sys}),div_clamp($time_fpvm{sum},$time_base{sum})),"\n";
 close(G);
 
@@ -98,7 +98,7 @@ if ($have_telem) {
 if ($have_telem) {
     print STDERR "Generating overall amortized counts in $amortcount\n";
     open(G,">$amortcount") or die "cannot open $amortcount\n";
-    print G "#".join("\t","benchmark", "factors", "fptraps", "promotions", "clobbers", "demotions", "correctnesstraps", "foreigncalls", "correctnessdemotions"),"\n";
+    print G "".join("\t","benchmark", "factors", "fptraps", "promotions", "clobbers", "demotions", "correctnesstraps", "foreigncalls", "correctnessdemotions"),"\n";
     $numinst=$tel_fpvm{instructionsemulated};
     print G join("\t",
 		 $benchmark,
@@ -132,7 +132,7 @@ if ($have_perf) {
 # generate performance breakdown data
     print STDERR "Generating overall amortized costs in $amortcost\n";
     open(G,">$amortcost") or die "cannot open $amortcost\n";
-    print G "#".join("\t","benchmark", "factors", "hardware", "kernel", "decodecache", "decoder", "binder", "emulator", "garbage", "foreigncall", "correcttrap","total")."\n";
+    print G "".join("\t","benchmark", "factors", "hardware", "kernel", "decodecache", "decoder", "binder", "emulator", "garbage", "foreigncall", "correcttrap","total")."\n";
     print G join("\t", $benchmark, $factors)."\t";
     $numfpe=$tel_fpvm{fptraps};
     $numcor=$tel_fpvm{correctnesstraps};
@@ -255,7 +255,7 @@ sub handle_trace {
     }
     $i++;
     open(G,">$tr") or die "cannot open $tr\n";
-    print G "#benchmark\tfactors\trank\tcumprob\tprob\tcount\tlength\n";
+    print G "benchmark\tfactors\trank\tcumprob\tprob\tcount\tlength\n";
     for (;$i<=$#{$dr};$i++) {
 	if ($dr->[$i]=~/rank\s+(\d+)\s+->\s+(\d+)\s\((\S+)\%\s+(\S+)\%\)\s+\[length\s+(\d+)\]/) {
 	    my ($r,$n,$p,$cp,$len) = ($1,$2,$3,$4,$5);
@@ -271,7 +271,7 @@ sub handle_trace {
     }
     $i++;
     open(G,">$tl") or die "cannot open $tl\n";
-    print G "#benchmark\tfactors\tlength\tcumprob\tprob\tcount\n";
+    print G "benchmark\tfactors\tlength\tcumprob\tprob\tcount\n";
     for (;$i<=$#{$dr};$i++) {
 	if ($dr->[$i]=~/length\s+(\d+)\s+->\s+(\d+)\s\((\S+)\%\s+(\S+)\%\)/) {
 	    my ($len,$n,$p,$cp) = ($1,$2,$3,$4);
