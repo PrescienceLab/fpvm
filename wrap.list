@@ -40,13 +40,45 @@ __printf_chk	4	12
 #time	1	2
 #
 
-# From MG
+# From NAS 3-21-24
+__printf_chk	4	35
 fopen	2	1
-#gettimeofday	2	4
-#malloc	1	4611
-#memset	3	9316
-printf	2	20
-#printf	4	1
-#printf	5	1
-#puts	1	6
+gettimeofday	2	2
+puts	1	7
+__printf_chk	4	36
+gettimeofday	2	2
+memcpy	3	32
+memmove	3	1
+memset	3	1441
+#pow	4	1
+puts	1	6
+__printf_chk	4	29
+__sprintf_chk	4	1
+gettimeofday	2	2
+#log	4	13176388
+puts	1	3
+__printf_chk	4	26
+gettimeofday	2	2
+puts	1	4
+#sincos	4	124
+__printf_chk	4	19
+gettimeofday	2	2
+memcpy	3	11
+puts	1	3
+__printf_chk	4	36
+fopen	2	1
+gettimeofday	2	2
+puts	1	7
+__printf_chk	4	22
+fopen	2	1
+gettimeofday	2	4
+malloc	1	4611
+memset	3	9316
+puts	1	6
+__printf_chk	4	38
+fopen	2	1
+gettimeofday	2	2
+memcpy	3	83540
+memmove	3	127260
+puts	1	6
 
