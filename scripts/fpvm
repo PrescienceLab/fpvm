@@ -195,6 +195,8 @@ def run_fpvm_binary(bin: Path,
       env['LD_PRELOAD'] = str(FPVM_LOCATION) + ' ' + str(get_additional_wrappers(WRAP_LIST))
     if logfile is not None:
       env['FPVM_LOG_FILE'] = str(logfile)
+
+    start = time.time()
     proc = subprocess.Popen(
         [bin, *args],
         stdout=stdout,
@@ -202,9 +204,11 @@ def run_fpvm_binary(bin: Path,
         env=env,
     )
     status = proc.wait()
+    end = time.time()
 
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     out = {}
+    out["walltime"] = end - start
     out["time"] = usage.ru_utime + usage.ru_stime
     out["stime"] = usage.ru_stime
     out["utime"] = usage.ru_utime
