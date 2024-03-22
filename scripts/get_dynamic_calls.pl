@@ -3,7 +3,7 @@
 use IPC::Open3;
 use File::Basename;
 
-$#ARGV>=1 or die "usage: dynamic_calls.pl libpat|all command\n";
+$#ARGV>=1 or die "usage: get_dynamic_calls.pl libpat|all command\n";
 
 $lib=shift;
 $cmd=join(" ",@ARGV);
