@@ -1,3 +1,31 @@
+Benchmarks
+
+(works does not mean sequence emulation is working properly)
+
+
+lorenz        - works, validates
+double-pend   - works, validates
+3body         - works, validates
+fbench        - works, validates
+ffbench       - works, validates
+miniaero      - ? 
+enzo          - ?
+lbm           - ?
+nas-mg        - works, validates, mysterious issues (YIKES) vector instructions in 
+nas-bt        - works, validates, mysterious vector instructions
+nas-sp        - SEGFAULT   
+nas-lu        - ASSERTION FAILURE (correctness handler failed)  vector instruction and bogus instructions for correctness
+                movsxd instruction
+nas-ft        - ASSERTION FAILURE - movsxd instruction
+nas-is        - works, validates
+nas-cg        - works, does not validate, no errors shown (-nan outputs)
+nas-ep        - SEGFAULT (after one emul of mulsd in correctness
+
+
+State: need to xform miniaero, enzo, lbm;  need to investigate segfaults / movsxd
+
+
+
 ===============================================================
 DONE - if we always generate an SNaN for encoding, we are fine
   - how to handle comparisons that do not fault
@@ -46,8 +74,6 @@ problematic correctness instr: subpd		xmm0, xmm1 (4 bytes)
 problematic correctness instr (YIKES): subpd		xmm0, xmm1 (4 bytes)
 problematic correctness instr (YIKES): mulsd		xmm3, xmm2 (4 bytes)
 
-
-
 ===============================================================
 
 
@@ -62,6 +88,12 @@ problematic correctness instr: movups		xmmword ptr [rax + 0x4e5328], xmm4 (7 byt
 problematic correctness instr (YIKES): movups		xmmword ptr [rax + 0x4e5328], xmm4 (7 bytes)
 fpvm ERROR( 1518726): problematic instruction is vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS
 
+
+========
+
+
+sequence emulation now is getting O(2) instructions / trap instead
+of O(32) / trap
 
 
 
