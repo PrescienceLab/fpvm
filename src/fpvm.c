@@ -196,6 +196,10 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 // make this run-time configurable later
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
+
+static FILE *fpvm_log_file = NULL;
+#define FPVM_LOG_FILE (fpvm_log_file ? fpvm_log_file : stderr)
+
 // This is to allow us to handle multiple threads
 // and to follow forks later
 typedef struct execution_context {
@@ -225,7 +229,7 @@ typedef struct execution_context {
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
 #define DEINIT_TRACER(c) fpvm_instr_tracer_destroy((c)->trace_context)
 #define RECORD_TRACE(c,ec,sa,ic) fpvm_instr_tracer_record((c)->trace_context,TRACE_START_NORMAL,sa,ec,ic)
-#define PRINT_TRACES(c) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): trace: ",(c)->tid); fpvm_instr_tracer_print(stderr,_buf,(c)->trace_context,4); }
+#define PRINT_TRACES(c) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): trace: ",(c)->tid); fpvm_instr_tracer_print(FPVM_LOG_FILE,_buf,(c)->trace_context,4); }
 #else
 #define INIT_TRACER(c)
 #define DEINIT_TRACER(c)
@@ -244,7 +248,7 @@ typedef struct execution_context {
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
-#define PRINT_PERF(c, x) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): perf: ",(c)->tid); perf_stat_print(&(c)->x##_stat, stderr, _buf); }
+#define PRINT_PERF(c, x) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): perf: ",(c)->tid); perf_stat_print(&(c)->x##_stat, FPVM_LOG_FILE, _buf); }
 #define PRINT_PERFS(c)         \
   PRINT_PERF(c, gc);           \
   PRINT_PERF(c, decode_cache); \
@@ -262,9 +266,9 @@ typedef struct execution_context {
 
   
 #if CONFIG_TELEMETRY_PROMOTIONS
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #else
-#define PRINT_TELEMETRY(c) fprintf(stderr, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #endif
   
 } execution_context_t;
@@ -2240,6 +2244,10 @@ static __attribute__((constructor)) void fpvm_init(void) {
   //  SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
   if (!inited) {
+    // Grab the log destination
+    char *log_dst = getenv("FPVM_LOG_FILE");
+    if (log_dst != NULL) fpvm_log_file = fopen(log_dst, "w");
+
     if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
       DEBUG("Attempting to use FPVM kernel suppport\n");
       kernel = 1;
@@ -2274,6 +2282,9 @@ static __attribute__((constructor)) void fpvm_init(void) {
 static __attribute__((destructor)) void fpvm_deinit(void) {
   DEBUG("deinit\n");
   dump_execution_contexts_info();
+
+  // If a different log file was chosen, close it.
+  if (fpvm_log_file) fclose(fpvm_log_file);
   inited = 0;
   DEBUG("done\n");
 }
