@@ -41,8 +41,26 @@ problematic correctness instr (YIKES): mulsd		xmm3, xmm7 (4 bytes)
 
 purely register/register, where the dest is not a gpr
 
+
+problematic correctness instr: subpd		xmm0, xmm1 (4 bytes)
+problematic correctness instr (YIKES): subpd		xmm0, xmm1 (4 bytes)
+problematic correctness instr (YIKES): mulsd		xmm3, xmm2 (4 bytes)
+
+
+
 ===============================================================
 
+
+
+========
+
+Instructions that should be emulated ok, but...
+
+
+BT
+problematic correctness instr: movups		xmmword ptr [rax + 0x4e5328], xmm4 (7 bytes)
+problematic correctness instr (YIKES): movups		xmmword ptr [rax + 0x4e5328], xmm4 (7 bytes)
+fpvm ERROR( 1518726): problematic instruction is vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS
 
 
 
