@@ -46,7 +46,7 @@
 // #define _NANBOX(ITYPE, dest, nan_encoded)
 
 #define ALLOC(n)   fpvm_gc_alloc(n)
-#define BOX(p,t)   fpvm_gc_box_to_ptr(p,t)
+#define BOX(p,t)   fpvm_gc_box_to_ptr(p,t,GET_SIGN(*p))
 #define TRACKED(p) fpvm_gc_is_tracked_nan_from_ptr(p)
 #define UNBOX(p,s) fpvm_gc_unbox_from_ptr(p,&s)
 #define UNBOX_TRACKED(p,t)			\
@@ -55,7 +55,7 @@
   void *_np;					\
   (_np) = UNBOX(p,_sign);			\
   if (_np) {					\
-    if (_sign) {				\
+    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	\
       t=-*(double*)(_np);			\
       (p) = &t;					\
     } else {					\
@@ -70,7 +70,7 @@
   void *_np;					\
   (_np) = fpvm_gc_unbox((v),&_sign);		\
   if (_np) {					\
-    if (_sign) {				\
+    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	\
       v=-*(double*)(_np);			\
     } else {					\
       v=+*(double*)(_np);			\
@@ -80,7 +80,7 @@
 
     
 
-
+/*
 #define IEEE_REVERT_SIGN(ITYPE, TYPE, ptr_val, dest)                                              \
   {                                                                                               \
     MATH_DEBUG("REVERT_SIGN %016lx (potential corruption)\n", *(uint64_t *)dest);                                  \
@@ -92,6 +92,7 @@
     NANBOX(ITYPE, dest, _nan_encoded);                                                            \
     ptr_val = _per_result;                                                                        \
   }
+*/
 
 #define BIN_OP(TYPE, ITYPE, NAME, OP, SPEC, ISPEC)			\
   int NAME##_##TYPE(							\
@@ -609,6 +610,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     MATH_DEBUG("cannot call orig_" #func " - skipping\n");		\
   }
 
+/*
 #define RECOVER(a, xmm)                                                                      \
   {                                                                                          \
     if (ISNAN(*(uint64_t *)&a)) {                                                            \
@@ -616,6 +618,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
       a = (CORRUPTED(*(uint64_t *)&a, *(uint64_t *)xmm) ? -*(double *)xmm : *(double *)xmm); \
     }                                                                                        \
   }
+*/
 
 #define MATH_STUB_ONE(NAME, TYPE, RET, RSPEC)	 \
   RET NAME(TYPE a) {                             \

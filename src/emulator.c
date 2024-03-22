@@ -21,6 +21,9 @@
 #include <fpvm/nan_boxing.h>
 #include <fpvm/gc.h>
 
+
+#define IS_OUR_NAN(x) fpvm_gc_is_tracked_nan_from_uint(x)
+
 static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   ERROR("Cannot emulate instruction\n");
   return -1;
@@ -466,11 +469,11 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     // only a destination can be clobbered
     if (dest) {
 	if (d  != (*(uint64_t*)dest)) {
-	  if ((ISNAN(d))) { 
+	  if ((IS_OUR_NAN(d))) { 
 	    (*clobbers)++;  DEBUG("destination clobbered\n");
 	  }
 	  if (fi->common->op_type != FPVM_OP_MOVE) {
-	    if (ISNAN(*(uint64_t*)dest)) {
+	    if (IS_OUR_NAN(*(uint64_t*)dest)) {
 	      (*promotions)++; DEBUG("destination promoted\n");
 	    } else {
 	      (*demotions)++; DEBUG("destination demoted\n");
@@ -482,10 +485,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       // only handle src1 separately if it is distinct from dest
       // source operands should only be promoted...
       if (s1  != (*(uint64_t*)src1)) {
-	if ((ISNAN(s1))) { 
+	if ((IS_OUR_NAN(s1))) { 
 	  (*clobbers)++;  DEBUG("src1 clobbered\n");
 	}
-	if (ISNAN(*(uint64_t*)src1)) {
+	if (IS_OUR_NAN(*(uint64_t*)src1)) {
 	  (*promotions)++; DEBUG("src1 promoted\n");
 	} else {
 	  (*demotions)++; DEBUG("src1 demoted\n");
@@ -494,10 +497,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (src2) {
       if (s2  != (*(uint64_t*)src2)) {
-	if ((ISNAN(s2))) { 
+	if ((IS_OUR_NAN(s2))) { 
 	  (*clobbers)++;  DEBUG("src2 clobbered\n");
 	}
-	if (ISNAN(*(uint64_t*)src2)) {
+	if (IS_OUR_NAN(*(uint64_t*)src2)) {
 	  (*promotions)++; DEBUG("src2 promoted\n");
 	} else {
 	  (*demotions)++; DEBUG("src2 demoted\n");
@@ -506,10 +509,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (src3) {
       if (s3  != (*(uint64_t*)src3)) {
-	if ((ISNAN(s3))) { 
+	if ((IS_OUR_NAN(s3))) { 
 	  (*clobbers)++;  DEBUG("src3 clobbered\n");
 	}
-	if (ISNAN(*(uint64_t*)src3)) {
+	if (IS_OUR_NAN(*(uint64_t*)src3)) {
 	  (*promotions)++; DEBUG("src3 promoted\n");
 	} else {
 	  (*demotions)++; DEBUG("src3 demoted\n");
@@ -518,10 +521,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (src4) {
       if (s4  != (*(uint64_t*)src4)) {
-	if ((ISNAN(s4))) { 
+	if ((IS_OUR_NAN(s4))) { 
 	  (*clobbers)++;  DEBUG("src4 clobbered\n");
 	}
-	if (ISNAN(*(uint64_t*)src4)) {
+	if (IS_OUR_NAN(*(uint64_t*)src4)) {
 	  (*promotions)++; DEBUG("src4 promoted\n");
 	} else {
 	  (*demotions)++; DEBUG("src4 demoted\n");

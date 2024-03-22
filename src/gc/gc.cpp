@@ -34,14 +34,14 @@ namespace gc {
   // (2^23 floats should be enough, maybe)
   class box {
    public:
-    void set(uint64_t);
+    void set(uint64_t, int);
     // is this a valid nanbox?
     bool valid(void) const;
     // inline void store(float *f) const { *f = as.f64; }
     inline void store(double *d) const {
       *d = as.f64;
     }
-    void *get(void) const;
+    void *get(int *) const;
     double get_boxed(void) const {
       return as.f64;
     }
@@ -73,17 +73,20 @@ namespace gc {
   };
 };  // namespace gc
 
-void gc::box::set(uint64_t val) {
-  as.u64 = NANBOX_ENCODE(val, 0LLU);
+void gc::box::set(uint64_t val, int sign) {
+  as.u64 = NANBOX_ENCODE(val, sign);
 }
 
-void *gc::box::get(void) const {
-  return NANBOX_DECODE(as.u64);
+void *gc::box::get(int *sign) const
+{
+  void *ptr;
+  NANBOX_DECODE(as.u64,ptr,*sign);
+  return ptr;
 }
 
-// is it a valid nanbox?
+// could this be one of our nanboxes
 bool gc::box::valid(void) const {
-  return ISNAN(as.u64);
+  return COULD_BE_OUR_NAN(as.u64);
 }
 
 // Global variables
@@ -210,7 +213,8 @@ extern "C" unsigned fpvm_gc_run(void) {
     total_size += r.size();
   }
   find_nans(regions, [&](auto &region, gc::box *b) {
-    void *i = b->get();
+    int sign;
+    void *i = b->get(&sign);
     auto it = heap.find(i);
     if (it != heap.end()) {
       (*it).second = true;
@@ -263,24 +267,24 @@ extern "C" void fpvm_gc_init(fpvm_gc_callback_t c, fpvm_gc_callback_t d) {
   gcDestructor = d;
 }
 
-extern "C" double fpvm_gc_box(void *ptr) {
+extern "C" double fpvm_gc_box(void *ptr, int sign) {
   gc::box b;
 
-  b.set((uint64_t)ptr);
+  b.set((uint64_t)ptr,sign);
   return b.get_boxed();
 }
 
-extern "C" uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr) {
+extern "C" uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr, int sign) {
   gc::box b;
 
-  b.set((uint64_t)ptr);
+  b.set((uint64_t)ptr,sign);
   return b.get_boxed_uint();
 }
 
-extern "C" void NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target) {
+extern "C" void NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target, int sign) {
   gc::box b;
 
-  b.set((uint64_t)ptr);
+  b.set((uint64_t)ptr,sign);
   b.store((double*)target);
 }
 
@@ -309,41 +313,40 @@ static bool is_tracked(void *ptr) {
  */
 
 
-extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *negated)
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign)
 {
   gc::box b;
   b.set_boxed(val);
 
 
   if (!b.valid()) return 0;
-  void *ptr = b.get();
+  void *ptr = b.get(sign);
   
   if (is_tracked(ptr)) {
-    *negated = b.get_sign();
     return ptr;
   } else {
-    *negated = 0;
     return 0;
   }
 }
 
-extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *negated)
+extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *sign)
 {
-  return fpvm_gc_unbox_from_uint((*(uint64_t*)val), negated);
+  return fpvm_gc_unbox_from_uint((*(uint64_t*)val), sign);
 }
 
-extern "C" void *fpvm_gc_unbox(double val, int *negated)
+extern "C" void *fpvm_gc_unbox(double val, int *sign)
 {
-  return fpvm_gc_unbox_from_uint(*(uint64_t*)&val,negated);
+  return fpvm_gc_unbox_from_uint(*(uint64_t*)&val,sign);
 }
 
 extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val)
 {
+  int sign;
   gc::box b;
   b.set_boxed(val);
 
   if (!b.valid()) return 0;
-  void *ptr = b.get();
+  void *ptr = b.get(&sign);
 
   return is_tracked(ptr) ? 1 : 0;
 }
