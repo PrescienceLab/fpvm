@@ -115,11 +115,15 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
 
   if not ch.exists(trap) or not ch.exists(magic):
     # Generate the patch in right place.
-    os.system(f'env FPVM_WRAP=disable fpvm_patch.sh -n -w {ch.get()} {binary} >&2')
+    os.system(f'env FPVM_WRAP=disable fpvm_patch.sh -m -n -w {ch.get()} {binary} >&2')
     shutil.copy(ch.get('input.patched_magic'), ch.get(magic))
     shutil.copy(ch.get('input.patched_trap'), ch.get(trap))
 
   return ch.get(f'{name}.{version}')
+
+
+
+
 
 
 def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
