@@ -54,9 +54,11 @@
   int _sign=-1;					\
   void *_np;					\
   (_np) = UNBOX(p,_sign);			\
-  if (_np) { MATH_DEBUG("%p maps to %p sign %d\n",p,_np,_sign);		\
-    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	MATH_DEBUG("flipping sign\n"); \
-      *(uint64_t*)&t = *(uint64_t*)p;		\
+  if (_np) {								\
+    MATH_DEBUG("%p maps to %p sign %d\n",p,_np,_sign);			\
+    if (_sign != GET_SIGN(*(uint64_t*)_np)) {				\
+      MATH_DEBUG("flipping sign\n");					\
+      *(uint64_t*)&t = *(uint64_t*)_np;		\
       *(uint64_t*)&t=FLIP_SIGN(*(uint64_t*)&t);	\
       (p) = &t;					\
     } else {					\
@@ -71,10 +73,12 @@
   uint64_t *_up = (uint64_t*)&v;		\
   int _sign;					\
   void *_np;					\
-  (_np) = UNBOX(_up,_sign);			\
-  if (_np) { MATH_DEBUG("value %016lx maps to %p sign %d\n",*_up,_np,_sign); \
+  _np = UNBOX(_up,_sign);			\
+  if (_np) {								\
+    MATH_DEBUG("value %016lx maps to %p sign %d\n",*_up,_np,_sign);	\
     *_up=*(uint64_t*)_np;						\
-    if (_sign != GET_SIGN(*_up)) { MATH_DEBUG("flipping value sign\n"); \
+    if (_sign != GET_SIGN(*_up)) {					\
+      MATH_DEBUG("flipping value sign\n");				\
       *_up = FLIP_SIGN(*_up);					  \
     }								  \
   }								  \
