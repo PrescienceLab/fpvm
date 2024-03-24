@@ -2,7 +2,7 @@ Benchmarks
 
 (works does not mean sequence emulation is working properly)
 
-
+Main branch:
 lorenz        - works, validates
 double-pend   - works, validates
 3body         - works, validates
@@ -24,7 +24,37 @@ nas-ep        - SEGFAULT (after one emul of mulsd in correctness
 
 State: need to xform miniaero, enzo, lbm;  need to investigate segfaults / movsxd
 
+fix_seq:
 
+lorenz        - works, validates
+double-pend   - works, validates
+3body         - crashes with cmplt ?how
+fbench        - works, validates
+ffbench       - fpvm ERROR( 1872468): Cannot decode instruction 0 (rip 0x401926) of sequence:  cmpnlesd		xmm2, xmm0 (5 bytes)
+miniaero      - ? 
+enzo          - ?
+lbm           - ?
+nas-mg        - works, validates, mysterious issues (YIKES) vector instructions in 
+nas-bt        - SEGFAULT
+nas-sp        - SEGFAULT   
+nas-lu        - ASSERTION FAILURE (correctness handler failed)  vector instruction and bogus instructions for correctness
+                movsxd instruction
+nas-ft        - ASSERTION FAILURE - movsxd instruction
+nas-is        - works, validates
+nas-cg        - works, does not validate, no errors shown (-nan outputs)
+nas-ep        - SEGFAULT (after one emul of mulsd in correctness
+
+State:
+   miniaero : xformed, 
+   lbm      : xformed, running
+   enzo     : xformed, missing command line to run
+
+
+
+
+Nadharm:
+hw->kernel was ~200
+kernel->user is ~478 for kmod and ~1950 for normal
 
 ===============================================================
 DONE - if we always generate an SNaN for encoding, we are fine
@@ -43,6 +73,15 @@ DONE - if we always generate an SNaN for encoding, we are fine
 Note that f2i is only overwriting the part of the register target
 that is get the output.   This probably should handle zeroing the
 rest of the register in case this is the excepted behavior (not sure)
+===============================================================
+
+===============================================================
+CMPLT and similar
+
+- these instructions should be emulatable.   The main
+  deal is that they do a *specific* comparison and then
+  set the destiation register to all 1s or all 0s
+
 ===============================================================
 
 
@@ -92,8 +131,13 @@ fpvm ERROR( 1518726): problematic instruction is vector instruction - ATTEMPTING
 ========
 
 
+Paritally done:
+
 sequence emulation now is getting O(2) instructions / trap instead
 of O(32) / trap
 
+fix_seq branch has relevant fixes, though some other things break
+The issue was not so much the seq emulation, but the changes
+to the sign handling - bugs in GC, nan-boxing, and in alt/boxed
 
 
