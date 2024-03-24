@@ -78,7 +78,7 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
-  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
+  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
 
   // PAD this is bogus - what this should do is interact
   // with a model of the FP that determines if any input
