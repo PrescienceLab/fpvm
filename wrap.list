@@ -21,26 +21,27 @@ __printf_chk	4	10000
 #
 
 # From three-body
-# note that we also need this function for some of our output
-#__fprintf_chk	4	8203
+# 
+__fprintf_chk	4	8203
 __printf_chk	4	12
-#fclose	1	2
-#fopen	2	2
-#fputc	2	1262
-#free	1	3154
-#localtime	1	2
+fclose	1	2
+fopen	2	2
+fputc	2	1262
+free	1	3154
+localtime	1	2
 # used pre boot
 #malloc	1	3154
 #memcpy	3	3418
 # handled internally as part of libm suppot
 #pow	4	65012
-#putchar	4	15
-#puts	1	25
-#strftime	4	2
-#time	1	2
+putchar	4	15
+puts	1	25
+strftime	4	2
+time	1	2
 #
 
 # From NAS 3-21-24
+# only commented out math funcs
 __printf_chk	4	35
 fopen	2	1
 gettimeofday	2	2
@@ -81,4 +82,30 @@ gettimeofday	2	2
 memcpy	3	83540
 memmove	3	127260
 puts	1	6
+
+# LBM
+__printf_chk	4	6
+free	1	2
+malloc	1	2
+memcmp	4	1
+puts	1	1
+strtol	4	3
+sysconf	4	1
+times	4	2
+
+# fbench
+# only commented out math funcs
+__printf_chk    4       2
+__sprintf_chk   4       8
+#asin    4       24000
+puts    1       4
+#sin     4       34000
+strcmp  2       8
+#tan     4       12000
+
+# ffbench
+# only comment out math funcs
+malloc  1       1
+memset  3       1
+#sin     4       3200
 
