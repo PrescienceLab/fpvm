@@ -19,7 +19,7 @@ $(EXEC): $(EXEC).c main.c
 	$(CC) $(EXEC).c main.c -lm -o $(EXEC)
 
 $(EXEC).patched_trap $(EXEC).patched_magic : $(EXEC)
-	fpvm_patch.sh -m $(EXEC)
+	fpvm_patch.sh -w workspace -m $(EXEC)
 
 diff:
 	diff $(EXEC).out $(EXEC).patched_trap.out
