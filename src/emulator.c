@@ -78,6 +78,8 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
+  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
+
   // PAD this is bogus - what this should do is interact
   // with a model of the FP that determines if any input
   // is a NaN box or if executing the instruction will
@@ -94,19 +96,20 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
       return 1;
     }
     
-    int i,j;
-    int count = 1;
-    // although src_step is not currently used, it is possible for 
-    // the src_step to be different from the dest_step
-    int dest_step = 0;
-    void *cur;
-    
     if (fi->common->op_size != 8) {
       // currently only can nanbox in doubles
       // therefore, this is not an emulatable instruction
       DEBUG("should not emulate - not a double\n");
       return 0;
     }
+
+    int i,j;
+    int count = 1;
+    // although src_step is not currently used, it is possible for 
+    // the src_step to be different from the dest_step
+    int dest_step = fi->common->op_size;
+    void *cur;
+    
 
     if (fi->common->is_vector) {
       count = fi->operand_sizes[0] / fi->common->op_size;
@@ -121,14 +124,16 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 	   j<count;
 	   j++, cur += dest_step) {
 	if (fpvm_gc_is_tracked_nan_from_ptr(cur)) {
-	  DEBUG("operand[%d][%d] is tracked - should emulate\n", i,j);
+	  DEBUG("should emulate - operand %d[%d] is tracked\n", i,j);
 	  return 1;
+	} else {
+	  DEBUG("operand %d[%d]=%016lx - not tracked\n",i,j,*(uint64_t*)cur);
 	}
       }
     }
     
     // no nans found
-    DEBUG("None of the %d x %d operands are tracked\n", fi->operand_count, count);
+    DEBUG("should not emulate - none of the %d x %d (size %u) operands are tracked\n", fi->operand_count, count, fi->common->op_size);
     
     return 0;
   }
@@ -438,9 +443,13 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     DEBUG(
         "calling %s((byte_width=%d,truncate=%d,unordered=%d), "
-        "%p,%p,%p,%p,%p)\n", buf, 
-	special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
-        src4);
+        "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n", buf, 
+	special.byte_width, special.truncate, special.unordered,
+	dest, dest ? *(uint64_t*)dest : 0,
+	src1, src1 ? *(uint64_t*)src1 : 0,
+	src2, src2 ? *(uint64_t*)src2 : 0,
+	src3, src3 ? *(uint64_t*)src3 : 0,
+	src4, src4 ? *(uint64_t*)src4 : 0);
 #endif
     
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
@@ -460,6 +469,14 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 #endif
 
     rc |= func(&special, dest, src1, src2, src3, src4);
+
+    DEBUG(
+        "after math call, we have (%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
+	dest, dest ? *(uint64_t*)dest : 0,
+	src1, src1 ? *(uint64_t*)src1 : 0,
+	src2, src2 ? *(uint64_t*)src2 : 0,
+	src3, src3 ? *(uint64_t*)src3 : 0,
+	src4, src4 ? *(uint64_t*)src4 : 0);
 
 #if CONFIG_TELEMETRY_PROMOTIONS
     // This assumes all promotions/demotions are done in place

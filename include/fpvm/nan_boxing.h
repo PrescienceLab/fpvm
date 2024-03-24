@@ -31,14 +31,15 @@
 
 
 #define PTR_MASK    0x7fffffffffffUL
-#define EXP_MASK    (0x7ffUL<<48)
+#define EXP_MASK    (0x7ffUL<<52)
 #define SIGN_MASK   (0x1UL<<63)
 
 
-#define GET_SIGN(u)     (!!(((uint64_t)u) & SIGN_MASK))
-#define APPLY_SIGN(u,s) ((((uint64_t)u) & (~SIGN_MASK)) | (((uint64_t)s)<<63))
+#define GET_SIGN(u)     (!!(((uint64_t)(u)) & SIGN_MASK))
+#define APPLY_SIGN(u,s) ((((uint64_t)(u)) & (~SIGN_MASK)) | (((uint64_t)(s))<<63))
+#define FLIP_SIGN(u) (((uint64_t)(u)) ^ SIGN_MASK)
 
-#define COULD_BE_OUR_NAN(p) ((((p) & EXP_MASK) == EXP_MASK) && ((p) & PTR_MASK))
+#define COULD_BE_OUR_NAN(u) ((((u) & EXP_MASK) == EXP_MASK) && ((u) & PTR_MASK))
 
 
 

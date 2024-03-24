@@ -34,14 +34,10 @@ namespace gc {
   // (2^23 floats should be enough, maybe)
   class box {
    public:
-    void set(uint64_t, int);
+    void set(uint64_t ptr, int sign);
     // is this a valid nanbox?
     bool valid(void) const;
-    // inline void store(float *f) const { *f = as.f64; }
-    inline void store(double *d) const {
-      *d = as.f64;
-    }
-    void *get(int *) const;
+    void *get(int *sign) const;
     double get_boxed(void) const {
       return as.f64;
     }
@@ -75,6 +71,7 @@ namespace gc {
 
 void gc::box::set(uint64_t val, int sign) {
   as.u64 = NANBOX_ENCODE(val, sign);
+  //fprintf(stderr,"%016lx + sign %d => %016lx\n",val,sign,as.u64);
 }
 
 void *gc::box::get(int *sign) const
@@ -267,6 +264,26 @@ extern "C" void fpvm_gc_init(fpvm_gc_callback_t c, fpvm_gc_callback_t d) {
   gcDestructor = d;
 }
 
+/*
+  A note on why boxing takes a sign and unboxing returns a sign
+
+  Simple sign checks and flips can be done by the application
+  with integer operations that we cannot track
+
+  When boxing, we encode the nan with the sign of the value pointed to
+  in order to make sure it is "sign compliant" in the application.
+
+  When unboxing, we return the sign *of the current nan*.   The
+  alternative math package can use this to determine if the sign
+  has been flipped by the application by comparing it to the sign
+  of the value pointed to.
+
+  Unfortunately, this cannot be caught by the hardware.    
+
+ */
+
+
+// we should really get rid of this...
 extern "C" double fpvm_gc_box(void *ptr, int sign) {
   gc::box b;
 
@@ -282,35 +299,14 @@ extern "C" uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr, int sign) {
 }
 
 extern "C" void NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target, int sign) {
-  gc::box b;
-
-  b.set((uint64_t)ptr,sign);
-  b.store((double*)target);
+  *(uint64_t*)target = fpvm_gc_box_to_uint(ptr,sign);
 }
-
 
 
 static bool is_tracked(void *ptr) {
   if (get_heap().count(ptr) != 0) return true;
   return false;
 }
-
-/*
-  A note on why this function returns two values, the pointer and "negated":
-
-  We only hand out boxed nans with a particular pattern, and that pattern
-  includes them being "positive nans" (i.e., the sign bit is set to zero).
-
-  The following is a legitimate way to negate a value:
-
-  xorsd $(1<<63), [value]
-
-  Unfortunately, this cannot be caught by the hardware.   As a result, a 
-  nanboxed value may end up being a "negative nan".  When this happens,
-  the alternative math system needs to be aware, so that it can apply
-  this negation to its own internal value as appropriate.  
-
- */
 
 
 extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign)
@@ -320,6 +316,7 @@ extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign
 
 
   if (!b.valid()) return 0;
+  
   void *ptr = b.get(sign);
   
   if (is_tracked(ptr)) {
@@ -342,13 +339,7 @@ extern "C" void *fpvm_gc_unbox(double val, int *sign)
 extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val)
 {
   int sign;
-  gc::box b;
-  b.set_boxed(val);
-
-  if (!b.valid()) return 0;
-  void *ptr = b.get(&sign);
-
-  return is_tracked(ptr) ? 1 : 0;
+  return fpvm_gc_unbox_from_uint(val,&sign)!=0;
 }
 
 extern "C" int fpvm_gc_is_tracked_nan(double val) {

@@ -1733,6 +1733,11 @@ static void fp_trap_handler(ucontext_t *uc)
 
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
+  DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+
+  DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
   
   return;
   

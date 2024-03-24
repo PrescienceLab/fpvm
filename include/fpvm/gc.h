@@ -20,6 +20,7 @@ void *fpvm_gc_alloc(size_t sz);
 unsigned fpvm_gc_run(void);
 
 // box a pointer into a form that the garbage collector can find :)
+// Having the GC actually involving doubles/floats might be a bad idea...
 double   fpvm_gc_box(void *ptr, int sign);
 // same, but to uint
 uint64_t NO_TOUCH_FLOAT fpvm_gc_box_to_uint(void *ptr, int sign);

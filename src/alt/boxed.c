@@ -39,43 +39,46 @@
 #define MATH_ERROR(S, ...)
 #endif
 
-#define EXIT(d) exit(d)  // not exit , what if there is really a nan
+//#define EXIT(d) exit(d)  // not exit , what if there is really a nan
 
-#define NANBOX(ITYPE, dest, nan_encoded) *(ITYPE *)dest = nan_encoded
+//#define NANBOX(ITYPE, dest, nan_encoded) *(ITYPE *)dest = nan_encoded
 // #define NANBOX(ITYPE, dest, nan_encoded)
 // #define _NANBOX(ITYPE, dest, nan_encoded)
 
 #define ALLOC(n)   fpvm_gc_alloc(n)
-#define BOX(p,t)   fpvm_gc_box_to_ptr(p,t,GET_SIGN(*p))
+#define BOX(p,t)   fpvm_gc_box_to_ptr(p,t,GET_SIGN(*(uint64_t*)(p))) ; MATH_DEBUG("%p now contains %016lx\n",t,*(uint64_t*)t);
 #define TRACKED(p) fpvm_gc_is_tracked_nan_from_ptr(p)
 #define UNBOX(p,s) fpvm_gc_unbox_from_ptr(p,&s)
 #define UNBOX_TRACKED(p,t)			\
   {						\
-  int _sign;					\
+  int _sign=-1;					\
   void *_np;					\
   (_np) = UNBOX(p,_sign);			\
-  if (_np) {					\
-    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	\
-      t=-*(double*)(_np);			\
+  if (_np) { MATH_DEBUG("%p maps to %p sign %d\n",p,_np,_sign);		\
+    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	MATH_DEBUG("flipping sign\n"); \
+      *(uint64_t*)&t = *(uint64_t*)p;		\
+      *(uint64_t*)&t=FLIP_SIGN(*(uint64_t*)&t);	\
       (p) = &t;					\
     } else {					\
       (p) = _np;				\
     }						\
-  }						\
+  } else { (p)=(p);  MATH_DEBUG("no mapping\n");}			\
+  MATH_DEBUG("unboxed to %p %s sign %d (%lf)\n",(p),(p)==&t?"temp":"orig",_sign,*(double*)(p)); \
   }
 
-#define UNBOX_VAL(v)				\
+#define UNBOX_VAL_IN_PLACE(v)			\
   {						\
+  uint64_t *_up = (uint64_t*)&v;		\
   int _sign;					\
   void *_np;					\
-  (_np) = fpvm_gc_unbox((v),&_sign);		\
-  if (_np) {					\
-    if (_sign != GET_SIGN(*(uint64_t*)_np)) {	\
-      v=-*(double*)(_np);			\
-    } else {					\
-      v=+*(double*)(_np);			\
-    }						\
-  }						\
+  (_np) = UNBOX(_up,_sign);			\
+  if (_np) { MATH_DEBUG("value %016lx maps to %p sign %d\n",*_up,_np,_sign); \
+    *_up=*(uint64_t*)_np;						\
+    if (_sign != GET_SIGN(*_up)) { MATH_DEBUG("flipping value sign\n"); \
+      *_up = FLIP_SIGN(*_up);					  \
+    }								  \
+  }								  \
+  MATH_DEBUG("unboxed to value %016lx (%lf)\n",*_up, v);	  \
   }
 
     
@@ -581,20 +584,26 @@ int restore_float(
 
 void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
   uint64_t *np;
-  int s;
+  int s=0;
   np = UNBOX(p,s);
   if (np) {
 #if CONFIG_DEBUG_ALT_ARITH
     // the following is a redundant check
     // basically to just let us play with it
-    if (fpvm_memaddr_probe_readable_long(np)) { 
-      *p = s ? (*np) ^ (0x1UL<<63) : (*np);
+    if (fpvm_memaddr_probe_readable_long(np)) {
+      *p = *(uint64_t*)np;
+      if (s != GET_SIGN(*(uint64_t*)p)) {
+	*p = FLIP_SIGN(*p);
+      }
     } else {
       MATH_SAFE_DEBUG_QUAD("cannot read through tracked value addr",np);
     }
 #else
     // just do the ref
-    *p = s ? (*np) ^ (0x1UL<<63) : (*np);
+    *p = *(uint64_t*)np;
+    if (s != GET_SIGN(*(uint64_t*)p)) {
+      *p = FLIP_SIGN(*p);
+    }
 #endif
   }
 }
@@ -623,7 +632,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 #define MATH_STUB_ONE(NAME, TYPE, RET, RSPEC)	 \
   RET NAME(TYPE a) {                             \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
-    UNBOX_VAL(a);				 \
+    UNBOX_VAL_IN_PLACE(a);			 \
     RET ori = orig_##NAME(a);                    \
     MATH_DEBUG(#NAME "(%lf) = " RSPEC "\n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
@@ -634,7 +643,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 #define MATH_STUB_ONE_MIXED(NAME, TYPE, RET)     \
   RET NAME(TYPE a) {                             \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
-    UNBOX_VAL(a);				 \
+    UNBOX_VAL_IN_PLACE(a);				 \
     RET ori = orig_##NAME(a);                    \
     MATH_DEBUG(#NAME "(%lf) = %lf \n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
@@ -645,8 +654,8 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 #define MATH_STUB_TWO(NAME, TYPE, RET)                          \
   RET NAME(TYPE a, TYPE b) {                                    \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);                \
-    UNBOX_VAL(a);						\
-    UNBOX_VAL(b);						\
+    UNBOX_VAL_IN_PLACE(a);						\
+    UNBOX_VAL_IN_PLACE(b);						\
     RET ori = orig_##NAME(a, b);                                \
     MATH_DEBUG(#NAME "(%lf, %lf) = %lf \n", a, b, ori);		\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                 \
@@ -657,7 +666,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 #define MATH_STUB_MIXED(NAME, TYPE1, TYPE2, RET)               \
   RET NAME(TYPE1 a, TYPE2 b) {                                 \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
-    UNBOX_VAL(a);					       \
+    UNBOX_VAL_IN_PLACE(a);				       \
     RET ori = orig_##NAME(a, b);                               \
     MATH_DEBUG(#NAME "(%lf , %d) = %lf \n", a, b, ori);	       \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                \
@@ -667,7 +676,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 
 void sincos(double a, double *sin, double *cos) {
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
-  UNBOX_VAL(a);
+  UNBOX_VAL_IN_PLACE(a);
   orig_sincos(a, sin, cos);
   MATH_DEBUG("sincos(%lf) = (%lf, %lf)\n", a, *sin, *cos);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
