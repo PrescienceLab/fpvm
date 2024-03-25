@@ -1,6 +1,8 @@
 #ifndef _FPVM_DECODER_
 #define _FPVM_DECODER_
 
+#include <ucontext.h>
+
 typedef enum {
   FPVM_OP_ADD = 0,
   FPVM_OP_SUB,
@@ -15,9 +17,10 @@ typedef enum {
   FPVM_OP_MAX,
 
   // comparisons
-  FPVM_OP_CMP,    // ordered compare of floats
-  FPVM_OP_UCMP,   //  unordered compare of floats
-  FPVM_OP_LTCMP,  // write to dest of less than result
+  FPVM_OP_CMP,    // ordered compare of floats, setting rflags
+  FPVM_OP_UCMP,   // unordered compare of floats, setting rflags
+                  // really the same behavior as CMP for our purposes
+  FPVM_OP_CMPXX,  // do comparison XX, write result into dest, not rflags
 
   // float to integer conversion
   FPVM_OP_F2I,
@@ -55,6 +58,7 @@ typedef enum {
   FPVM_OP_LAST,
 } fpvm_op_t;
 
+
 typedef struct {
   fpvm_op_t op_type;
   int is_vector;     // is this a vector FP?
@@ -64,13 +68,31 @@ typedef struct {
   unsigned dest_size;  // size of destination operands in conversion
 } fpvm_inst_common_t;
 
+
+// captures the SSE2 variants so far
+typedef enum {
+  FPVM_INST_COMPARE_EQ=0,
+  FPVM_INST_COMPARE_LT,
+  FPVM_INST_COMPARE_LE,
+  FPVM_INST_COMPARE_UNORD,
+  FPVM_INST_COMPARE_NEQ,
+  FPVM_INST_COMPARE_NLT,
+  FPVM_INST_COMPARE_NLE,
+  FPVM_INST_COMPARE_ORD,
+} fpvm_inst_compare_t;
+  
+
+
 typedef struct fpvm_inst {
   void *addr;
   unsigned length;
 
   fpvm_inst_common_t *common;
 
+  fpvm_inst_compare_t compare; 
+
   int is_simple_mov;
+
 
   // note that operands are in the *intel* order, not the at&t order
   unsigned operand_count;
@@ -82,11 +104,14 @@ typedef struct fpvm_inst {
   // For x86:
   // 0 => rflags, 1=mxcsr, etc
 
+  
   void *internal;  // internal representation (e.g., capstone)
 
   void *link;  // for use by the caller in any way they want (decoder cache, say)
 
 } fpvm_inst_t;
+
+
 
 //
 // This is intended to be a generic representation of the

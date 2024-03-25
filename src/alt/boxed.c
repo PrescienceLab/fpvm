@@ -412,7 +412,6 @@ int f2i_float(op_special_t *special, void *dest, void *src1, void *src2, void *s
 
 int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
   double t1, t2;
-  MATH_DEBUG("CMP !!!!! WTF deal with it\n");
   MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
   MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
   UNBOX_TRACKED(src1,t1);							
@@ -455,8 +454,68 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2, void *
   return 0;
 }
 
+
+int cmpxx_double(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  double t1, t2;
+  MATH_DEBUG("src1 tracked: %s\n", TRACKED(src1) ? "True" : "False");	
+  MATH_DEBUG("src2 tracked: %s\n", TRACKED(src2) ? "True" : "False");	
+  UNBOX_TRACKED(src1,t1);							
+  UNBOX_TRACKED(src2,t2);							
+  double a = *(double *)src1;
+  double b = *(double *)src2;
+  uint64_t r=0;
+
+  switch (special->compare_type) {
+  case FPVM_INST_COMPARE_EQ:
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT:
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE:
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD:
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ:
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT:
+    r = !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE:
+    r = !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD:
+    r = !isnan(a) && !isnan(b);
+    break;
+  default:
+    MATH_ERROR("unknown comparison type %d\n",special->compare_type);
+    return -1;
+    break;
+  }
+
+  MATH_DEBUG("cmpxx_double(%lf,%lf,%d) = %lu\n", a,b,special->compare_type,r);
+
+  *(uint64_t*)dest = r;
+  
+  return 0;
+
+}
+
+int cmpxx_float(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  ERROR("cmpxx float is not implemented\n");
+  return -1;
+}
+
 int ltcmp_double(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  ERROR("ltcmp has been superceded by cmpxx and should not be called!\n");
+  return -1;
+  
   double t1, t2;
   MATH_DEBUG("LTCMP !!!!! WTF deal with it (this is likely crazy code...) \n");
 #if 1

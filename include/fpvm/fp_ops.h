@@ -32,7 +32,7 @@
       _FP_BIN_OP(FPVM_OP_MADD, madd), _FP_BIN_OP(FPVM_OP_NMADD, nmadd),                           \
       _FP_BIN_OP(FPVM_OP_MSUB, msub), _FP_BIN_OP(FPVM_OP_NMSUB, nmsub),                           \
       _FP_BIN_OP(FPVM_OP_CMP, cmp),                                                               \
-      _FP_BIN_OP(FPVM_OP_UCMP, cmp), /*   _FP_BIN_OP(FPVM_OP_LTCMP, ltcmp),     */                \
+      _FP_BIN_OP(FPVM_OP_UCMP, cmp), _FP_BIN_OP(FPVM_OP_CMPXX, cmpxx),	                          \
       _FP_BIN_OP(FPVM_OP_MIN, min), _FP_BIN_OP(FPVM_OP_MAX, max), _FP_BIN_OP(FPVM_OP_F2I, f2i),   \
       _FP_BIN_OP(FPVM_OP_F2U, f2u), _FP_BIN_OP(FPVM_OP_F2IT, f2i), _FP_BIN_OP(FPVM_OP_F2UT, f2u), \
       _FP_BIN_OP(FPVM_OP_F2F, f2f)

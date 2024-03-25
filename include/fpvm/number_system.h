@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "config.h"
 
+#include <fpvm/decoder.h>
 
 /* Interface for plugging a number system into FPVM
  *
@@ -21,6 +22,7 @@ typedef struct {
   int byte_width;
   int truncate;
   int unordered;
+  fpvm_inst_compare_t compare_type;    // for cmpxx
   uint64_t *rflags;
 } op_special_t;
 
@@ -99,8 +101,8 @@ FPVM_MATH_DECL_VANILLA_ALT(f2f, double);
 FPVM_MATH_DECL_VANILLA_ALT(f2f, float);
 FPVM_MATH_DECL_VANILLA_ALT(cmp, double);
 FPVM_MATH_DECL_VANILLA_ALT(cmp, float);
-FPVM_MATH_DECL_VANILLA_ALT(ltcmp, double);
-FPVM_MATH_DECL_VANILLA_ALT(ltcmp, float);
+FPVM_MATH_DECL_VANILLA_ALT(cmpxx, double);
+FPVM_MATH_DECL_VANILLA_ALT(cmpxx, float);
 
 // moves
 FPVM_MATH_DECL_VANILLA_ALT(move, double);

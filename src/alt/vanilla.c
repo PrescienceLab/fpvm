@@ -470,6 +470,88 @@ int vanilla_cmp_float(
   return 0;
 }
 
+int vanilla_cmpxx_double(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  double a = *(double *)src1;
+  double b = *(double *)src2;
+  uint64_t r=0;
+
+  switch (special->compare_type) {
+  case FPVM_INST_COMPARE_EQ:
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT:
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE:
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD:
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ:
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT:
+    r = !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE:
+    r = !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD:
+    r = !isnan(a) && !isnan(b);
+    break;
+  }
+
+  MATH_DEBUG("cmpxx_double(%lf,%lf,%d) = %lu\n", a,b,special->compare_type,r);
+
+  *(uint64_t*)dest=r;
+
+  return 0;
+
+}
+
+int vanilla_cmpxx_float(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  float a = *(float *)src1;
+  float b = *(float *)src2;
+  uint32_t r=0;
+
+  switch (special->compare_type) {
+  case FPVM_INST_COMPARE_EQ:
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT:
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE:
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD:
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ:
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT:
+    r = !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE:
+    r = !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD:
+    r = !isnan(a) && !isnan(b);
+    break;
+  }
+
+  MATH_DEBUG("cmpxx_float(%f,%f,%d) = %u\n", a,b,special->compare_type,r);
+
+  *(uint32_t*)dest = r;
+  
+  return 0;
+
+}
+
 #if CONFIG_ALT_MATH_VANILLA
 // we only have this package, so we need to provide inits
 

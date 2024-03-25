@@ -55,8 +55,11 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
     [FPVM_OP_MIN] = {vanilla_min_float, vanilla_min_double},
     [FPVM_OP_MAX] = {vanilla_max_float, vanilla_max_double},
+    
     [FPVM_OP_CMP] = {vanilla_cmp_float, vanilla_cmp_double},
     [FPVM_OP_UCMP] = {vanilla_cmp_float, vanilla_cmp_double},
+
+    [FPVM_OP_CMPXX] = {vanilla_cmpxx_float, vanilla_cmpxx_double},
 
     [FPVM_OP_F2I] = {vanilla_f2i_float, vanilla_f2i_double},  // PROBABLY BOGUS
     [FPVM_OP_F2U] = {vanilla_f2u_float, vanilla_f2u_double},  // PROBABLY BOGUS
@@ -78,7 +81,7 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
-  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
+  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
 
   // PAD this is bogus - what this should do is interact
   // with a model of the FP that determines if any input
@@ -143,7 +146,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
   DEBUG("Emulating instruction\n");
 
-  //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
+  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
   
 #if CONFIG_TELEMETRY_PROMOTIONS
   // currently only promotions will be tracked
@@ -162,7 +165,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     return -1;
   }
 
-  op_special_t special = {0, 0, 0};
+  op_special_t special = {0, 0, 0, 0};
   void *src1 = 0, *src2 = 0, *src3 = 0, *src4 = 0, *dest = 0;
   op_t func = 0;
 
@@ -384,7 +387,39 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
       break;
 
-    case FPVM_OP_MOVE:
+    // 2 operand comparisons that encode a specific compare
+    // that writes back to the destination (SSE)
+    case FPVM_OP_CMPXX:
+      if (fi->operand_count == 2) {
+        dest = fi->operand_addrs[0];
+        src1 = fi->operand_addrs[0];
+        src2 = fi->operand_addrs[1];
+        special.compare_type = fi->compare;
+      } else if (fi->operand_count == 3) {
+        dest = fi->operand_addrs[0];
+        src1 = fi->operand_addrs[1];
+        src2 = fi->operand_addrs[2];
+        special.compare_type = fi->compare;
+      } else {
+        ERROR("Cannot handle binary compare with %d operands\n", fi->operand_count);
+        ASSERT(0);
+        return -1;
+      }
+
+      if (fi->common->op_size == 4) {
+        ERROR("Using vanilla op map\n");
+        func = vanilla_op_map[fi->common->op_type][0];
+      } else if (fi->common->op_size == 8) {
+        func = op_map[fi->common->op_type][1];
+      } else {
+        ERROR("Cannot handle binary compare with op_size = %d\n", fi->common->op_size);
+        ASSERT(0);
+        return -1;
+      }
+
+      break;
+
+   case FPVM_OP_MOVE:
       dest = fi->operand_addrs[0];
       src1 = fi->operand_addrs[1];
 
@@ -442,9 +477,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       snprintf(buf,255,"%p",func);
     }
     DEBUG(
-        "calling %s((byte_width=%d,truncate=%d,unordered=%d), "
+        "calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), "
         "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n", buf, 
-	special.byte_width, special.truncate, special.unordered,
+	special.byte_width, special.truncate, special.unordered, special.compare_type ,
 	dest, dest ? *(uint64_t*)dest : 0,
 	src1, src1 ? *(uint64_t*)src1 : 0,
 	src2, src2 ? *(uint64_t*)src2 : 0,
@@ -470,6 +505,17 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
     rc |= func(&special, dest, src1, src2, src3, src4);
 
+    // handle CMPXX here because where to place the result depends on
+    // the instruction set.  It is only for SSE that we overwrite the
+    // whole destination with either an all 1 pattern or an all 0 pattern
+    if (fi->common->op_type==FPVM_OP_CMPXX) {
+      if (fi->common->op_size==8) {
+	*(uint64_t*)dest = !*(uint64_t*)dest - 1UL;
+      } else if (fi->common->op_size==4) {
+	*(uint32_t*)dest = !*(uint32_t*)dest - 1U;
+      }
+    }
+    
     DEBUG(
         "after math call, we have (%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
 	dest, dest ? *(uint64_t*)dest : 0,
@@ -477,6 +523,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	src2, src2 ? *(uint64_t*)src2 : 0,
 	src3, src3 ? *(uint64_t*)src3 : 0,
 	src4, src4 ? *(uint64_t*)src4 : 0);
+
 
 #if CONFIG_TELEMETRY_PROMOTIONS
     // This assumes all promotions/demotions are done in place
