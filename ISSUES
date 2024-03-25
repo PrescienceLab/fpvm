@@ -22,6 +22,9 @@ nas-cg        - works, does not validate, no errors shown (-nan outputs)
 nas-ep        - SEGFAULT (after one emul of mulsd in correctness
 
 
+We should never see a movsxd triggering a fault and it should not trap either
+since it is basically just a gpr->gpr move
+
 State: need to xform miniaero, enzo, lbm;  need to investigate segfaults / movsxd
 
 fix_seq:
@@ -76,7 +79,8 @@ rest of the register in case this is the excepted behavior (not sure)
 ===============================================================
 
 ===============================================================
-CMPLT and similar
+DONE - ADDED CMPXX
+  CMPLT and similar
 
 - these instructions should be emulatable.   The main
   deal is that they do a *specific* comparison and then
@@ -112,6 +116,10 @@ purely register/register, where the dest is not a gpr
 problematic correctness instr: subpd		xmm0, xmm1 (4 bytes)
 problematic correctness instr (YIKES): subpd		xmm0, xmm1 (4 bytes)
 problematic correctness instr (YIKES): mulsd		xmm3, xmm2 (4 bytes)
+
+ARE WE SURE THAT WE HAVE ADDRESSES RIGHT IN THE ANALYSIS?
+It looks much like it is catching things but ascribing them
+to incorrect addresses
 
 ===============================================================
 
