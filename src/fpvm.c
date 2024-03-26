@@ -1955,9 +1955,27 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
       oldsa_segv.sa_sigaction(sig, si, priv);
       return;
     } else {
+#define DUMP(p,cp) (((((uint64_t)(p))&(~0xfffUL))==(((uint64_t)(cp))&(~0xfffUL))) ? *(uint8_t*)(cp) : 0 )
       // exit - our deinit will be called
-      ERROR("not our segfault and don't know what to do with it:  rip=%p addr=%p reason: %d (%s)\n",
-	    rip,addr,  si->si_code, si->si_code==SEGV_MAPERR ? "MAPERR" : si->si_code==SEGV_ACCERR ? "PERM" : "UNKNOWN");
+      ERROR("not our segfault and don't know what to do with it:  rip=%p addr=%p reason: %d (%s) instruction bytes on page follow: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+	    rip,addr,  si->si_code, si->si_code==SEGV_MAPERR ? "MAPERR" : si->si_code==SEGV_ACCERR ? "PERM" : "UNKNOWN",
+	    DUMP(rip,rip+0),
+	    DUMP(rip,rip+1),
+	    DUMP(rip,rip+2),
+	    DUMP(rip,rip+3),
+	    DUMP(rip,rip+4),
+	    DUMP(rip,rip+5),
+	    DUMP(rip,rip+6),
+	    DUMP(rip,rip+7),
+	    DUMP(rip,rip+8),
+	    DUMP(rip,rip+9),
+	    DUMP(rip,rip+10),
+	    DUMP(rip,rip+11),
+	    DUMP(rip,rip+12),
+	    DUMP(rip,rip+13),
+	    DUMP(rip,rip+14),
+	    DUMP(rip,rip+15));	    
+      
       //exit(-1);
       abort();
     }

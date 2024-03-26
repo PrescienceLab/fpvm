@@ -81,7 +81,7 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
-  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
+  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
 
   // PAD this is bogus - what this should do is interact
   // with a model of the FP that determines if any input
@@ -146,7 +146,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
   DEBUG("Emulating instruction\n");
 
-  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
+  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
   
 #if CONFIG_TELEMETRY_PROMOTIONS
   // currently only promotions will be tracked
@@ -460,6 +460,13 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   int i;
   int rc = 0;
 
+#if CONFIG_TELEMETRY_PROMOTIONS
+  int skip_pro = (src_step!=8) || (dest_step!=8);
+#endif
+
+#define FETCH(p,s) ((uint64_t)((p) ? ((s)==8 ?*(uint64_t*)(p) : (s)==4 ? *(uint32_t*)(p) : 0) : 0))
+  
+  
   // PAD: if count>1, then this is a vector instruction, and we
   // had better have the steps for all operands correct
 
@@ -477,14 +484,15 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       snprintf(buf,255,"%p",func);
     }
     DEBUG(
-        "calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), "
-        "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n", buf, 
+        "%d/%d : calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), "
+        "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
+	i+1, count, buf, 
 	special.byte_width, special.truncate, special.unordered, special.compare_type ,
-	dest, dest ? *(uint64_t*)dest : 0,
-	src1, src1 ? *(uint64_t*)src1 : 0,
-	src2, src2 ? *(uint64_t*)src2 : 0,
-	src3, src3 ? *(uint64_t*)src3 : 0,
-	src4, src4 ? *(uint64_t*)src4 : 0);
+	dest, FETCH(dest,dest_step),
+	src1, FETCH(src1,src_step),
+	src2, FETCH(src2,src_step),
+	src3, FETCH(src3,src_step),
+	src4, FETCH(src4,src_step));
 #endif
     
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
@@ -496,11 +504,11 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
 #if CONFIG_TELEMETRY_PROMOTIONS
     uint64_t d=0, s1=0, s2=0, s3=0, s4=0;
-    if (dest) { d  = *((uint64_t*)dest); }
-    if (src1) { s1 = *((uint64_t*)src1); }
-    if (src2) { s2 = *((uint64_t*)src2); }
-    if (src3) { s3 = *((uint64_t*)src3); }
-    if (src4) { s4 = *((uint64_t*)src4); }
+    if (!skip_pro && dest) { d  = *((uint64_t*)dest); }
+    if (!skip_pro && src1) { s1 = *((uint64_t*)src1); }
+    if (!skip_pro && src2) { s2 = *((uint64_t*)src2); }
+    if (!skip_pro && src3) { s3 = *((uint64_t*)src3); }
+    if (!skip_pro && src4) { s4 = *((uint64_t*)src4); }
 #endif
 
     rc |= func(&special, dest, src1, src2, src3, src4);
@@ -518,12 +526,11 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     
     DEBUG(
         "after math call, we have (%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
-	dest, dest ? *(uint64_t*)dest : 0,
-	src1, src1 ? *(uint64_t*)src1 : 0,
-	src2, src2 ? *(uint64_t*)src2 : 0,
-	src3, src3 ? *(uint64_t*)src3 : 0,
-	src4, src4 ? *(uint64_t*)src4 : 0);
-
+	dest, FETCH(dest,dest_step),
+	src1, FETCH(src1,src_step),
+	src2, FETCH(src2,src_step),
+	src3, FETCH(src3,src_step),
+	src4, FETCH(src4,src_step));
 
 #if CONFIG_TELEMETRY_PROMOTIONS
     // This assumes all promotions/demotions are done in place
@@ -531,7 +538,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     // this could also probably sanity-check to see that there are no differences outside of promotions
     // destination and src1 can be the same, so only consider dest changes
     // only a destination can be clobbered
-    if (dest) {
+    if (!skip_pro && dest) {
 	if (d  != (*(uint64_t*)dest)) {
 	  if ((IS_OUR_NAN(d))) { 
 	    (*clobbers)++;  DEBUG("destination clobbered\n");
@@ -545,7 +552,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	  }
 	}
     }
-    if (src1 && src1!=dest) { 
+    if (!skip_pro && src1 && src1!=dest) { 
       // only handle src1 separately if it is distinct from dest
       // source operands should only be promoted...
       if (s1  != (*(uint64_t*)src1)) {
@@ -559,7 +566,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	}
       }
     }
-    if (src2) {
+    if (!skip_pro && src2) {
       if (s2  != (*(uint64_t*)src2)) {
 	if ((IS_OUR_NAN(s2))) { 
 	  (*clobbers)++;  DEBUG("src2 clobbered\n");
@@ -571,7 +578,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	}
       }
     }
-    if (src3) {
+    if (!skip_pro && src3) {
       if (s3  != (*(uint64_t*)src3)) {
 	if ((IS_OUR_NAN(s3))) { 
 	  (*clobbers)++;  DEBUG("src3 clobbered\n");
@@ -583,7 +590,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	}
       }
     }
-    if (src4) {
+    if (!skip_pro && src4) {
       if (s4  != (*(uint64_t*)src4)) {
 	if ((IS_OUR_NAN(s4))) { 
 	  (*clobbers)++;  DEBUG("src4 clobbered\n");
