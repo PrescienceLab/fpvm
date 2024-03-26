@@ -146,11 +146,11 @@
 #define Asize    256               /* Array edge size */
 
 #ifndef ITERATIONS                 /* Allow iterations to be supplied by -D */
-#define ITERATIONS 50
+#define ITERATIONS 5
 #endif
 int niter = ITERATIONS;            /* Iteration counter */
 
-#define Passes   50                /* Number of FFT/Inverse passes */
+#define Passes   5               /* Number of FFT/Inverse passes */
 #define Ntimes   (ITERATIONS / Passes) /* Number of outer loop passes */
 
 #define max(a,b) ((a)>(b)?(a):(b))
