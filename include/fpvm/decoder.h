@@ -69,9 +69,21 @@ typedef struct {
 } fpvm_inst_common_t;
 
 
-// captures the SSE2 variants so far
+// captures the SSE and AVX variants
+// note that this is INTENTIONALLY the same ordering
+// as in Capstone's sse_cc and avx_cc,
+// that is why "0" is not used
+//
+// Also see intel vol 2a, table 3.1 for the meanings...
+// These are all pseudo instructions except for the
+// cmpsd / vcmpsd / etc.
+// v = vex/evex encoded
+// result either goes to destination reg
+// or to a mask reg, mask reg can also be an input
+//
 typedef enum {
-  FPVM_INST_COMPARE_EQ=0,
+  FPVM_INST_COMPARE_INVALID=0,
+  FPVM_INST_COMPARE_EQ,
   FPVM_INST_COMPARE_LT,
   FPVM_INST_COMPARE_LE,
   FPVM_INST_COMPARE_UNORD,
@@ -79,6 +91,30 @@ typedef enum {
   FPVM_INST_COMPARE_NLT,
   FPVM_INST_COMPARE_NLE,
   FPVM_INST_COMPARE_ORD,
+  FPVM_INST_COMPARE_EQ_UQ,
+  FPVM_INST_COMPARE_NGE,
+  FPVM_INST_COMPARE_NGT,
+  FPVM_INST_COMPARE_FALSE,
+  FPVM_INST_COMPARE_NEQ_OQ,
+  FPVM_INST_COMPARE_GE,
+  FPVM_INST_COMPARE_GT,
+  FPVM_INST_COMPARE_TRUE,
+  FPVM_INST_COMPARE_EQ_OS,
+  FPVM_INST_COMPARE_LT_OQ,
+  FPVM_INST_COMPARE_LE_OQ,
+  FPVM_INST_COMPARE_UNORD_S,
+  FPVM_INST_COMPARE_NEQ_US,
+  FPVM_INST_COMPARE_NLT_UQ,
+  FPVM_INST_COMPARE_NLE_UQ,
+  FPVM_INST_COMPARE_ORD_S,
+  FPVM_INST_COMPARE_EQ_US,
+  FPVM_INST_COMPARE_NGE_UQ,
+  FPVM_INST_COMPARE_NGT_UQ,
+  FPVM_INST_COMPARE_FALSE_OS,
+  FPVM_INST_COMPARE_NEQ_OS,
+  FPVM_INST_COMPARE_GE_OQ,
+  FPVM_INST_COMPARE_GT_OQ,
+  FPVM_INST_COMPARE_TRUE_US,
 } fpvm_inst_compare_t;
   
 

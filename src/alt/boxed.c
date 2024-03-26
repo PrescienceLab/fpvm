@@ -467,29 +467,136 @@ int cmpxx_double(
   uint64_t r=0;
 
   switch (special->compare_type) {
+  case FPVM_INST_COMPARE_INVALID:
+    ERROR("invalid compare - should not happen\n");
+    return -1;
+    break;
   case FPVM_INST_COMPARE_EQ:
+    // ordered, signaling qnan
     r = a==b;
     break;
   case FPVM_INST_COMPARE_LT:
+    // ordered, signaling qnan
     r = a<b;
     break;
   case FPVM_INST_COMPARE_LE:
+    // ordered, signaling qnan
     r = a<=b;
     break;
   case FPVM_INST_COMPARE_UNORD:
+    // unordered, non-signaling qnan
     r = isnan(a) || isnan(b);
     break;
   case FPVM_INST_COMPARE_NEQ:
+    // ordered, signaling qnan
     r = a!=b;
     break;
   case FPVM_INST_COMPARE_NLT:
+    // ordered, signaling qnan
     r = !(a<b);
     break;
   case FPVM_INST_COMPARE_NLE:
+    // ordered, signaling qnan
     r = !(a<=b);
     break;
   case FPVM_INST_COMPARE_ORD:
+    // ordered, signaling qnan
     r = !isnan(a) && !isnan(b);
+    break;
+  case FPVM_INST_COMPARE_EQ_UQ:
+    // unordered, non-signaling qnan
+    r = isnan(a) || isnan(b) || a==b;
+    break;
+  case FPVM_INST_COMPARE_NGE:
+    // ordered, non-signaling qnan
+    r = !(a>=b);
+    break;
+  case FPVM_INST_COMPARE_NGT:
+    // ordered, non-signaling qnan
+    r = !(a>b);
+    break;
+  case FPVM_INST_COMPARE_FALSE:
+    // orderd, non-signaling
+    r = 0;
+    break;
+  case FPVM_INST_COMPARE_NEQ_OQ:
+    // ordered, non-signaling
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_GE:
+    // ordered, non-signaling
+    r = a>=b;
+    break;
+  case FPVM_INST_COMPARE_GT:
+    // ordered, non-signaling
+    r = a>b;
+    break;
+  case FPVM_INST_COMPARE_TRUE:
+    // ordered, non-signaling
+    r = 1;
+    break;
+  case FPVM_INST_COMPARE_EQ_OS:
+    // ordered, signaling
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT_OQ:
+    // ordered, non-signaling
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE_OQ:
+    // ordered, non-signaling
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD_S:
+    // unordered, signaling
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ_US:
+    // unordered, signaling
+    r = isnan(a) || isnan(b) || a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD_S:
+    // ordered signaling
+    r = !isnan(a) && !isnan(b);
+    break;
+  case FPVM_INST_COMPARE_EQ_US:
+    // unordered, signalling
+    r = isnan(a) || isnan(b) || a==b;
+    break;
+  case FPVM_INST_COMPARE_NGE_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a>=b);
+    break;
+  case FPVM_INST_COMPARE_NGT_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a>b);
+    break;
+  case FPVM_INST_COMPARE_FALSE_OS:
+    // ordered, non-signaling
+    r = 0;
+    break;
+  case FPVM_INST_COMPARE_NEQ_OS:
+    // ordered, non-signaling
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_GE_OQ:
+    // ordered, non-signaling
+    r = a>=b;
+    break;
+  case FPVM_INST_COMPARE_GT_OQ:
+    // ordered, non-signaling
+    r = a>b;
+    break;
+  case FPVM_INST_COMPARE_TRUE_US:
+    r = 1;
     break;
   default:
     MATH_ERROR("unknown comparison type %d\n",special->compare_type);

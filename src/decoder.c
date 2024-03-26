@@ -163,6 +163,76 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_CMPNLEPS] = {FPVM_OP_CMPXX, 1, 0, 4, 0},
     [X86_INS_CMPORDPS] = {FPVM_OP_CMPXX, 1, 0, 4, 0},
 
+    // VEX.128 encoded scalar doubles
+    [X86_INS_VCMPSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPEQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPLTSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPLESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPUNORDSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNEQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNLTSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNLESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPORDSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPEQ_UQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNGESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNGTSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPFALSESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNEQ_OQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPGESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPGTSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPTRUESD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPEQ_OSSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPLT_OQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPLE_OQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPUNORD_SSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNEQ_USSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNLT_UQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNLE_UQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPORD_SSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPEQ_USSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNGE_UQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNGT_UQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPFALSE_OSSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPNEQ_OSSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPGE_OQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPGT_OQSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+    [X86_INS_VCMPTRUE_USSD] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
+
+    // VEX.128 encoded packed doubles
+    [X86_INS_VCMPPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPEQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPLTPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPLEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPUNORDPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNEQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNLTPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNLEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPORDPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPEQ_UQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNGEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNGTPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPFALSEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNEQ_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPGEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPGTPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPTRUEPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPEQ_OSPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPLT_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPLE_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPUNORD_SPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNEQ_USPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNLT_UQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNLE_UQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPORD_SPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPEQ_USPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNGE_UQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNGT_UQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPFALSE_OSPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPNEQ_OSPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPGE_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPGT_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    [X86_INS_VCMPTRUE_USPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
+    
     /*
       Additional comparison instructions we can consider -PAD
 
@@ -200,39 +270,6 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_VCMPGT_OQSS,
 	X86_INS_VCMPTRUE_USSS,
 
-	X86_INS_VCMPSD,
-	X86_INS_VCMPEQSD,
-	X86_INS_VCMPLTSD,
-	X86_INS_VCMPLESD,
-	X86_INS_VCMPUNORDSD,
-	X86_INS_VCMPNEQSD,
-	X86_INS_VCMPNLTSD,
-	X86_INS_VCMPNLESD,
-	X86_INS_VCMPORDSD,
-	X86_INS_VCMPEQ_UQSD,
-	X86_INS_VCMPNGESD,
-	X86_INS_VCMPNGTSD,
-	X86_INS_VCMPFALSESD,
-	X86_INS_VCMPNEQ_OQSD,
-	X86_INS_VCMPGESD,
-	X86_INS_VCMPGTSD,
-	X86_INS_VCMPTRUESD,
-	X86_INS_VCMPEQ_OSSD,
-	X86_INS_VCMPLT_OQSD,
-	X86_INS_VCMPLE_OQSD,
-	X86_INS_VCMPUNORD_SSD,
-	X86_INS_VCMPNEQ_USSD,
-	X86_INS_VCMPNLT_UQSD,
-	X86_INS_VCMPNLE_UQSD,
-	X86_INS_VCMPORD_SSD,
-	X86_INS_VCMPEQ_USSD,
-	X86_INS_VCMPNGE_UQSD,
-	X86_INS_VCMPNGT_UQSD,
-	X86_INS_VCMPFALSE_OSSD,
-	X86_INS_VCMPNEQ_OSSD,
-	X86_INS_VCMPGE_OQSD,
-	X86_INS_VCMPGT_OQSD,
-	X86_INS_VCMPTRUE_USSD,
 
 	X86_INS_VCMPPS,
 	X86_INS_VCMPEQPS,
@@ -268,39 +305,6 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_VCMPGT_OQPS,
 	X86_INS_VCMPTRUE_USPS,
 
-	X86_INS_VCMPPD,
-	X86_INS_VCMPEQPD,
-	X86_INS_VCMPLTPD,
-	X86_INS_VCMPLEPD,
-	X86_INS_VCMPUNORDPD,
-	X86_INS_VCMPNEQPD,
-	X86_INS_VCMPNLTPD,
-	X86_INS_VCMPNLEPD,
-	X86_INS_VCMPORDPD,
-	X86_INS_VCMPEQ_UQPD,
-	X86_INS_VCMPNGEPD,
-	X86_INS_VCMPNGTPD,
-	X86_INS_VCMPFALSEPD,
-	X86_INS_VCMPNEQ_OQPD,
-	X86_INS_VCMPGEPD,
-	X86_INS_VCMPGTPD,
-	X86_INS_VCMPTRUEPD,
-	X86_INS_VCMPEQ_OSPD,
-	X86_INS_VCMPLT_OQPD,
-	X86_INS_VCMPLE_OQPD,
-	X86_INS_VCMPUNORD_SPD,
-	X86_INS_VCMPNEQ_USPD,
-	X86_INS_VCMPNLT_UQPD,
-	X86_INS_VCMPNLE_UQPD,
-	X86_INS_VCMPORD_SPD,
-	X86_INS_VCMPEQ_USPD,
-	X86_INS_VCMPNGE_UQPD,
-	X86_INS_VCMPNGT_UQPD,
-	X86_INS_VCMPFALSE_OSPD,
-	X86_INS_VCMPNEQ_OSPD,
-	X86_INS_VCMPGE_OQPD,
-	X86_INS_VCMPGT_OQPD,
-	X86_INS_VCMPTRUE_USPD,
     */
     
     // float to integer conversion
@@ -657,42 +661,22 @@ static int decode_comparison(fpvm_inst_t *fi)
   }
   
   cs_insn *inst = (cs_insn *)fi->internal;
-
-  // currently only handles SSE
-  switch (inst->detail->x86.sse_cc) {
-  case X86_SSE_CC_INVALID:
-    ERROR("cmpxx operation but has no valid comparison type\n");
-    return -1;
-    break;
-  case X86_SSE_CC_EQ:
-    fi->compare=FPVM_INST_COMPARE_EQ;
-    break;
-  case X86_SSE_CC_LT:
-    fi->compare=FPVM_INST_COMPARE_LT;
-    break;
-  case X86_SSE_CC_LE:
-    fi->compare=FPVM_INST_COMPARE_LE;
-    break;
-  case X86_SSE_CC_UNORD:
-    fi->compare=FPVM_INST_COMPARE_UNORD;
-    break;
-  case X86_SSE_CC_NEQ:
-    fi->compare=FPVM_INST_COMPARE_NEQ;
-    break;
-  case X86_SSE_CC_NLT:
-    fi->compare=FPVM_INST_COMPARE_NLT;
-    break;
-  case X86_SSE_CC_NLE:
-    fi->compare=FPVM_INST_COMPARE_NLE;
-    break;
-  case X86_SSE_CC_ORD:
-    fi->compare=FPVM_INST_COMPARE_ORD;
-    break;
-  default:
-    ERROR("unknown sse comparison type %d\n",inst->detail->x86.sse_cc);
-    break;
+ 
+  // first try AVX CCs
+  if (inst->detail->x86.avx_cc != X86_AVX_CC_INVALID) {
+    DEBUG("avx comparison encoding:  %d\n", inst->detail->x86.avx_cc);
+    fi->compare = inst->detail->x86.avx_cc;
+    return 0;
   }
-  return 0;
+    
+  if (inst->detail->x86.sse_cc != X86_SSE_CC_INVALID) {
+    DEBUG("sse comparison encoding:  %d\n", inst->detail->x86.sse_cc);
+    fi->compare = inst->detail->x86.sse_cc;
+    return 0;
+  }
+    
+  ERROR("cmpxx operation but has no valid comparison type\n");
+  return -1;
 }
 
 int fpvm_decoder_init(void) {
