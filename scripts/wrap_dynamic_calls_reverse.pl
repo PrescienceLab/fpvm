@@ -15,7 +15,7 @@ open(L,"$lf") or die "cannot open $lf\n";
 while (<L>) {
     chomp();
     next if (/^\s*#/ || /^\s*$/); # kill comments and empty lines
-    ($f) = split(/\t/); $fs{$f}=1; }
+    ($f) = split(/\s+/); $fs{$f}=1; }
 close(L);
 @funcs = sort keys %fs;
 
