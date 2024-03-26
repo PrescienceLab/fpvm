@@ -31,11 +31,11 @@ fix_seq:
 
 lorenz        - works, validates
 double-pend   - works, validates
-3body         - crashes with cmplt ?how
+3body         - works, validates
 fbench        - works, validates
-ffbench       - fpvm ERROR( 1872468): Cannot decode instruction 0 (rip 0x401926) of sequence:  cmpnlesd		xmm2, xmm0 (5 bytes)
-miniaero      - ? 
-enzo          - ?
+ffbench       - works, validates
+miniaero      - compiled, collected dynamic calls, patched, fails on vsqrtsd
+enzo          - compiled, collecting dynamic calls, patched, ...
 lbm           - ?
 nas-mg        - works, validates, mysterious issues (YIKES) vector instructions in 
 nas-bt        - SEGFAULT
@@ -76,6 +76,14 @@ DONE - if we always generate an SNaN for encoding, we are fine
 Note that f2i is only overwriting the part of the register target
 that is get the output.   This probably should handle zeroing the
 rest of the register in case this is the excepted behavior (not sure)
+===============================================================
+
+===============================================================
+DONE - ADDED VCMPXX
+  VCMPLT and similar
+
+- all 32 variants are now in there
+
 ===============================================================
 
 ===============================================================

@@ -178,6 +178,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     src_step = fi->common->op_size;  // PAD: these can technically be different - FIX FIX FIX
     DEBUG("Doing vector instruction - this might break (dest operand size=%lu common operand size=%lu computed count=%lu dest_step=%lu src_step=%lu)\n",fi->operand_sizes[0],fi->common->op_size,count,dest_step,src_step);
   } else {
+    dest_step = fi->common->op_size;
+    src_step = fi->common->op_size;  
     DEBUG("Doing scalar instruction - (common operand size=%lu)\n",fi->common->op_size);
   }
 
