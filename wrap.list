@@ -189,3 +189,94 @@ strncpy	3	468
 # math library
 #tan	4	3267
 time	1	10
+
+# from Enzo (first 10 million calls)
+H5Aclose	4	11
+H5Acreate1	4	11
+H5Awrite	4	11
+H5Dclose	4	8
+H5Dcreate1	4	8
+H5Dwrite	4	20
+H5Fclose	4	2
+H5Fcreate	4	2
+H5Gclose	4	2
+H5Gcreate1	4	2
+H5Sclose	4	13
+H5Screate_simple	4	15
+H5Sselect_hyperslab	4	32
+H5check_version	4	2
+H5open	4	31
+_ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE5c_strEv	4	280
+_ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7_M_dataEv	4	216
+_ZNKSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7compareERKS4_	4	1023
+_ZNSaIcEC1Ev	4	216
+_ZNSaIcED1Ev	4	216
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE11_M_capacityEm	4	109
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE12_Alloc_hiderC1EPcRKS3_	4	216
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_M_local_dataEv	4	216
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_M_set_lengthEm	4	216
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE13_S_copy_charsEPcPKcS7_	4	216
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE7_M_dataEPc	4	109
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE9_M_createERmm	4	109
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC1EOS4_	4	8
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC1ERKS4_	4	18
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEC1Ev	4	38
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEED1Ev	4	246
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEaSEPKc	4	8
+_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEaSERKS4_	4	177
+_ZNSt8ios_base4InitC1Ev	4	1023
+_ZSt18_Rb_tree_decrementPSt18_Rb_tree_node_base	4	2
+_ZSt18_Rb_tree_incrementPSt18_Rb_tree_node_base	4	168
+_ZSt29_Rb_tree_insert_and_rebalancebPSt18_Rb_tree_node_baseS0_RS_	4	17
+_ZdaPv	4	103442
+_ZdlPvm	4	14
+_Znam	4	103551
+_Znwm	4	66
+__cxa_atexit	4	1905
+__cxa_guard_acquire	4	1
+__cxa_guard_release	4	1
+__isoc99_sscanf	4	27101
+#
+# builtin support for double __powidf2(double a, int b) - a^b
+# not in lbm, hence will keep alive here
+#
+__powidf2	4	9740194
+access	2	28
+clock	4	379
+fclose	1	33
+fcntl	4	2
+fgets	3	210
+fopen	2	34
+fprintf	3	1362
+fprintf	4	22
+fprintf	5	33
+fprintf	6	9
+fprintf	7	57
+fprintf	8	8
+fprintf	9	22
+fputc	2	180
+free	1	6444
+fwrite	4	187
+getpid	0	1
+gettimeofday	2	7
+getuid	0	1
+malloc	1	6444
+memcpy	3	9
+open	3	1
+# in libm, we handle
+#pow	4	43
+rand	4	154
+read	3	3
+rewind	4	8
+sprintf	13	3
+sprintf	3	29
+#in libm, we handle
+#sqrt	4	59
+srand	4	1
+stat	4	1
+strcat	2	24
+strcpy	2	15
+strlen	1	227
+strncmp	3	224
+strstr	2	2416
+time	1	2
