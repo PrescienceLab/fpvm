@@ -190,12 +190,12 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       src1 = fi->operand_addrs[1];
 
       if (fi->common->op_size == 4) {
-        // ERROR("Using vanilla op_map!\n");
+        // ERROR("Using vanilla op_map for unary instruction %d for float!\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        // ERROR("Cannot handle unary instruction with op_size = %d\n", fi->common->op_size);
+        // ERROR("Cannot handle unary instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         // ASSERT(0);
         return -1;
       }
@@ -219,18 +219,18 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         src1 = fi->operand_addrs[1];
         src2 = fi->operand_addrs[2];
       } else {
-        ERROR("Cannot handle binary instruction with %d operands\n", fi->operand_count);
+        ERROR("Cannot handle binary instruction %d with %d operands\n", fi->common->op_type, fi->operand_count);
         ASSERT(0);
         return -1;
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for float binop %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle binary instruction with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle binary instruction with op_size = %d for float binop %d\n", fi->common->op_size,fi->common->op_type);
         ASSERT(0);
         return -1;
       }
@@ -249,18 +249,18 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         src2 = fi->operand_addrs[2];
         src3 = fi->operand_addrs[3];
       } else {
-        ERROR("Cannot handle trinary instruction with %d operands\n", fi->operand_count);
+        ERROR("Cannot handle trinary instruction %d with %d operands\n", fi->common->op_type,fi->operand_count);
         ASSERT(0);
         return -1;
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for trinary instruction %d of floats\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle trinary instruction with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle trinary instruction %d with op_size = %d\n",fi->common->op_type,  fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -289,17 +289,17 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       special.truncate = fi->common->op_type == FPVM_OP_F2IT || fi->common->op_type == FPVM_OP_F2UT;
 
       if (!special.truncate) {
-        ERROR("Round to nearest is not handled yet\n");
+        ERROR("Round to nearest is not handled yet (instruction %d)\n",fi->common->op_type);
         exit(1);
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for conversion instruction %d\n,",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle f2u or f2i instruction with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle f2u or f2i instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -320,14 +320,14 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       special.truncate = fi->common->op_type == FPVM_OP_I2FT || fi->common->op_type == FPVM_OP_U2FT;
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for conversion instruction %d\n", fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         // PAD: IS THIS RIGHT?
-        // ERROR("Using vanilla op map for 8 bytes?!\n");
+        ERROR("Using vanilla op map for 8 bytes conversion instruction %d?!\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][1];  // PAD: why is this vanilla?
       } else {
-        ERROR("Cannot handle f2u or f2i instruction with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle f2u or f2i instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -345,12 +345,12 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       special.truncate = 0;
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for conversion instruction %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle f2u or f2i instruction with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle f2u or f2i instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -371,18 +371,18 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         special.unordered = fi->common->op_type == FPVM_OP_UCMP;
         special.rflags = fi->side_effect_addrs[0];
       } else {
-        ERROR("Cannot handle binary compare with %d operands\n", fi->operand_count);
+        ERROR("Cannot handle binary compare instruction %d with %d operands\n", fi->common->op_type, fi->operand_count);
         ASSERT(0);
         return -1;
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for comparison instruction %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle binary compare with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle binary compare instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -403,18 +403,18 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         src2 = fi->operand_addrs[2];
         special.compare_type = fi->compare;
       } else {
-        ERROR("Cannot handle binary compare with %d operands\n", fi->operand_count);
+        ERROR("Cannot handle binary compare xx instruction %d with %d operands\n", fi->common->op_type, fi->operand_count);
         ASSERT(0);
         return -1;
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map\n");
+        ERROR("Using vanilla op map for compare xx instruction %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle binary compare with op_size = %d\n", fi->common->op_size);
+        ERROR("Cannot handle binary compare xx instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);
         ASSERT(0);
         return -1;
       }
@@ -434,14 +434,14 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	DEBUG("handling 8 byte move\n");
         func = vanilla_op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle move instruction with op_size = %d (count=%d)\n", fi->common->op_size,count);
+        ERROR("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
 	return -1;
       }
 
       break;
       
     default:
-      // ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
+      ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
       return -1;
       break;
   }
@@ -514,7 +514,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
     rc |= func(&special, dest, src1, src2, src3, src4);
 
-    // handle CMPXX here because where to place the result depends on
+    // handle CMPXX writeback here because where to place the result depends on
     // the instruction set.  It is only for SSE that we overwrite the
     // whole destination with either an all 1 pattern or an all 0 pattern
     if (fi->common->op_type==FPVM_OP_CMPXX) {
