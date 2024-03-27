@@ -77,7 +77,6 @@ pushd ${PFX}
 
   docker build -t fpvm_patch .
   docker run --rm --mount type=bind,source=${workspace},target=/root/output fpvm_patch
-  exit
   # Run the patch, copying the results to the workspace folder
   # docker buildx build --progress=plain -o $workspace .
 
