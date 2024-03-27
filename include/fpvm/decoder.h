@@ -64,7 +64,7 @@ typedef struct {
   int is_vector;     // is this a vector FP?
   int has_mask;      // mask vector?
   unsigned op_size;  // size of operands
-  // dest_size is currently only meaningful for conversion (F2* or I2* or U2*)
+  // dest_size is currently only meaningful for conversion (F2* or I2* or U2* or movsx/etc)
   unsigned dest_size;  // size of destination operands in conversion
 } fpvm_inst_common_t;
 
@@ -116,7 +116,11 @@ typedef enum {
   FPVM_INST_COMPARE_GT_OQ,
   FPVM_INST_COMPARE_TRUE_US,
 } fpvm_inst_compare_t;
-  
+
+typedef enum {
+  FPVM_INST_ZERO_EXTEND,
+  FPVM_INST_SIGN_EXTEND
+} fpvm_inst_extend_t;
 
 
 typedef struct fpvm_inst {
@@ -126,9 +130,10 @@ typedef struct fpvm_inst {
   fpvm_inst_common_t *common;
 
   fpvm_inst_compare_t compare; 
+  fpvm_inst_extend_t  extend;
 
   int is_simple_mov;
-
+  
 
   // note that operands are in the *intel* order, not the at&t order
   unsigned operand_count;
