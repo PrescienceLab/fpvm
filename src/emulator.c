@@ -434,9 +434,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	DEBUG("handling 8 byte move\n");
         func = vanilla_op_map[fi->common->op_type][1];
       } else {
-        ERROR("Cannot handle move instruction with op_size = %d\n", fi->common->op_size);
-        // ASSERT(0);
-        return -1;
+        ERROR("Cannot handle move instruction with op_size = %d (count=%d)\n", fi->common->op_size,count);
+	return -1;
       }
 
       break;
@@ -675,6 +674,8 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 }
 				   
 
+
+
 //
 // There are currently two reasons why this function might be invoked:
 //
@@ -761,11 +762,11 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   int count = 1;
   int dest_step = 0, src_step = 0;
 
-  if (fi->common->is_vector) {
+  if (fi->common->is_vector && fi->common->op_type!=FPVM_OP_MOVE) {
     count = fi->operand_sizes[0] / fi->common->op_size;
     dest_step = fi->common->op_size;
     src_step = fi->common->op_size;  // these can technically be different - FIX FIX FIX
-    ERROR("problematic instruction is vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS\n");
+    ERROR("problematic instruction is non-move vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS\n");
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     // fpvm_decoder_print_inst(fi,stderr);
     // this would normally fall through instead of stopping here
@@ -818,34 +819,41 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   }
 
   if (fi->common->op_type==FPVM_OP_MOVE) {
-    if (fi->is_simple_mov) {
-      if (fi->operand_count != 2) {
-	ERROR("simple move has %d operands... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->operand_count);
-	fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
-	goto complex_transforms_sources_yikes;
-      }
-      DEBUG("handling simple move src=%u bytes dest=%u bytes\n",fi->operand_sizes[1],fi->operand_sizes[0]);
-      if (fi->common->op_size != 8 ) {
-	ERROR("simple move with operand size %d ... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->common->op_size);
-	fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
-	goto complex_transforms_sources_yikes;
-      }
+    if (fi->operand_count != 2) {
+      ERROR("simple move has %d operands... defaulting to complex move operation (which will demote sources!) BOGUS\n",fi->operand_count);
+      fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
+      goto complex_transforms_sources_yikes;
+    }
+    int os = fi->common->op_size;
+    int ds = fi->common->dest_size;
+    int os0 = fi->operand_sizes[0];
+    int os1 = fi->operand_sizes[1];
+    int count = 1;
+    if (fi->common->is_vector) {
+      count = os0/os;
+    }
+    // handle only up to 8 bytes, power of 2
+    if (os!=1 && os!=2 && os!=4 && os!=8) {
+      ERROR("move with os=%d ds=%d os0=%d os=%d - defaulting to complex move operation (which will demote sources!) BOGUS\n",os,ds,os0,os1);
+      fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
+      goto complex_transforms_sources_yikes;
+    }
+
+    DEBUG("handling move count=%d os=%d ds=%d ss=%d os0=%d os1=%d\n",count,os,ds,os0,os1);
+
+    for (int i=0;i<count;i++, dest+=ds, src2+=os) {
+      // copy out entire quantity, based on size
+      uint64_t temp =
+	os==1 ? *(uint8_t*)src2 :
+	os==2 ? *(uint16_t*)src2 :
+	os==4 ? *(uint32_t*)src2 :
+	os==8 ? *(uint64_t*)src2 :
+	8; // should not happen
       
-      // because this is a mov, there is only one source, and it is not the destination
-      // note that this is different from the emulation code below, which
-      // We have previously decoded mov dest|src1, src2, thus we need to convert src2
-      
-      // copy out entire quantity, assuming we are talking about
-      // a double at the address/location
-      uint64_t temp=*(uint64_t*)src2;
       uint64_t old = temp;
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
-      // and write it to the destination based on size
-      // note that this ignores sign extension or zero extension
-      // for copying small into large integer
-      memcpy(dest,&temp,fi->operand_sizes[0]);
-      DEBUG("completed emulation of simple mov successully\n");
+
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {
 	DEBUG("value actually demoted (%016lx => %016lx)\n",old,temp);
@@ -854,8 +862,27 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	DEBUG("value not demoted (not actually a nanbox)\n");
       }
 #endif
-      return FPVM_CORRECT_SKIP;
+      // and write it to the destination based on size
+      // note that this ignores sign extension or zero extension
+      // for copying small into large integer
+      if (ds > os) {
+	int diff = ds - os;
+	if (fi->extend==FPVM_INST_ZERO_EXTEND) {
+	  memcpy(dest,&temp,os);
+	  memset(dest+os,0,diff);
+	} else if (fi->extend==FPVM_INST_SIGN_EXTEND) {
+	  int64_t it = temp;
+	  it <<= 64 - os*8;
+	  it >>= os*8;  // sign extend
+	  memcpy(dest,&it,ds);
+	}
+      } else {
+	memcpy(dest,&temp,ds);
+      }
     }
+    
+    DEBUG("completed emulation of move successully\n");
+    return FPVM_CORRECT_SKIP;
   }
 
  complex_transforms_sources_yikes:
