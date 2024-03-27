@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set  -xe
 if [[ -z "${FPVM_HOME}" ]] ; then
     echo "Please set FPVM_HOME"
     exit 1;
@@ -74,8 +74,12 @@ pushd ${PFX}
   mkdir -p ${workspace}
   # Copy the binary into the right location
   cp $BIN ${workspace}/input
+
+  docker build -t fpvm_patch .
+  docker run --rm --mount type=bind,source=${workspace},target=/root/output fpvm_patch
+  exit
   # Run the patch, copying the results to the workspace folder
-  docker buildx build --progress=plain -o $workspace .
+  # docker buildx build --progress=plain -o $workspace .
 
 
   pushd $workspace
