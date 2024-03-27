@@ -398,33 +398,56 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     //  [X86_INS_PSRLDQ] = {FPVM_OP_SHIFT_RIGHT_BYTE, 0, 0, 8, 8},
     //  [X86_INS_PSLLDQ] = {FPVM_OP_SHIFT_LEFT_BYTE, 0, 0, 8, 8},
 
-    // Move operations
+    // integer move operations
     // moves are handled during sequence emulation to lengthen sequence length
     // they are also needed for correctness traps
     [X86_INS_MOV] = {FPVM_OP_MOVE, 0, 0, 8, 8},  // is this right? - PAD
-    //[X86_INS_MOVS] = {FPVM_OP_MOVE, 0, 0, 2, 2}, // surprising this doesn't exist - PAD
     [X86_INS_MOVD] = {FPVM_OP_MOVE, 0, 0, 4, 4},
     [X86_INS_MOVQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
     [X86_INS_MOVNTQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
+    [X86_INS_MOVSX] = {FPVM_OP_MOVE, 0, 0, 2, 8}, // depends on a lot
+    [X86_INS_MOVSXD] = {FPVM_OP_MOVE, 0, 0, 4, 8}, // depends on a lot
+    [X86_INS_MOVZX] = {FPVM_OP_MOVE, 0, 0, 2, 8}, // depends on a lot    
+
+    [X86_INS_VMOVD] = {FPVM_OP_MOVE, 0, 0, 4, 4},
+    [X86_INS_VMOVQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
+    
+    
+    // FP moves
+    
     [X86_INS_MOVSS] = {FPVM_OP_MOVE, 0, 0, 4, 4},
     [X86_INS_MOVSD] = {FPVM_OP_MOVE, 0, 0, 8, 8},
     [X86_INS_MOVAPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
     [X86_INS_MOVAPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
-    [X86_INS_VMOVAPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
-    [X86_INS_VMOVAPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
     [X86_INS_MOVUPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
     [X86_INS_MOVUPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
+    [X86_INS_MOVNTPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
+    [X86_INS_MOVNTPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
+    [X86_INS_MOVNTSD] = {FPVM_OP_MOVE, 0, 0, 8, 8},
+    [X86_INS_MOVNTSS] = {FPVM_OP_MOVE, 0, 0, 4, 4},
+
+    [X86_INS_VMOVSS] = {FPVM_OP_MOVE, 0, 0, 4, 4},
+    [X86_INS_VMOVSD] = {FPVM_OP_MOVE, 0, 0, 8, 8},
+    [X86_INS_VMOVAPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
+    [X86_INS_VMOVAPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
+    [X86_INS_VMOVUPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
+    [X86_INS_VMOVUPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
+    [X86_INS_VMOVNTPD] = {FPVM_OP_MOVE, 1, 0, 8, 8},
+    [X86_INS_VMOVNTPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
+
+    // full vector instructions for integer
+    [X86_INS_MOVDQA] = {FPVM_OP_MOVE, 0, 0, 16, 16},
+    [X86_INS_MOVDQU] = {FPVM_OP_MOVE, 0, 0, 16, 16},
+    [X86_INS_MOVNTDQA] = {FPVM_OP_MOVE, 0, 0, 16, 16},
+    [X86_INS_MOVNTDQ] = {FPVM_OP_MOVE, 0, 0, 16, 16},
+
     /*
       Additional MOV ops we can look through - PAD
 	X86_INS_MOVDQ2Q,
-    	X86_INS_MOVNTQ,
     	X86_INS_MOVQ2DQ,
-	X86_INS_MOV,
 	X86_INS_MOVABS,
 	X86_INS_MOVBE,
 	X86_INS_MOVDDUP,
-	X86_INS_MOVDQA,
-	X86_INS_MOVDQU,
 	X86_INS_MOVHLPS,
 	X86_INS_MOVHPD,
 	X86_INS_MOVHPS,
@@ -433,13 +456,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_MOVLPS,
 	X86_INS_MOVMSKPD,
 	X86_INS_MOVMSKPS,
-	X86_INS_MOVNTDQA,
-	X86_INS_MOVNTDQ,
 	X86_INS_MOVNTI,
-	X86_INS_MOVNTPD,
-	X86_INS_MOVNTPS,
-	X86_INS_MOVNTSD,
-	X86_INS_MOVNTSS,
 	X86_INS_MOVSB,
 	X86_INS_MOVSD,
 	X86_INS_MOVSHDUP,
@@ -447,11 +464,6 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_MOVSQ,
 	X86_INS_MOVSS,
 	X86_INS_MOVSW,
-	X86_INS_MOVSX,
-	X86_INS_MOVSXD,
-	X86_INS_MOVUPD,
-	X86_INS_MOVUPS,
-	X86_INS_MOVZX,
 	X86_INS_PMOVSXBD,
 	X86_INS_PMOVSXBQ,
 	X86_INS_PMOVSXBW,
@@ -467,9 +479,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_VMASKMOVDQU,
 	X86_INS_VMASKMOVPD,
 	X86_INS_VMASKMOVPS,
-	X86_INS_VMOVQ,
 	X86_INS_VMOVDDUP,
-	X86_INS_VMOVD,
 	X86_INS_VMOVDQA32,
 	X86_INS_VMOVDQA64,
 	X86_INS_VMOVDQA,
@@ -488,14 +498,9 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_VMOVMSKPS,
 	X86_INS_VMOVNTDQA,
 	X86_INS_VMOVNTDQ,
-	X86_INS_VMOVNTPD,
-	X86_INS_VMOVNTPS,
 	X86_INS_VMOVSD,
 	X86_INS_VMOVSHDUP,
 	X86_INS_VMOVSLDUP,
-	X86_INS_VMOVSS,
-	X86_INS_VMOVUPD,
-	X86_INS_VMOVUPS,
 	X86_INS_VPCMOV,
 	X86_INS_VPMASKMOVD,
 	X86_INS_VPMASKMOVQ,
@@ -643,13 +648,33 @@ static int decode_to_common(fpvm_inst_t *fi) {
 static int decode_move(fpvm_inst_t *fi) {
   cs_insn *inst = (cs_insn *)fi->internal;
 
-  // track simple moves for correctness handler
-  if (inst->id==X86_INS_MOV  ||
-      // inst->id==X86_INS_MOVS ||  weird... 
-      inst->id==X86_INS_MOVD ||
-      inst->id==X86_INS_MOVQ ||
-      inst->id==X86_INS_MOVNTQ) {
+  // simple_mov means scalar, perhaps with sign extension
+  switch (inst->id) {
+  case X86_INS_MOV:
+  case X86_INS_MOVD:
+  case X86_INS_MOVQ:
+  case X86_INS_MOVNTQ:
+  case X86_INS_MOVZX:
+  case X86_INS_VMOVD:
+  case X86_INS_VMOVQ:
+  case X86_INS_MOVSS:
+  case X86_INS_MOVSD:
+  case X86_INS_MOVNTSD:
+  case X86_INS_MOVNTSS:
+  case X86_INS_VMOVSS:
+  case X86_INS_VMOVSD:
     fi->is_simple_mov = 1;
+    fi->extend = FPVM_INST_ZERO_EXTEND;
+    break;
+  case X86_INS_MOVSX:
+  case X86_INS_MOVSXD:
+    fi->is_simple_mov = 1;
+    fi->extend = FPVM_INST_SIGN_EXTEND;
+    break;
+  default:
+    fi->is_simple_mov=0;
+    fi->extend = FPVM_INST_ZERO_EXTEND;
+    break;
   }
   return 0;
 }
