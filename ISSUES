@@ -37,15 +37,59 @@ ffbench       - works, validates
 miniaero      - compiled, collected dynamic calls, patched, fails on vsqrtsd
 enzo          - compiled, collecting dynamic calls, patched, ...
 lbm           - ?
-nas-mg        - works, validates, mysterious issues (YIKES) vector instructions in 
+
+NAS WITH GCC: 
+nas-mg        - works, validates
+
 nas-bt        - SEGFAULT
-nas-sp        - SEGFAULT   
-nas-lu        - ASSERTION FAILURE (correctness handler failed)  vector instruction and bogus instructions for correctness
-                movsxd instruction
-nas-ft        - ASSERTION FAILURE - movsxd instruction
-nas-is        - works, validates
-nas-cg        - works, does not validate, no errors shown (-nan outputs)
-nas-ep        - SEGFAULT (after one emul of mulsd in correctness
+
+fpvm ERROR( 2331967): problematic instruction is vector instruction - ATTEMPTING EMULATION, WHICH IS LIKELY BOGUS
+problematic correctness instr: movapd		xmm0, xmmword ptr [rip - 0x6699cd] (8 bytes)
+problematic correctness instr (YIKES): movapd		xmm0, xmmword ptr [rip - 0x6699cd] (8 bytes)
+fpvm ERROR( 2331967): not our segfault and don't know what to do with it:  rip=0x7f6f3e7e6fbb addr=0x41c620 reason: 2 (PERM) in
+struction bytes on page follow: f2 0f 11 45 00 48 83 c3 08 4c 39 eb 75 af 48
+/home/pdinda/fpvm/scripts/fpvm_run.sh: line 23: 2331967 Aborted                 LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRES
+SIVE=y $@
+
+
+nas-sp        - works, validates
+
+
+nas-lu        - SEGFAULT:
+
+fpvm ERROR( 2374246): simple move with dn=0 sn=0 - defaulting to complex move operation (which will demote sources!) BOGUS
+problematic correctness instr: movsd		xmm7, qword ptr [rip - 0x46d873] (8 bytes)
+problematic correctness instr (YIKES): movsd		xmm7, qword ptr [rip - 0x46d873] (8 bytes)
+fpvm ERROR( 2374246): not our segfault and don't know what to do with it:  rip=0x7f300a0abfbb addr=0x41c788 reason: 2 (PERM) in
+struction bytes on page follow: f2 0f 11 45 00 48 83 c3 08 4c 39 eb 75 af 48
+/home/pdinda/fpvm/scripts/fpvm_run.sh: line 23: 2374246 Aborted                 LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRES
+SIVE=y $@
+
+nas-ft        - works, validates
+
+nas-is        - fails abort
+
+fpvm ERROR( 2332075): cannot decode instruction
+undecodable instruction: ret             (1 bytes)
+fpvm ERROR( 2332075): correctness handler failed
+is.patched_trap: src/fpvm.c:1205: sigtrap_handler: Assertion `0' failed.
+/home/pdinda/fpvm/scripts/fpvm_run.sh: line 23: 2332075 Aborted                 LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRES
+
+nas-cg        - works, does not validate, no errors shown (-nan outputs) -
+
+problematic correctness instr (YIKES): movsd            xmm0, qword ptr [rip - 0x43ffb69f] (8 bytes)
+problematic correctness instr (YIKES): movsd            xmm0, qword ptr [rip - 0x43ffb69f] (8 bytes)
+problematic correctness instr (YIKES): movsd            xmm0, qword ptr [rip - 0x43ffb69f] (8 bytes)
+
+nas-ep        - bad correctness instruction - test
+
+fpvm ERROR( 2332087): cannot decode instruction
+undecodable instruction: test           ebx, ebx (2 bytes)
+fpvm ERROR( 2332087): correctness handler failed
+ep.patched_trap: src/fpvm.c:1205: sigtrap_handler: Assertion `0' failed.
+/home/pdinda/fpvm/scripts/fpvm_run.sh: line 23: 2332087 Aborted                 LD_PRELOAD=$FPVM_HOME/build/fpvm.so FPVM_AGGRESSIVE=y $@
+
+
 
 State:
    miniaero : xformed, 
@@ -134,6 +178,8 @@ to incorrect addresses
 
 
 ========
+
+DONE  Greatly expanded the set of "simple_moves" that correctness handler can support
 
 Instructions that should be emulated ok, but...
 
