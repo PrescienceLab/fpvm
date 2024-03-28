@@ -111,7 +111,7 @@ class ContentHashDir:
 # @version: either 'magic' or 'trap'
 def get_patched_binary(binary: Path, version: str='magic') -> Path:
   name = os.path.basename(binary)
-
+  binary = get_wrapped_binary(binary, version)
 
   ch = ContentHashDir(f'patch-{name}')
   ch.file_input(binary) # The key is simply the file itself.
@@ -162,16 +162,15 @@ def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
 def get_wrapped_binary(binary: Path, version: str='magic', mode: str = 'reverse') -> Path:
   name = os.path.basename(binary)
   # The wrapped binary is keyed on the hash of the patched binary
-  patched = get_patched_binary(binary, version)
 
   ch = ContentHashDir(f'{mode}-wrap-{name}')
-  ch.file_input(patched)
+  ch.file_input(binary)
 
   get_additional_wrappers(WRAP_LIST)
 
   if mode == 'reverse':
     if not ch.exists(name):
-      os.system(f'fpvm_wrap -o {ch/name} -f {WRAP_LIST} {patched}')
+      os.system(f'fpvm_wrap -o {ch/name} -f {WRAP_LIST} {binary}')
     return ch.get(name)
 
 
@@ -197,6 +196,7 @@ def run_fpvm_binary(bin: Path,
       env['FPVM_LOG_FILE'] = str(logfile)
 
     start = time.time()
+
     proc = subprocess.Popen(
         [bin, *args],
         stdout=stdout,
@@ -238,9 +238,10 @@ def run_fpvm_binary(bin: Path,
 # Run a binary with FPVM.
 def cmd_run(args):
   bin = path_expand(args.binary)
-  if not args.baseline:
+
+  if not args.nopatch and not args.baseline:
     # If we aren't running a baseline, wrap the binary
-    bin = get_wrapped_binary(bin)
+    bin = get_patched_binary(bin)
 
   # Run the binary...
   out = run_fpvm_binary(bin,
@@ -350,8 +351,8 @@ def cmd_benchmark(args):
 
   runs = [
     ('baseline', bin, os.environ.copy()),
-    ('magic', get_wrapped_binary(bin, 'magic'), fpvm_env),
-    # (f'{name}_trap', get_wrapped_binary(bin, 'trap'), fpvm_env),
+    ('magic', get_patched_binary(bin, 'magic'), fpvm_env),
+    # (f'{name}_trap', get_patched_binary(bin, 'trap'), fpvm_env),
   ]
 
   for run_name, bin, env in runs:
@@ -446,6 +447,7 @@ if __name__ == '__main__':
   p = sub.add_parser('run', help='run a binary')
   p.add_argument('-o', help='Optional argument')
   p.add_argument('--baseline', help='Run the original binary w/ timing', action='store_true')
+  p.add_argument('--nopatch', help='Dont patch the binary', action='store_true')
   p.add_argument('binary', help='Binary to run')
   p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
   p.set_defaults(func=cmd_run)

@@ -34,13 +34,7 @@ SHELL ["conda", "run", "-n", "fpvm_static_analysis_env", "/bin/bash", "-c"]
 
 COPY src src
 
-COPY workspace /root/workspace
 RUN mkdir -p /root/output
-RUN /root/analysis/src/run.sh /root/workspace/input 2>&1 > /root/output/analysis.out
-RUN cp /root/analysis/src/*_patches.csv /root/output/
-# RUN cp /root/analysis/src/*.profile /root/output/
-RUN cp /root/analysis/src/*.timing /root/output/
 
-FROM scratch as output
-COPY --from=build /root/output .
 
+CMD ["conda", "run", "-n", "fpvm_static_analysis_env", "/bin/bash", "-c", "/root/analysis/src/do_all_in_docker.sh"]
