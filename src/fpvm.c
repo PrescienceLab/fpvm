@@ -2264,12 +2264,21 @@ static void config_round_daz_ftz(char *buf) {
 // Called on load of preload library
 static __attribute__((constructor)) void fpvm_init(void) {
   INFO("init\n");
-  //  SAFE_DEBUG("we are not in crazy town, ostensibly\n");
+  //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
   if (!inited) {
     // Grab the log destination
     char *log_dst = getenv("FPVM_LOG_FILE");
-    if (log_dst != NULL) fpvm_log_file = fopen(log_dst, "w");
+    if (log_dst != NULL) {
+      fpvm_log_file = fopen(log_dst, "w");
+      if (!fpvm_log_file) {
+	ERROR("cannot open log file %s, reverting to stderr\n",log_dst);
+      } else {
+	DEBUG("opening log file %s\n",log_dst);
+      }
+    } else {
+      DEBUG("no log file specified, using stderr\n");
+    }
 
     if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
       DEBUG("Attempting to use FPVM kernel suppport\n");

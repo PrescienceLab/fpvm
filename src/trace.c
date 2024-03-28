@@ -91,7 +91,7 @@ static void dump_trace(FILE *out, char *prefix, fpvm_instr_trace_t *r, uint64_t 
   for (i=0, currip=r->start_addr;i<r->instr_count+extra;i++) {
     // make sure next 15 bytes are readable
     if (fpvm_memaddr_probe_readable_long((void*)currip) && fpvm_memaddr_probe_readable_long((void*)(currip+8))) {
-      int rc=fpvm_decoder_decode_and_print_any_inst((void*)currip,stderr,i<r->instr_count ? pre1 : pre2);
+      int rc=fpvm_decoder_decode_and_print_any_inst((void*)currip,out,i<r->instr_count ? pre1 : pre2);
       if (rc<0) {
 	ERROR("failed to decode and print...\n");
 	return;
