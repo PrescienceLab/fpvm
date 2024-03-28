@@ -4,8 +4,8 @@ export FPVM_HOME=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
 source ${FPVM_HOME}/ENV
 
 
-mkdir -p results
-
+mkdir -p ${FPVM_HOME}/results
+NAS_CLASS=S
 
 buildstep() {
     NAME=$1
@@ -18,7 +18,7 @@ function run_test {
   binary=$2
 
   echo $name $binary
-  buildstep ${name} fpvm benchmark -c 1 --output=results/${name} ${binary}
+  buildstep ${name} fpvm benchmark -c 1 --output=${FPVM_HOME}/results/${name} ${binary}
 }
 
 
@@ -27,9 +27,9 @@ pushd ${FPVM_HOME}/test/nas
   cp config/make-gcc.def config/make.def
 
   for b in mg bt sp lu ft is cg ep; do
-    make ${b^^} CLASS=$CLASS
+    make ${b^^} CLASS=$NAS_CLASS
     mkdir -p bin/${b}
-    mv bin/${b}.${CLASS} bin/${b}/${b}
+    mv bin/${b}.${NAS_CLASS} bin/${b}/${b}
   done
 
 
