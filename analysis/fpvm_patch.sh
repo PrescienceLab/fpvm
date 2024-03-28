@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-set  -xe
+
+set -e
+
+
 if [[ -z "${FPVM_HOME}" ]] ; then
     echo "Please set FPVM_HOME"
     exit 1;
@@ -69,16 +72,20 @@ pushd ${PFX}
 
 
   # Delete the old workspace folder
-  rm -rf ${workspace}
+  #rm -rf ${workspace}
   # Make a new one
   mkdir -p ${workspace}
   # Copy the binary into the right location
   cp $BIN ${workspace}/input
 
-  docker build -t fpvm_patch .
-  docker run --rm --mount type=bind,source=${workspace},target=/root/output fpvm_patch
-  # Run the patch, copying the results to the workspace folder
-  # docker buildx build --progress=plain -o $workspace .
+  ls -ltr ${workspace}
+
+  if [ ! -f ${workspace}/call_patches.csv ]; then
+    echo "Generating docker file"
+    docker build -t fpvm_patch .
+    echo "Running the patcher..."
+    /usr/bin/time docker run --rm --mount type=bind,source=${workspace},target=/root/output fpvm_patch
+  fi
 
 
   pushd $workspace
@@ -103,23 +110,24 @@ pushd ${PFX}
   e9compile.sh fpvm_magic.c
 
   echo "Patching executable"
+  ls -ltrh
   # patch the executable
   if [ "${memonly}" = "no" ]; then
       # patch mem and call insts with traps
       e9tool -M 'addr=call_patches[0]' -P 'before trap' \
              -M 'addr=mem_patches[0]' -P 'before trap' \
-             input --output input.patched_trap
+             ./input --output input.patched_trap
       # patch mem and call insts with magic
       e9tool -M "addr=call_patches[0]" -P "before fpvm_correctness_trap<naked>()@fpvm_magic" \
              -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
-             input --output input.patched_magic
+             ./input --output input.patched_magic
   else
       # patch meminsts with traps
       e9tool -M 'addr=mem_patches[0]' -P 'before trap' \
-             input --output input.patched_trap
+             ./input --output input.patched_trap
       # patch mem insts with magic
       e9tool -M "addr=mem_patches[0]" -P "fpvm_correctness_trap<naked>()@fpvm_magic" \
-             input --output input.patched_magic
+             ./input --output input.patched_magic
   fi
   
   #
@@ -148,9 +156,9 @@ pushd ${PFX}
     cp taintsink.timing ${BIN}.taintsink.timing
     cp analysis.out ${BIN}.analysis.out
     if [[ "${FPVM_WRAP}" == "reverse" ]] ; then
-	cp input.prewrapped ${BIN}.prewrapped
-	cp input.prewrapped ${BIN}.original
-	cp input.wrapped ${BIN}.wrapped
+      cp input.prewrapped ${BIN}.prewrapped
+      cp input.prewrapped ${BIN}.original
+      cp input.wrapped ${BIN}.wrapped
     fi
   fi
   
