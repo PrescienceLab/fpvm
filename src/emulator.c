@@ -441,7 +441,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       break;
       
     default:
-      ERROR("Cannot handle unknown op type %d\n", fi->common->op_type);
+      ERROR("Cannot handle unknown op type %d at %p\n", fi->common->op_type, fi->addr);
       return -1;
       break;
   }
