@@ -294,7 +294,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       }
 
       if (fi->common->op_size == 4) {
-        ERROR("Using vanilla op map for conversion instruction %d\n,",fi->common->op_type);
+        ERROR("Using vanilla op map for conversion instruction %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         func = op_map[fi->common->op_type][1];
