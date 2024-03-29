@@ -31,6 +31,12 @@ HW_TO_KERNEL_TIME=1000
 KERNEL_TO_USER_TIME=1000
 CALL_WRAP_TIME=40
 
+
+# Roquefort Numbers:
+HW_TO_KERNEL_TIME=200 # cycles
+KERNEL_TO_USER_TIME=1950 # cycles for SIGFPE, 478 for kernel module
+# call wrap at 40 or 50   (this should be the cost of a double indirect call, I think, which I have not measured yet)
+
 fpvm_locations = [
     # Currently, only look in a few locations.
 
@@ -361,13 +367,15 @@ def cmd_benchmark(args):
     use_fpvm = run_name != 'baseline'
     for run_idx in range(args.count):
       log = output / f'{run_name}_{run_idx}.fpvm_log'
-      print(f'Running {run_name}.{run_idx}')
-      usage = run_fpvm_binary(bin,
-                              args.argv,
-                              use_fpvm=use_fpvm,
-                              logfile=log,
-                              stdout=subprocess.DEVNULL,
-                              stderr=subprocess.DEVNULL)
+      print(f'Running {run_name}.{run_idx} into {log}')
+      with open(output / f'{run_name}_{run_idx}.stdout', 'w') as stdout:
+        with open(output / f'{run_name}_{run_idx}.stderr', 'w') as stderr:
+          usage = run_fpvm_binary(bin,
+                                  args.argv,
+                                  use_fpvm=use_fpvm,
+                                  logfile=log,
+                                  stdout=stdout,
+                                  stderr=stderr)
       print(f'    time: {usage["time"]}s')
       with open(log, "a") as f:
         f.write(f'fpvm time: real {usage["time"]:.4f} user {usage["utime"]:.4f} sys {usage["stime"]:.4f}\n')
