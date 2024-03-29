@@ -43,24 +43,24 @@ function maybe_rebuild {
 
 
 
-# pushd ${FPVM_HOME}/test/nas
-#   make clean
-#   cp config/make-gcc.def config/make.def
-#
-#   for b in mg bt sp lu ft is cg ep; do
-#     # Don't recompile if you don't need to
-#     if [ ! -e bin/${b}/${b} ]; then
-#       make ${b^^} CLASS=$NAS_CLASS
-#       mkdir -p bin/${b}
-#       mv bin/${b}.${NAS_CLASS} bin/${b}/${b}
-#     fi
-#   done
-#
-#
-#   for b in mg bt sp lu ft is cg ep; do
-#     run_test "nas_${b}" bin/${b}/${b}
-#   done
-# popd
+pushd ${FPVM_HOME}/test/nas
+  make clean
+  cp config/make-gcc.def config/make.def
+
+  for b in mg bt sp lu ft is cg ep; do
+    # Don't recompile if you don't need to
+    if [ ! -e bin/${b}/${b} ]; then
+      make ${b^^} CLASS=$NAS_CLASS
+      mkdir -p bin/${b}
+      mv bin/${b}.${NAS_CLASS} bin/${b}/${b}
+    fi
+  done
+
+
+  for b in mg bt sp lu ft is cg ep; do
+    run_test "nas_${b}" bin/${b}/${b}
+  done
+popd
 
 
 maybe_rebuild test/lorenz/lorenz_attractor make -C ${FPVM_HOME}/test/lorenz lorenz_attractor
