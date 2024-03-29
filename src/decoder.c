@@ -1181,8 +1181,9 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
           // other segments are all base 0 in 64 bit mode.   It could be that
           // the segment descriptor can override the default size, though, but
           // I don't believe that's the case
-          ERROR("Cannot currently handle FS/GS override (TLS)\n");
-          ASSERT(0);
+          ERROR("Cannot currently handle FS/GS override (TLS) for rip=%p\n", fi->addr);
+          fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "bad inst: ");
+          // ASSERT(0);
           return -1;
         }
 
