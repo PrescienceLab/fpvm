@@ -1,57 +1,84 @@
-FPVM Tool 
-=========
+# The Floating Point Virtual Machine
 
 Copyright (c) 2021 Peter A. Dinda  Please see LICENSE file.
-
-This is a tool for floating point trap and emulate processing
-on x64.
-
+This is a tool for floating point trap and emulate processing on x64.
 This is a work in progress
 
+---
 
-Configuring, Building and Testing
---------------------
+## Configuring, Building and Testing
 
 To Configure:
-
-   $ make menuconfig
-
+```bash
+make menuconfig
+```
 
 To build:
-
-   $ make
+```bash
+make
+```
 
 
 To test:
-
-   $ make test
-
+```bash
+make test
+```
 
 To build kernel support:
-
-   $ cd kernel
-   $ ./kmod_build.sh
+```bash
+cd kernel
+./kmod_build.sh
+```
 
 To insert kernel support:
-
-   $ cd kernel
-   $ ./kmod_setup.sh
+```bash
+cd kernel
+./kmod_setup.sh
+```
    
+---
 
-Running
--------
+# Running FPVM
 
-To run against a binary:
+To run FPVM against a binary, you must first source the environment file to update your path:
+```bash
+source ./ENV
+```
 
-   $ LD_PRELOAD=build/fpvm.so exec.exe
+Then, you can use the `fpvm` tool to run your program:
+```bash
+fpvm run ./a.out
+```
 
-or
+This will, most likely, take quite a while on the first run.
+This is due to the need to patch non-virtualizable parts of the binary.
+Subsequent runs of the same (hash-identical) binary will be much faster, as the results are stored in `~/.cache/fpvm/`.
 
-   $ scripts/fpvm_run.sh exec.exe
+If you wish to run the patched binary directly, you can get the exact hash identifier using the following command:
+```bash
+# Ask FPVM to patch lu
+$ fpvm patch nas/lu
+--- snip ---
+/~.cache/fpvm/b63c5a2f481baaf3bed306a32edb1d6df8b43a24-patch-lu/lu.magic
+# ^ output of patching (potentially already cached)
+```
 
+This will patch the binary, then print the cache location of the resultant binary.
+You can then run that binary directly using:
+```bash
+fpvm run --nopatch ~/.cache/fpvm/b63c5a2f481baaf3bed306a32edb1d6df8b43a24-patch-lu/lu.magic
+```
+
+
+**NOTE:** It's important that you always run `FPVM` through the above tool.
+Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
+
+--- 
+## Configuration
 
 The following environment variables configure FPVM:
 
+```
 FPVM_AGGRESSIVE=y|n
     Aggressive interposition (you almost always want this)
 
@@ -70,36 +97,16 @@ FPVM_EXCEPT_LIST=inv;den;div;over;under;prec
 FPVM_FORCE_ROUNDING=pos|neg|zer|nea;daz;ftz
     Force rounding mode and subnormal handling on the hardware
     You almost certainly do not want to set this variable
-    
+```
 
-Testing with pre-patched benchmarks
------------------------------------
+---
 
-There are 5 binaries that we have processed for the purposes of testing fpvm.
-- fbench
-- lorenz_attractor
-- three_body_simulation
-- enzo
-- nas/cg
-
-To run one of these on FPVM, use the "test.sh" file:
-   
-   $ ./test.sh fbench
-   $ ./test.sh lorenz
-   $ ./test.sh three-body
-   $ ./test.sh enzo
-   $ ./test.sh nas
-
-There will be information printed to stdout, but all output files will go to:
-./test_output/<test-name>
-
-
-Forcing SSE
------------
+## Forcing SSE
 
 To compile SSE only:
-
+```bash
 gcc ..... -mno-avx -mno-avx2 -mno-avx512f -mno-avx512pf -mno-avx512er -mno-avx512cd
+```
 
 To force libc to use SSE only:
 
