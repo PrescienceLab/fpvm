@@ -81,7 +81,9 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
-  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: "); 
+  if (CONFIG_DEBUG) {
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"considering: ");
+  }
 
   // PAD this is bogus - what this should do is interact
   // with a model of the FP that determines if any input
@@ -148,11 +150,37 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
   }
 }
 
+static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src)
+{
+  int ss = fi->common->op_size;
+  int ds = fi->common->dest_size;
+  
+  // write it to the destination based on size
+  // note that this ignores sign extension or zero extension
+  // for copying small into large integer
+  if (ds > ss) {
+    int diff = ds - ss;
+    if (fi->extend==FPVM_INST_ZERO_EXTEND) {
+      memcpy(dest,src,ss);
+      memset(dest+ss,0,diff);
+    } else if (fi->extend==FPVM_INST_SIGN_EXTEND) {
+      int64_t it =
+	ss==1 ? *(int8_t *)src :
+	ss==2 ? *(int16_t *)src :
+	ss==4 ? *(int32_t *)src :
+	ss==8 ? *(int64_t *)src : ({ abort(); 99; });
+      memcpy(dest,&it,ds);   // only works for little-endian
+    }
+  } else {
+    memcpy(dest,src,ds);
+  }
+}
+
 
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
-  DEBUG("Emulating instruction\n");
-
-  //  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: "); 
+  if (CONFIG_DEBUG) {
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: ");
+  }
   
 #if CONFIG_TELEMETRY_PROMOTIONS
   // currently only promotions will be tracked
@@ -520,6 +548,11 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
     rc |= func(&special, dest, src1, src2, src3, src4);
 
+    if (fi->common->op_type==FPVM_OP_MOVE && fi->common->op_size!=fi->common->dest_size) {
+      uint64_t temp = *(uint64_t*)dest;
+      sign_extend_write(fi,dest,&temp);
+    }
+    
     // handle CMPXX writeback here because where to place the result depends on
     // the instruction set.  It is only for SSE that we overwrite the
     // whole destination with either an all 1 pattern or an all 0 pattern
@@ -530,7 +563,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	*(uint32_t*)dest = !*(uint32_t*)dest - 1U;
       }
     }
-    
+
     DEBUG(
         "after math call, we have (%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
 	dest, FETCH(dest,dest_step),
@@ -844,9 +877,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
       goto complex_transforms_sources_yikes;
     }
-
+    
     DEBUG("handling move count=%d os=%d ds=%d ss=%d os0=%d os1=%d\n",count,os,ds,os0,os1);
-
+    
     for (int i=0;i<count;i++, dest+=ds, src2+=os) {
       // copy out entire quantity, based on size
       uint64_t temp =
@@ -859,7 +892,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       uint64_t old = temp;
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
-
+      
+      sign_extend_write(fi,dest,&temp);
+      
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {
 	DEBUG("value actually demoted (%016lx => %016lx)\n",old,temp);
@@ -868,27 +903,10 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	DEBUG("value not demoted (not actually a nanbox)\n");
       }
 #endif
-      // and write it to the destination based on size
-      // note that this ignores sign extension or zero extension
-      // for copying small into large integer
-      if (ds > os) {
-	int diff = ds - os;
-	if (fi->extend==FPVM_INST_ZERO_EXTEND) {
-	  memcpy(dest,&temp,os);
-	  memset(dest+os,0,diff);
-	} else if (fi->extend==FPVM_INST_SIGN_EXTEND) {
-	  int64_t it = temp;
-	  it <<= 64 - os*8;
-	  it >>= os*8;  // sign extend
-	  memcpy(dest,&it,ds);
-	}
-      } else {
-	memcpy(dest,&temp,ds);
-      }
+      
+      DEBUG("completed emulation of move successully\n");
+      return FPVM_CORRECT_SKIP;
     }
-    
-    DEBUG("completed emulation of move successully\n");
-    return FPVM_CORRECT_SKIP;
   }
 
  complex_transforms_sources_yikes:
