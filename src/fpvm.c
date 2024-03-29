@@ -1602,6 +1602,7 @@ static void fp_trap_handler(ucontext_t *uc)
     // bind operands
     START_PERF(mc, bind);
     if (fpvm_decoder_bind_operands(fi, &regs)) {
+      ERROR("Could not bind operands. instindex=%d\n", instindex);
       END_PERF(mc, bind);
       if (instindex==0) { 
 	ERROR("Cannot bind operands of first (rip %p) of sequence:",rip);
