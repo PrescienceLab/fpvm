@@ -98,6 +98,12 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
       DEBUG("should emulate - is a move\n");
       return 1;
     }
+
+    // always disallow op types related to correctness
+    if (fi->common->op_type>=FPVM_OP_WARN) {
+      DEBUG("should not emulate - is correctness based\n");
+      return 0;
+    }
     
     if (fi->common->op_size != 8) {
       // currently only can nanbox in doubles
