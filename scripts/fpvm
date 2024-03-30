@@ -245,7 +245,9 @@ def run_fpvm_binary(bin: Path,
 def cmd_run(args):
   bin = path_expand(args.binary)
 
-  if not args.nopatch and not args.baseline:
+  if args.onlywrap:
+    bin = get_wrapped_binary(bin)
+  elif not args.nopatch and not args.baseline:
     # If we aren't running a baseline, wrap the binary
     bin = get_patched_binary(bin)
 
@@ -456,6 +458,7 @@ if __name__ == '__main__':
   p.add_argument('-o', help='Optional argument')
   p.add_argument('--baseline', help='Run the original binary w/ timing', action='store_true')
   p.add_argument('--nopatch', help='Dont patch the binary', action='store_true')
+  p.add_argument('--onlywrap', help='Only wrap the binary', action='store_true')
   p.add_argument('binary', help='Binary to run')
   p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
   p.set_defaults(func=cmd_run)
