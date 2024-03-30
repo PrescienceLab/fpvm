@@ -133,6 +133,7 @@ typedef struct fpvm_inst {
   fpvm_inst_extend_t  extend;
 
   int is_simple_mov;
+  int is_gpr_mov;
   
 
   // note that operands are in the *intel* order, not the at&t order
