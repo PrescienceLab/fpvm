@@ -78,6 +78,26 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
     [FPVM_OP_MOVE] = {vanilla_move_float, vanilla_move_double},
 };
 
+static int fpvm_movb(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  *(uint8_t*)dest = *(uint8_t*)src1;
+  return 0;
+}
+
+static int fpvm_movs(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  *(uint16_t*)dest = *(uint16_t*)src1;
+  return 0;
+}
+
+static int fpvm_movd(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  *(uint32_t*)dest = *(uint32_t*)src1;
+  return 0;
+}
+
+static int fpvm_movq(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  *(uint64_t*)dest = *(uint64_t*)src1;
+  return 0;
+}
+
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
@@ -150,11 +170,8 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
   }
 }
 
-static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src)
+static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
 {
-  int ss = fi->common->op_size;
-  int ds = fi->common->dest_size;
-  
   // write it to the destination based on size
   // note that this ignores sign extension or zero extension
   // for copying small into large integer
@@ -459,17 +476,43 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       dest = fi->operand_addrs[0];
       src1 = fi->operand_addrs[1];
 
-      // use the vanilla operation in all cases
-      // since we do not need to inspect a nanboxed value
-      if (fi->common->op_size == 4) {
-	DEBUG("handling 4 byte move\n");
-        func = vanilla_op_map[fi->common->op_type][0];
-      } else if (fi->common->op_size == 8) {
-	DEBUG("handling 8 byte move\n");
-        func = vanilla_op_map[fi->common->op_type][1];
+      if (fi->is_gpr_mov) {
+        // NOTE: we are overriding this
+        dest_step = fi->operand_sizes[0];
+        src_step = fi->operand_sizes[1];
+        count = 1;
+        // printf("yo d:%d s:%d os:%d\n", dest_step, src_step, fi->common->op_size);
+        // printf("   s: 0x%zx\n", *(uint64_t*)src1);
+        switch (src_step) {
+          case 1:
+            func = fpvm_movb;
+            break;
+          case 2:
+            func = fpvm_movs;
+            break;
+          case 4:
+            func = fpvm_movd;
+            break;
+          case 8:
+            func = fpvm_movq;
+            break;
+          default:
+            return -1;
+        }
+        // ...
       } else {
-        ERROR("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
-	return -1;
+        // use the vanilla operation in all cases
+        // since we do not need to inspect a nanboxed value
+        if (fi->common->op_size == 4) {
+    DEBUG("handling 4 byte move\n");
+          func = vanilla_op_map[fi->common->op_type][0];
+        } else if (fi->common->op_size == 8) {
+    DEBUG("handling 8 byte move\n");
+          func = vanilla_op_map[fi->common->op_type][1];
+        } else {
+          ERROR("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
+    return -1;
+        }
       }
 
       break;
@@ -546,11 +589,21 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     if (!skip_pro && src4) { s4 = *((uint64_t*)src4); }
 #endif
 
+    // if (fi->common->op_type==FPVM_OP_MOVE) {
+    //   if (fi->is_gpr_mov) {
+    //     fprintf(stderr, "\e[31m");
+    //   } else {
+    //     fprintf(stderr, "\e[32m");
+    //   }
+    //   fprintf(stderr, "%p ", fi->addr);
+    //   fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"INS_MOV: ");
+    //   fprintf(stderr, "\e[0m");
+    // }
     rc |= func(&special, dest, src1, src2, src3, src4);
 
-    if (fi->common->op_type==FPVM_OP_MOVE && fi->common->op_size!=fi->common->dest_size) {
+    if (fi->common->op_type==FPVM_OP_MOVE && fi->is_simple_mov && fi->is_gpr_mov && src_step != dest_step) {
       uint64_t temp = *(uint64_t*)dest;
-      sign_extend_write(fi,dest,&temp);
+      sign_extend_write(fi,dest,&temp, dest_step, src_step);
     }
     
     // handle CMPXX writeback here because where to place the result depends on
@@ -745,6 +798,8 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 fpvm_emulator_correctness_response_t
 fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions)
 {
+
+  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"patch inst: ");
   DEBUG("handling problematic instruction of type %d (%s) is_vector=%d has_mask=%d op_size=%u dest_size=%u\n",
 	fi->common->op_type,
 	fi->common->op_type == FPVM_OP_MOVE ? "MOVE" :
@@ -893,7 +948,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
       
-      sign_extend_write(fi,dest,&temp);
+      sign_extend_write(fi,dest,&temp, ds, os);
       
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {

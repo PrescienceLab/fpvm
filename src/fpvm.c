@@ -618,7 +618,7 @@ static void abort_operation(char *reason) {
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
     ORIG_IF_CAN(sigaction, SIGFPE, &oldsa_fpe, 0);
     ORIG_IF_CAN(sigaction, SIGINT, &oldsa_int, 0);
-    ORIG_IF_CAN(sigaction, SIGSEGV, &oldsa_segv, 0);
+    // ORIG_IF_CAN(sigaction, SIGSEGV, &oldsa_segv, 0);
 
     execution_context_t *mc = find_my_execution_context();
 
@@ -2145,12 +2145,12 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction, SIGINT, &sa, &oldsa_int);
 
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_sigaction = sigsegv_handler;
-  sa.sa_flags |= SA_SIGINFO;
-  sigemptyset(&sa.sa_mask);
-  sigaddset(&sa.sa_mask, SIGSEGV);
-  ORIG_IF_CAN(sigaction, SIGSEGV, &sa, &oldsa_segv);
+  // memset(&sa, 0, sizeof(sa));
+  // sa.sa_sigaction = sigsegv_handler;
+  // sa.sa_flags |= SA_SIGINFO;
+  // sigemptyset(&sa.sa_mask);
+  // sigaddset(&sa.sa_mask, SIGSEGV);
+  // ORIG_IF_CAN(sigaction, SIGSEGV, &sa, &oldsa_segv);
 
   ORIG_IF_CAN(feenableexcept, exceptmask);
 

@@ -15,7 +15,7 @@ C_LIB  = -lm
 
 C_INC = -I../common
 
-CFLAGS = -O3 -pthread -fno-pic -no-pie
+CFLAGS = -g -O1 -pthread -fno-pic -no-pie
 CLINKFLAGS = -lm
 UCC	= gcc -O -fno-pic -no-pie
 BINDIR	= ../bin

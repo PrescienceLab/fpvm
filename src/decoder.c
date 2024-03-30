@@ -647,6 +647,8 @@ static int decode_to_common(fpvm_inst_t *fi) {
 
 static int decode_move(fpvm_inst_t *fi) {
   cs_insn *inst = (cs_insn *)fi->internal;
+  fi->is_simple_mov = 0;
+  fi->is_gpr_mov = 0;
 
   // simple_mov means scalar, perhaps with sign extension
   switch (inst->id) {
@@ -654,9 +656,20 @@ static int decode_move(fpvm_inst_t *fi) {
   case X86_INS_MOVD:
   case X86_INS_MOVQ:
   case X86_INS_MOVNTQ:
-  case X86_INS_MOVZX:
   case X86_INS_VMOVD:
   case X86_INS_VMOVQ:
+    fi->is_simple_mov = 1;
+    fi->is_gpr_mov = 1;
+    fi->extend = FPVM_INST_SIGN_EXTEND;
+    break;
+
+  case X86_INS_MOVZX:
+    fi->is_simple_mov = 1;
+    fi->is_gpr_mov = 1;
+    fi->extend = FPVM_INST_ZERO_EXTEND;
+    break;
+
+
   case X86_INS_MOVSS:
   case X86_INS_MOVSD:
   case X86_INS_MOVNTSD:
@@ -1134,12 +1147,14 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         // PAD: I don't think any of the instructions we will see in SSE2 will
         // include an immediate, so this is here for completeness ERROR("Huh - saw
         // an immediate!\n");
+        // if (o->size != 8) return -1; // NCW: Remove this comment to get immediates to work
         fi->operand_addrs[fi->operand_count] = &o->imm;
-        fi->operand_sizes[fi->operand_count] = 8;
+        fi->operand_sizes[fi->operand_count] = o->size;
 	UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
-        DEBUG("Mapped immediate %016lx at %p (%u)\n", o->imm, fi->operand_addrs[fi->operand_count],
-            fi->operand_sizes[fi->operand_count]);
+        DEBUG("Mapped immediate %016lx at %p (%u) (pc = %p)\n", o->imm, fi->operand_addrs[fi->operand_count],
+            fi->operand_sizes[fi->operand_count], fi->addr);
         fi->operand_count++;
+        // return -1;
 
         break;
 
