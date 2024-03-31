@@ -2,6 +2,11 @@
 #include <signal.h>
 #include <ucontext.h>
 
+// to allow access to fs base and gs base
+#include <asm/prctl.h>  
+#include <sys/syscall.h>
+#include <unistd.h>
+
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
@@ -652,6 +657,7 @@ static int decode_move(fpvm_inst_t *fi) {
 
   // simple_mov means scalar, perhaps with sign extension
   switch (inst->id) {
+  // integer moves
   case X86_INS_MOV:
   case X86_INS_MOVD:
   case X86_INS_MOVQ:
@@ -660,16 +666,23 @@ static int decode_move(fpvm_inst_t *fi) {
   case X86_INS_VMOVQ:
     fi->is_simple_mov = 1;
     fi->is_gpr_mov = 1;
-    fi->extend = FPVM_INST_SIGN_EXTEND;
+    fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
-
+    
   case X86_INS_MOVZX:
     fi->is_simple_mov = 1;
     fi->is_gpr_mov = 1;
     fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
 
+  case X86_INS_MOVSX:
+  case X86_INS_MOVSXD:
+    fi->is_simple_mov = 1;
+    fi->is_gpr_mov = 0;
+    fi->extend = FPVM_INST_SIGN_EXTEND;
+    break;
 
+  // floating point moves
   case X86_INS_MOVSS:
   case X86_INS_MOVSD:
   case X86_INS_MOVNTSD:
@@ -677,15 +690,12 @@ static int decode_move(fpvm_inst_t *fi) {
   case X86_INS_VMOVSS:
   case X86_INS_VMOVSD:
     fi->is_simple_mov = 1;
+    fi->is_gpr_mov = 0;
     fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
-  case X86_INS_MOVSX:
-  case X86_INS_MOVSXD:
-    fi->is_simple_mov = 1;
-    fi->extend = FPVM_INST_SIGN_EXTEND;
-    break;
   default:
-    fi->is_simple_mov=0;
+    fi->is_simple_mov = 0;
+    fi->is_gpr_mov = 0;
     fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
   }
@@ -1145,16 +1155,16 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 
       case X86_OP_IMM:
         // PAD: I don't think any of the instructions we will see in SSE2 will
-        // include an immediate, so this is here for completeness ERROR("Huh - saw
-        // an immediate!\n");
-        // if (o->size != 8) return -1; // NCW: Remove this comment to get immediates to work
+        // include an immediate, so this is here to handle integer instruction
+	// immediates, which we will use later, for example, in sequence emulation
+	// of moves
         fi->operand_addrs[fi->operand_count] = &o->imm;
         fi->operand_sizes[fi->operand_count] = o->size;
 	UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
-        DEBUG("Mapped immediate %016lx at %p (%u) (pc = %p)\n", o->imm, fi->operand_addrs[fi->operand_count],
-            fi->operand_sizes[fi->operand_count], fi->addr);
+        DEBUG("Mapped immediate %016lx at %p (%u) (pc = %p)\n",
+	      o->imm, fi->operand_addrs[fi->operand_count],
+	      fi->operand_sizes[fi->operand_count], fi->addr);
         fi->operand_count++;
-        // return -1;
 
         break;
 
@@ -1190,22 +1200,32 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
             mo->segment, reg_name(mo->segment), mo->disp, mo->base, reg_name(mo->base), mo->index,
             reg_name(mo->index), mo->scale);
 
+	uint64_t segbase = 0;
+
         if (mo->segment == X86_REG_FS || mo->segment == X86_REG_GS) {
-          // PAD: This is thread-local storage
-          // Note that all other segment overrides are ignored because
-          // other segments are all base 0 in 64 bit mode.   It could be that
+	  // PAD: This is thread-local storage
+	  // Note that all other segment overrides are ignored because
+	  // other segments are all base 0 in 64 bit mode.   It could be that
           // the segment descriptor can override the default size, though, but
           // I don't believe that's the case
-          ERROR("Cannot currently handle FS/GS override (TLS) for rip=%p\n", fi->addr);
-          fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "bad inst: ");
-          // ASSERT(0);
+	  if (syscall(SYS_arch_prctl,
+		      mo->segment == X86_REG_FS ?  ARCH_GET_FS: ARCH_GET_GS,
+		      &segbase)) {
+	    ERROR("cannot read %sbase from kernel\n",
+		  mo->segment == X86_REG_FS ?  "fs" : "gs");
+	    fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "fs/gs-base using inst: ");
+	    return -1;
+	  }
+	  DEBUG("read %sbase from kernel as %016lx\n",
+		mo->segment == X86_REG_FS ?  "fs" : "gs",
+		segbase);
           return -1;
         }
 
         // Now we ignore the segment assuming we are in 64 bit mode
 
         // Now process in the usual order disp(base, index, scale)
-        uint64_t addr = mo->disp;
+        uint64_t addr = segbase + mo->disp;
 
         if (mo->base != X86_REG_INVALID) {
           //
