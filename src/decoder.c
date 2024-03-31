@@ -677,8 +677,10 @@ static int decode_move(fpvm_inst_t *fi) {
 
   case X86_INS_MOVSX:
   case X86_INS_MOVSXD:
+    //ERROR("see movsx/sxd\n");
+    //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"movsx(d): ");
     fi->is_simple_mov = 1;
-    fi->is_gpr_mov = 0;
+    fi->is_gpr_mov = 0;   // but this really is a simple gpr move..
     fi->extend = FPVM_INST_SIGN_EXTEND;
     break;
 
@@ -1161,6 +1163,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         fi->operand_addrs[fi->operand_count] = &o->imm;
         fi->operand_sizes[fi->operand_count] = o->size;
 	UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+	//	fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "immediate using inst: ");
         DEBUG("Mapped immediate %016lx at %p (%u) (pc = %p)\n",
 	      o->imm, fi->operand_addrs[fi->operand_count],
 	      fi->operand_sizes[fi->operand_count], fi->addr);

@@ -170,7 +170,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
   }
 }
 
-static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
+static void extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
 {
   // write it to the destination based on size
   // note that this ignores sign extension or zero extension
@@ -178,6 +178,8 @@ static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, in
   if (ds > ss) {
     int diff = ds - ss;
     if (fi->extend==FPVM_INST_ZERO_EXTEND) {
+      //ERROR("zero extend %d to %d\n",ss,ds);
+      //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"zero extend for: ");
       memcpy(dest,src,ss);
       memset(dest+ss,0,diff);
     } else if (fi->extend==FPVM_INST_SIGN_EXTEND) {
@@ -185,8 +187,16 @@ static void sign_extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, in
 	ss==1 ? *(int8_t *)src :
 	ss==2 ? *(int16_t *)src :
 	ss==4 ? *(int32_t *)src :
-	ss==8 ? *(int64_t *)src : ({ abort(); 99; });
+	ss==8 ? *(int64_t *)src : ({ ERROR("bad source size %d in extend_write\n",ss); abort(); 99; });
       memcpy(dest,&it,ds);   // only works for little-endian
+      //ERROR("sign extend %d to %d, it=0x%016lx dest=0x%016lx rip=%p\n", ss, ds, it, *(uint64_t*)dest,fi->addr);
+      //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"sign extend for: ");
+    } else if (fi->extend==FPVM_INST_IGNORE_EXTEND) {
+      //ERROR("ignore extend %d to %d\n",ss,ds);
+      //fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"ignore extend for: ");
+      memcpy(dest,src,ss);
+    } else {
+      ERROR("unknown extension %d from %d to %d\n",fi->extend,ss,ds);
     }
   } else {
     memcpy(dest,src,ds);
@@ -504,10 +514,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         // use the vanilla operation in all cases
         // since we do not need to inspect a nanboxed value
         if (fi->common->op_size == 4) {
-    DEBUG("handling 4 byte move\n");
+	  DEBUG("handling 4 byte move\n");
           func = vanilla_op_map[fi->common->op_type][0];
         } else if (fi->common->op_size == 8) {
-    DEBUG("handling 8 byte move\n");
+	  DEBUG("handling 8 byte move\n");
           func = vanilla_op_map[fi->common->op_type][1];
         } else {
           ERROR("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
@@ -599,11 +609,12 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     //   fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"INS_MOV: ");
     //   fprintf(stderr, "\e[0m");
     // }
+    
     rc |= func(&special, dest, src1, src2, src3, src4);
 
     if (fi->common->op_type==FPVM_OP_MOVE && fi->is_simple_mov && fi->is_gpr_mov && src_step != dest_step) {
       uint64_t temp = *(uint64_t*)dest;
-      sign_extend_write(fi,dest,&temp, dest_step, src_step);
+      extend_write(fi,dest,&temp, dest_step, src_step);
     }
     
     // handle CMPXX writeback here because where to place the result depends on
@@ -948,7 +959,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
       
-      sign_extend_write(fi,dest,&temp, ds, os);
+      extend_write(fi,dest,&temp, ds, os);
       
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {

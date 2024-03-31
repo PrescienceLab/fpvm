@@ -119,7 +119,8 @@ typedef enum {
 
 typedef enum {
   FPVM_INST_ZERO_EXTEND,
-  FPVM_INST_SIGN_EXTEND
+  FPVM_INST_SIGN_EXTEND,
+  FPVM_INST_IGNORE_EXTEND,
 } fpvm_inst_extend_t;
 
 
