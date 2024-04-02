@@ -1,0 +1,142 @@
+/**
+ *
+ * Part of FPVM
+ *
+ * Copyright (c) 2018 Peter A. Dinda - see LICENSE
+ *
+ * This code does the following:
+ *  - provides definitions for FPVM opcode construction
+ *  - provides an interface for running a sequence of opcodes.
+ */
+
+#include <fpvm/vm.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+// Return the size of the instruction pointed to by `code`
+size_t fpvm_opcode_size(uint8_t *code) {
+  switch (*code) {
+#define OPCODE(opcode)       \
+  case fpvm_opcode_##opcode: \
+    return 1;
+#define OPCODE_ARG(opcode, type) \
+  case fpvm_opcode_##opcode:     \
+    return 1 + sizeof(type);
+#include <fpvm/opcodes.inc>
+    default:
+      return 0;
+  }
+}
+
+
+
+// Return the name of the instruction pointed to by `code`
+const char *fpvm_opcode_name(uint8_t *code) {
+  switch (*code) {
+#define OPCODE(opcode)       \
+  case fpvm_opcode_##opcode: \
+    return #opcode;
+#define OPCODE_ARG(opcode, type) \
+  case fpvm_opcode_##opcode:     \
+    return #opcode;
+#include <fpvm/opcodes.inc>
+    default:
+      return "unk";
+  }
+}
+
+void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
+  const char *op = fpvm_opcode_name(code);
+  fprintf(stream, "  %-10s ", op);
+
+  void *arg = code + 1;
+
+  switch (*code) {
+#define OPCODE_ARG(opcode, type)                                                  \
+  case fpvm_opcode_##opcode:                                                      \
+    fprintf(stream, _Generic((type)0, void * : "%p", default : "%d"), *(type *)arg); \
+    break;
+#include <fpvm/opcodes.inc>
+  }
+
+  fprintf(stream, "\n");
+}
+
+
+void fpvm_disas(FILE *stream, uint8_t *code, size_t codesize) {
+  off_t o = 0;
+
+  while (o < codesize) {
+    if (*code == fpvm_opcode_invalid) {
+      fprintf(stream, "---\n");
+      break;
+    }
+    size_t length = fpvm_opcode_size(code);
+    if (length == 0) break;
+
+    fprintf(stream, "%04x:  ", o);
+
+    // print out the bytes
+    for (int i = 0; i < 9; i++) {
+      if (i < length) {
+        fprintf(stream, "%02x ", code[i]);
+      } else {
+        fprintf(stream, "   ");
+      }
+    }
+
+    fpvm_disas_opcode(stream, code);
+    o += length;
+    code += length;
+  }
+}
+
+
+static void fpvm_builder_ensure(fpvm_builder_t *b, unsigned needed) {
+  if (b->size <= b->offset + needed) {
+    b->size *= 2;
+    b->code = realloc(b->code, b->size);
+  }
+}
+
+void fpvm_builder_init(fpvm_builder_t *b) {
+  memset(b, 0, sizeof(*b));
+  b->size = 64;
+  b->offset = 0;
+  b->code = calloc(b->size, 1);
+}
+
+void fpvm_builder_deinit(fpvm_builder_t *b) {
+  free(b->code);
+  memset(b, 0xFA, sizeof(*b));
+}
+
+
+
+static void fpvm_build_raw8(fpvm_builder_t *b, uint8_t val) {
+  // ensure we can push 1 byte
+  fpvm_builder_ensure(b, 1);
+  b->code[b->offset++] = val;
+}
+
+static void fpvm_build_rawv(fpvm_builder_t *b, void *val, int length) {
+  // ensure we can push `length` bytes
+  fpvm_builder_ensure(b, length);
+  memcpy(b->code + b->offset, val, length);
+  b->offset += length;
+}
+
+
+#define OPCODE(opcode)                          \
+  void fpvm_build_##opcode(fpvm_builder_t *b) { \
+    fpvm_build_raw8(b, fpvm_opcode_##opcode);   \
+  }
+
+#define OPCODE_ARG(opcode, type)                          \
+  void fpvm_build_##opcode(fpvm_builder_t *b, type arg) { \
+    fpvm_build_raw8(b, fpvm_opcode_##opcode);             \
+    fpvm_build_rawv(b, &arg, sizeof(type));               \
+  }
+#include <fpvm/opcodes.inc>

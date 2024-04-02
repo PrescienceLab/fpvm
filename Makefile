@@ -35,27 +35,37 @@ foo:
 
 # assembly
 $(BUILD)/%.s.o: %.s
-	@mkdir -p $(dir $@)
-	$(AS) -fPIC -shared -c $< -o $@
+	@@mkdir -p $(dir $@)
+	@echo " AS   $<"
+	@$(AS) -fPIC -shared -c $< -o $@
 
 $(BUILD)/%.S.o: %.S
 	@mkdir -p $(dir $@)
-	$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
+	@echo " AS   $<"
+	@$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
 
 # c source
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
+	@echo " CC   $<"
+	@$(CC) $(CFLAGS) -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
 
 # c++ source
 $(BUILD)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
+	@echo " CXX  $<"
+	@$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
 # $(CC) $(CFLAGS) -fPIC -shared $(OBJS) -lcapstone -lmpfr -lm -ldl -lstdc++ -o $@
 $(TARGET): $(BUILD) $(OBJS) 
-	@echo "Linking"
-	$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+	@echo " LD   $(TARGET)"
+	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+
+
+
+build/vmtest: $(BUILD) $(OBJS) bin/vmtest.c
+	@$(CC) $(CFLAGS) bin/vmtest.c src/vm.c -o build/vmtest -Wl,-rpath -Wl,./lib/-lm -ldl
+
 
 build/test_fpvm: test_fpvm.c
 	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test_fpvm.c -lm -o $@
