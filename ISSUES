@@ -35,7 +35,7 @@ double-pend   - works, validates
 fbench        - works, validates
 ffbench       - works, validates
 miniaero      - compiled, collected dynamic calls, patched, fails on vsqrtsd
-enzo          - compiled, collecting dynamic calls, patched, ...
+enzo          - compiled, collected dynamic calls, patched, ...
 lbm           - ?
 
 NAS WITH GCC: 
