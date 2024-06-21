@@ -810,7 +810,7 @@ fpvm_emulator_correctness_response_t
 fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions)
 {
 
-  fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"patch inst: ");
+  // fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"patch inst: ");
   DEBUG("handling problematic instruction of type %d (%s) is_vector=%d has_mask=%d op_size=%u dest_size=%u\n",
 	fi->common->op_type,
 	fi->common->op_type == FPVM_OP_MOVE ? "MOVE" :

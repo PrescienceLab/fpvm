@@ -368,10 +368,11 @@ def cmd_benchmark(args):
     amortized = []
     use_fpvm = run_name != 'baseline'
     for run_idx in range(args.count):
-      log = output / f'{run_name}_{run_idx}.fpvm_log'
-      print(f'Running {run_name}.{run_idx} into {log}')
-      with open(output / f'{run_name}_{run_idx}.stdout', 'w') as stdout:
-        with open(output / f'{run_name}_{run_idx}.stderr', 'w') as stderr:
+      factor = f'{run_name}_{run_idx}'
+      log = output / f'{factor}.fpvm_log'
+      print(f'Running {factor} into {log}')
+      with open(output / f'{factor}.stdout', 'w') as stdout:
+        with open(output / f'{factor}.stderr', 'w') as stderr:
           usage = run_fpvm_binary(bin,
                                   args.argv,
                                   use_fpvm=use_fpvm,
@@ -385,11 +386,14 @@ def cmd_benchmark(args):
 
       # If this run is using FPVM, make sure to record telemetry, perf, and amortized metrics.
       if use_fpvm:
+
+
+
         t = get_telemetry(log)
-        pd.DataFrame([t]).to_csv(output / f'{run_name}_{run_idx}_telem.csv', index=False)
+        pd.DataFrame([t]).to_csv(output / f'{factor}_telem.csv', index=False)
 
         perf_metrics = get_performance(log)
-        pd.DataFrame(perf_metrics).to_csv(output / f'{run_name}_{run_idx}_perf.csv', index=False)
+        pd.DataFrame(perf_metrics).to_csv(output / f'{factor}_perf.csv', index=False)
 
         # Create a nicer version of the perf data for use here:
         perf = {}
@@ -423,7 +427,14 @@ def cmd_benchmark(args):
 
     if use_fpvm:
       pd.DataFrame(amortized).to_csv(output / f'{run_name}_amortized.csv', index=False)
+      # Use peter's script to generate the graph inputs
+      os.system(f'cd {output} && generate_graph_inputs.pl {name} {factor} {HW_TO_KERNEL_TIME} {KERNEL_TO_USER_TIME} {CALL_WRAP_TIME} {factor}.fpvm_log {log}')
     pd.DataFrame(usages).to_csv(output / f'{run_name}_rusage.csv', index=False)
+
+
+
+  # ...
+
 
 
 

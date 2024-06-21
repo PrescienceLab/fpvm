@@ -2059,8 +2059,8 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
-// these are auto-generated
-#include <fpvm/additional_wrappers.inc>
+// This is defined in the LD_PRELOAD for the wrapper
+extern int fpvm_setup_additional_wrappers();
 
 static int bringup() {
   // fpvm_gc_init();
