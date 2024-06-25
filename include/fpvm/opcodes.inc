@@ -8,12 +8,15 @@
 #endif
 
 // These are opcodes with no arguments.
-//     op name     type      arg_name
-OPCODE(alt_add)
-OPCODE(alt_mul)
 OPCODE(check) // Check if the TOS is a nan or not
-OPCODE(done) // This instruction is done.
+OPCODE(todo) // just a marker instruction
 
+// Pop address, load 64, push result
+OPCODE(ld64)
+OPCODE(imul)
+OPCODE(iadd)
+
+OPCODE_ARG(xcall1, void*)
 
 // These are opcodes with arguments
 OPCODE_ARG(imm8, uint8_t)
@@ -23,6 +26,11 @@ OPCODE_ARG(imm64, uint64_t)
 OPCODE_ARG(immptr, void*)
 
 
+
+// Push a pointer to an offset in the machine context
+OPCODE_ARG(mcptr, uint16_t)
+// Push a pointer to an offset into the fpregs context
+OPCODE_ARG(fpptr, uint16_t)
 
 
 // Make sure to undef the macros here, so we don't have to

@@ -13,10 +13,15 @@
 
 #include <fpvm/decoder.h>
 #include <fpvm/fpvm_common.h>
+#include <fpvm/vm.h>
 
 #include <capstone/capstone.h>
 
+
 static csh handle;
+
+
+
 
 
 
@@ -791,7 +796,10 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
     fpvm_decoder_free_inst(fi);
     return 0;
   }
-  
+
+
+  fpvm_vm_compile(fi);
+
   return fi;
 }
 

@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <fpvm/fpvm_common.h>
+#include <fpvm/decoder.h>
 
 typedef struct {
   // The code that is currently executing
@@ -32,6 +34,13 @@ void fpvm_builder_deinit(fpvm_builder_t *);
 
 // Step one instruction in the virtual machine
 void fpvm_vm_step(fpvm_vm_t *);
+
+
+/**
+ * @brief: compile an instruction into bytecode
+ * @returns: 0 on success, nonzero otherwise (negative number)
+ */
+int fpvm_vm_compile(fpvm_inst_t *fi);
 
 
 #define OPCODE(opcode) void fpvm_build_##opcode(fpvm_builder_t *b);

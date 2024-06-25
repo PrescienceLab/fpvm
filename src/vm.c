@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include "fpvm/decoder.h"
 
 
 // Return the size of the instruction pointed to by `code`
@@ -49,14 +51,14 @@ const char *fpvm_opcode_name(uint8_t *code) {
 
 void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   const char *op = fpvm_opcode_name(code);
-  fprintf(stream, "  %-10s ", op);
+  fprintf(stream, "%-14s ", op);
 
   void *arg = code + 1;
 
   switch (*code) {
-#define OPCODE_ARG(opcode, type)                                                  \
-  case fpvm_opcode_##opcode:                                                      \
-    fprintf(stream, _Generic((type)0, void * : "%p", default : "%d"), *(type *)arg); \
+#define OPCODE_ARG(opcode, type)                                                      \
+  case fpvm_opcode_##opcode:                                                          \
+    fprintf(stream, _Generic((type)0, void * : "%p", default : "$%d"), *(type *)arg); \
     break;
 #include <fpvm/opcodes.inc>
   }
@@ -68,24 +70,25 @@ void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
 void fpvm_disas(FILE *stream, uint8_t *code, size_t codesize) {
   off_t o = 0;
 
+  fprintf(stream, "<%p>:\n", code);
   while (o < codesize) {
     if (*code == fpvm_opcode_invalid) {
-      fprintf(stream, "---\n");
+      fprintf(stream, "\n");
       break;
     }
     size_t length = fpvm_opcode_size(code);
     if (length == 0) break;
 
-    fprintf(stream, "%04x:  ", o);
+    fprintf(stream, "  %04x: ", o);
 
-    // print out the bytes
-    for (int i = 0; i < 9; i++) {
-      if (i < length) {
-        fprintf(stream, "%02x ", code[i]);
-      } else {
-        fprintf(stream, "   ");
-      }
-    }
+    // // print out the bytes
+    // for (int i = 0; i < 9; i++) {
+    //   if (i < length) {
+    //     fprintf(stream, "%02x ", code[i]);
+    //   } else {
+    //     fprintf(stream, "   ");
+    //   }
+    // }
 
     fpvm_disas_opcode(stream, code);
     o += length;
@@ -103,7 +106,7 @@ static void fpvm_builder_ensure(fpvm_builder_t *b, unsigned needed) {
 
 void fpvm_builder_init(fpvm_builder_t *b) {
   memset(b, 0, sizeof(*b));
-  b->size = 64;
+  b->size = 1;
   b->offset = 0;
   b->code = calloc(b->size, 1);
 }
@@ -140,3 +143,20 @@ static void fpvm_build_rawv(fpvm_builder_t *b, void *val, int length) {
     fpvm_build_rawv(b, &arg, sizeof(type));               \
   }
 #include <fpvm/opcodes.inc>
+
+
+
+int fpvm_vm_compile(fpvm_inst_t *fi) {
+#ifdef __amd64__
+#include <fpvm/vm.h>
+  extern int fpvm_vm_x86_compile(fpvm_inst_t *);
+  return fpvm_vm_x86_compile(fi);
+#else
+#error "FPVM's vm only works on x86_64 for now..."
+#endif  // __amd64__
+}
+
+void vm_test_decode(fpvm_inst_t *fi) {
+  printf("vm test: %p\n", fi);
+  fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
+}
