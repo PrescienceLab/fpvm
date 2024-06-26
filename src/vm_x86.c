@@ -252,29 +252,33 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
 
   int op_count = x86->op_count;
 
+  int lanes = 1;
 
-  switch (fi->common->op_type) {
-    case FPVM_OP_ADD:
-    case FPVM_OP_SUB:
-    case FPVM_OP_MUL:
-    case FPVM_OP_DIV:
-    case FPVM_OP_MIN:
-    case FPVM_OP_MAX:
-      if (op_count == 2) {
-        compile_operand(&b, fi, &x86->operands[1], 0);  // src2
-        compile_operand(&b, fi, &x86->operands[0], 0);  // src1
-        fpvm_build_dup(&b);                             // dest
-        fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
-      } else if (op_count == 3) {
-        // 3 operand (dest != src1)
-        compile_operand(&b, fi, &x86->operands[2], 0);  // src2
-        compile_operand(&b, fi, &x86->operands[1], 0);  // src1
-        compile_operand(&b, fi, &x86->operands[0], 0);  // dest
-        fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
-      }
-      break;
-    default:
-      break;
+
+  for (int vl = 0; vl < lanes; vl++) {
+    switch (fi->common->op_type) {
+      case FPVM_OP_ADD:
+      case FPVM_OP_SUB:
+      case FPVM_OP_MUL:
+      case FPVM_OP_DIV:
+      case FPVM_OP_MIN:
+      case FPVM_OP_MAX:
+        if (op_count == 2) {
+          compile_operand(&b, fi, &x86->operands[1], vl);  // src2
+          compile_operand(&b, fi, &x86->operands[0], vl);  // src1
+          fpvm_build_dup(&b);                              // dest
+          fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+        } else if (op_count == 3) {
+          // 3 operand (dest != src1)
+          compile_operand(&b, fi, &x86->operands[2], vl);  // src2
+          compile_operand(&b, fi, &x86->operands[1], vl);  // src1
+          compile_operand(&b, fi, &x86->operands[0], vl);  // dest
+          fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+        }
+        break;
+      default:
+        break;
+    }
   }
 
 

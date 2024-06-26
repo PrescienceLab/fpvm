@@ -763,9 +763,10 @@ void fpvm_decoder_free_inst(fpvm_inst_t *fi) {
 asm (
 ".global my_instruction\n"
 "my_instruction:\n"
-"   addsd %xmm0, %xmm1\n"
+// "   addsd %xmm0, %xmm1\n"
+// "   addsd (%rax), %xmm0\n"
 // "   vaddsd %xmm0, %xmm1, %xmm2\n"
-// "   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
 );
 
 extern uint8_t my_instruction[];
