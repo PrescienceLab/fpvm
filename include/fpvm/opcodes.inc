@@ -12,12 +12,15 @@ OPCODE(check) // Check if the TOS is a nan or not
 OPCODE(todo) // just a marker instruction
 OPCODE(done) // Marker that the instruction is done.
 
+
+OPCODE(dup) // Copy the top of stack
 // Pop address, load 64, push result
 OPCODE(ld64)
 // Pop two integers, multiply them, and push result
 OPCODE(imul)
 OPCODE(iadd)
 OPCODE(fdiv)
+
 
 OPCODE_ARG(xcall1, void*)
 
@@ -29,6 +32,9 @@ OPCODE_ARG(imm32, uint32_t)
 OPCODE_ARG(imm64, uint64_t)
 OPCODE_ARG(immptr, void*)
 
+
+// Calls an op_t with a null special, 1 dest, and 2 sources.
+OPCODE_ARG(call2s1d, void*)
 
 
 

@@ -4,6 +4,13 @@
 #include <fpvm/fpvm_common.h>
 #include <fpvm/vm.h>
 #include <fpvm/decoder.h>
+#include <fpvm/emulator.h>
+#include <fpvm/fpvm_common.h>
+
+#include <fpvm/fp_ops.h>
+#include <fpvm/number_system.h>
+#include <fpvm/nan_boxing.h>
+#include <fpvm/gc.h>
 
 #include <capstone/capstone.h>
 
@@ -24,6 +31,11 @@
 #define IS_NORMAL_FPR(r) (IS_XMM(r) || IS_YMM(r) || IS_ZMM(r))
 
 #define IS_FPR(r) (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) || IS_MMX(r))
+
+
+
+// HACK
+FPVM_NUMBER_SYSTEM_INIT();
 
 // the map is from capstone regnum to mcontext gpr, offset (assuming
 // little endian), size
@@ -228,7 +240,6 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   printf("x86 vm test: %p\n", fi);
   fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
 
-
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
@@ -239,18 +250,42 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   fpvm_builder_t b;  // a code builder
   fpvm_builder_init(&b);
 
+  int op_count = x86->op_count;
 
-  for (int i = x86->op_count - 1; i >= 0; i--) {
-    cs_x86_op *o = &x86->operands[i];
-    compile_operand(&b, fi, o, 0);
+
+  switch (fi->common->op_type) {
+    case FPVM_OP_ADD:
+    case FPVM_OP_SUB:
+    case FPVM_OP_MUL:
+    case FPVM_OP_DIV:
+    case FPVM_OP_MIN:
+    case FPVM_OP_MAX:
+      if (op_count == 2) {
+        compile_operand(&b, fi, &x86->operands[1], 0);  // src2
+        compile_operand(&b, fi, &x86->operands[0], 0);  // src1
+        fpvm_build_dup(&b);                             // dest
+        fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+      } else if (op_count == 3) {
+        // 3 operand (dest != src1)
+        compile_operand(&b, fi, &x86->operands[2], 0);  // src2
+        compile_operand(&b, fi, &x86->operands[1], 0);  // src1
+        compile_operand(&b, fi, &x86->operands[0], 0);  // dest
+        fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+      }
+      break;
+    default:
+      break;
   }
 
 
-  // TODO: build the opcode
-  // fpvm_build_fdiv(&b);
-  /* fpvm_build_xcall1(&b, (void*)foo); */
+  /* for (int i = x86->op_count - 1; i >= 0; i--) { */
+  /*   cs_x86_op *o = &x86->operands[i]; */
+  /*   compile_operand(&b, fi, o, 0); */
+  /* } */
+  /* fpvm_build_dup(&b); */
 
-  // TODO
+
+
   if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
     printf("TODO: handle sideeffect\n");
   }
@@ -258,16 +293,13 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
 
 
 
-  fpvm_build_done(&b); // Insert the 'done' instruction
+  fpvm_build_done(&b);  // Insert the 'done' instruction
   fpvm_disas(stdout, b.code, b.size);
 
-  fpvm_vm_t vm;
-  bzero(&vm, sizeof vm);
 
-
-  printf("\n\n====================================================\n");
-  fpvm_vm_init(&vm, b.code, NULL, NULL);
-  while (fpvm_vm_step(&vm)) {}
+  /* printf("\n\n====================================================\n"); */
+  /* fpvm_vm_init(&vm, b.code, NULL, NULL); */
+  /* while (fpvm_vm_step(&vm)) {} */
 
   fpvm_builder_deinit(&b);
 

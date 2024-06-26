@@ -8,12 +8,14 @@
  *  - provides definitions for FPVM opcode construction
  *  - provides an interface for running a sequence of opcodes.
  */
+#define _GNU_SOURCE
 
 #include <fpvm/vm.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <dlfcn.h>
 #include "fpvm/decoder.h"
 
 
@@ -49,6 +51,17 @@ const char *fpvm_opcode_name(uint8_t *code) {
   }
 }
 
+
+static void _disas_operand_pointer(FILE *stream, void *ptr) {
+  Dl_info dli;
+  dladdr(ptr, &dli);
+  if (dli.dli_sname) {
+    fprintf(stream, "%s <%p>", dli.dli_sname, ptr);
+  } else {
+    fprintf(stream, "%p", ptr);
+  }
+}
+
 void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   const char *op = fpvm_opcode_name(code);
   fprintf(stream, "%-14s ", op);
@@ -56,9 +69,12 @@ void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   void *arg = code + 1;
 
   switch (*code) {
-#define OPCODE_ARG(opcode, type)                                                      \
-  case fpvm_opcode_##opcode:                                                          \
-    fprintf(stream, _Generic((type)0, void * : "%p", default : "$%d"), *(type *)arg); \
+#define OPCODE_ARG(opcode, type) \
+  case fpvm_opcode_##opcode:     \
+    _Generic((type)0, \
+    void * : _disas_operand_pointer(stream, *(void**)arg), \
+    default : fprintf(stream, "$%d", *(type*)arg) \
+    );          \
     break;
 #include <fpvm/opcodes.inc>
   }
@@ -165,7 +181,7 @@ void vm_test_decode(fpvm_inst_t *fi) {
 
 
 void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpstate) {
-  bzero(vm, sizeof(fpvm_vm_t));
+  memset(vm, 0, sizeof(fpvm_vm_t));
   vm->mcstate = mcstate;
   vm->fpstate = fpstate;
   vm->code = code;
