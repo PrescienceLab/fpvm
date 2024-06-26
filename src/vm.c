@@ -160,3 +160,65 @@ void vm_test_decode(fpvm_inst_t *fi) {
   printf("vm test: %p\n", fi);
   fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
 }
+
+
+
+
+void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpstate) {
+  bzero(vm, sizeof(fpvm_vm_t));
+  vm->mcstate = mcstate;
+  vm->fpstate = fpstate;
+  vm->code = code;
+  vm->sp = vm->stack;
+}
+
+#define PUSH(v) (*(vm->sp++) = (uint64_t)(v))  // Push a value to the stack
+#define POP(T) (*(T *)(--vm->sp))              // Pop from the stack as type T
+#define O(T) (*(T *)(operand))                 // Read the operand of the instruction as type T
+
+int fpvm_vm_step(fpvm_vm_t *vm) {
+  printf("\n\nBEFORE:\n");
+  fpvm_vm_dump(vm, stdout);
+
+  uint8_t opcode = *vm->code;
+  // May or may not be one of these...
+  void *operand = vm->code + 1;
+
+  // Move the instruction pointer
+  vm->code += fpvm_opcode_size(vm->code);
+
+  switch (opcode) {
+    case fpvm_opcode_fpptr:
+      PUSH(vm->fpstate + O(uint16_t));
+      break;
+
+    case fpvm_opcode_mcptr:
+      PUSH(vm->mcstate + O(uint16_t));
+      break;
+
+    default:
+      fprintf(stderr, "WARNING: UNHANDLED OPCODE\n");
+      return 0;
+  }
+  printf("AFTER:\n");
+  fpvm_vm_dump(vm, stdout);
+
+  return 1;
+}
+
+
+
+void fpvm_vm_dump(fpvm_vm_t *vm, FILE *stream) {
+  fprintf(stream, "Opcode:\n");
+  fpvm_disas_opcode(stream, vm->code);
+
+  // Print the stack.
+  fprintf(stream, "Stack:\n");
+  int ind = 0;
+  for (uint64_t *sp = vm->sp - 1; sp >= vm->stack; sp--) {
+    fprintf(stream, "  %04d: 0x%016zx", ind, *sp);
+    if (ind == 0) fprintf(stream, " <- tos");
+    fprintf(stream, "\n");
+    ind++;
+  }
+}

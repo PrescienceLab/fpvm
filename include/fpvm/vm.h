@@ -6,10 +6,28 @@
 #include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
 
+
+#define FPVM_VM_STACK_SIZE 128
 typedef struct {
   // The code that is currently executing
   uint8_t *code;
+
+  // Register files
+  uint8_t *mcstate;
+  uint8_t *fpstate;
+
+
+  uint64_t *sp; // the vm's stack pointer
+  uint64_t stack[FPVM_VM_STACK_SIZE];
+
 } fpvm_vm_t;
+
+
+void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpstate);
+// Step one instruction in the virtual machine, returning
+// 0 if no more instructions are available to be run.
+int fpvm_vm_step(fpvm_vm_t *);
+void fpvm_vm_dump(fpvm_vm_t *, FILE *stream);
 
 
 typedef enum {
@@ -32,8 +50,6 @@ typedef struct {
 void fpvm_builder_init(fpvm_builder_t *);
 void fpvm_builder_deinit(fpvm_builder_t *);
 
-// Step one instruction in the virtual machine
-void fpvm_vm_step(fpvm_vm_t *);
 
 
 /**

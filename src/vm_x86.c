@@ -168,7 +168,7 @@ static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o
     // and capstone better not use some out of range psuedoregister
     compile_gpr_ptr(b, mo->base);
     fpvm_build_ld64(b);
-    
+
     /* reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base); */
     /* addr += fr->mcontext->gregs[MCREG(m)]; */
     /* // in rip-relative mode, rip is the address of the next instruction */
@@ -224,7 +224,6 @@ static void compile_operand(
   }
 }
 
-
 int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   printf("x86 vm test: %p\n", fi);
   fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
@@ -246,12 +245,29 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
     compile_operand(&b, fi, o, 0);
   }
 
+
+  // TODO: build the opcode
+  // fpvm_build_fdiv(&b);
+  /* fpvm_build_xcall1(&b, (void*)foo); */
+
   // TODO
   if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
     printf("TODO: handle sideeffect\n");
   }
 
+
+
+
+  fpvm_build_done(&b); // Insert the 'done' instruction
   fpvm_disas(stdout, b.code, b.size);
+
+  fpvm_vm_t vm;
+  bzero(&vm, sizeof vm);
+
+
+  printf("\n\n====================================================\n");
+  fpvm_vm_init(&vm, b.code, NULL, NULL);
+  while (fpvm_vm_step(&vm)) {}
 
   fpvm_builder_deinit(&b);
 
