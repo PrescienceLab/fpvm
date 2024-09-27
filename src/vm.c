@@ -64,7 +64,9 @@ static void _disas_operand_pointer(FILE *stream, void *ptr) {
 
 void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   const char *op = fpvm_opcode_name(code);
+  fprintf(stream, "\e[32m");
   fprintf(stream, "%-14s ", op);
+  fprintf(stream, "\e[0m");
 
   void *arg = code + 1;
 
@@ -95,18 +97,23 @@ void fpvm_disas(FILE *stream, uint8_t *code, size_t codesize) {
     size_t length = fpvm_opcode_size(code);
     if (length == 0) break;
 
-    fprintf(stream, "  %04x: ", o);
+    fprintf(stream, "  %04x | ", o);
 
-    // // print out the bytes
-    // for (int i = 0; i < 9; i++) {
-    //   if (i < length) {
-    //     fprintf(stream, "%02x ", code[i]);
-    //   } else {
-    //     fprintf(stream, "   ");
-    //   }
-    // }
+    // print out the bytes
+    fprintf(stream, "\e[90m");
+    for (int i = 0; i < 9; i++) {
+      if (i < length) {
+        fprintf(stream, "%02x ", code[i]);
+      } else {
+        fprintf(stream, "   ");
+      }
+    }
+    fprintf(stream, "\e[0m");
+    fprintf(stream, "| ");
 
+    // fprintf(stream, "\e[32m");
     fpvm_disas_opcode(stream, code);
+    // fprintf(stream, "\e[0m");
     o += length;
     code += length;
   }
