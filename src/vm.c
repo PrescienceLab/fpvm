@@ -85,7 +85,10 @@ void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
 }
 
 
-void fpvm_disas(FILE *stream, uint8_t *code, size_t codesize) {
+void fpvm_builder_disas(FILE *stream, fpvm_builder_t *b) {
+  uint8_t *code = b->code;
+  uint64_t codesize = b->size;
+  
   off_t o = 0;
 
   fprintf(stream, "<%p>:\n", code);

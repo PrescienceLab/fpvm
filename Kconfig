@@ -1,5 +1,13 @@
 mainmenu "FPVM Configuration"
 
+config HAVE_MAIN
+    bool "Add a main function"
+    default n
+    help
+       This compiles it with a main function
+       that can be used for testing without LD_PRELOAD
+       This is for hacking around on the VM
+      
 config NO_OUTPUT
     bool "Disable output"
     default n

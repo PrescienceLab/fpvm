@@ -245,10 +245,15 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   cs_x86 *x86 = &det->x86;
 
 
+  fpvm_builder_t *bp = malloc(sizeof(fpvm_builder_t));
 
+  if (!bp) {
+    ERROR("failed to allocate builder\n");
+    return -1;
+  }
 
-  fpvm_builder_t b;  // a code builder
-  fpvm_builder_init(&b);
+  
+  fpvm_builder_init(bp);
 
   int op_count = x86->op_count;
 
@@ -264,16 +269,16 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
       case FPVM_OP_MIN:
       case FPVM_OP_MAX:
         if (op_count == 2) {
-          compile_operand(&b, fi, &x86->operands[1], vl);  // src2
-          compile_operand(&b, fi, &x86->operands[0], vl);  // src1
-          fpvm_build_dup(&b);                              // dest
-          fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+          compile_operand(bp, fi, &x86->operands[1], vl);  // src2
+          compile_operand(bp, fi, &x86->operands[0], vl);  // src1
+          fpvm_build_dup(bp);                              // dest
+          fpvm_build_call2s1d(bp, op_map[fi->common->op_type][0]);
         } else if (op_count == 3) {
           // 3 operand (dest != src1)
-          compile_operand(&b, fi, &x86->operands[2], vl);  // src2
-          compile_operand(&b, fi, &x86->operands[1], vl);  // src1
-          compile_operand(&b, fi, &x86->operands[0], vl);  // dest
-          fpvm_build_call2s1d(&b, op_map[fi->common->op_type][0]);
+          compile_operand(bp, fi, &x86->operands[2], vl);  // src2
+          compile_operand(bp, fi, &x86->operands[1], vl);  // src1
+          compile_operand(bp, fi, &x86->operands[0], vl);  // dest
+          fpvm_build_call2s1d(bp, op_map[fi->common->op_type][0]);
         }
         break;
       default:
@@ -281,33 +286,21 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
     }
   }
 
-
   /* for (int i = x86->op_count - 1; i >= 0; i--) { */
   /*   cs_x86_op *o = &x86->operands[i]; */
-  /*   compile_operand(&b, fi, o, 0); */
+  /*   compile_operand(bp, fi, o, 0); */
   /* } */
-  /* fpvm_build_dup(&b); */
-
-
+  /* fpvm_build_dup(bp); */
 
   if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
     printf("TODO: handle sideeffect\n");
   }
 
+  fpvm_build_done(bp);  // Insert the 'done' instruction
 
-
-
-  fpvm_build_done(&b);  // Insert the 'done' instruction
-  fpvm_disas(stdout, b.code, b.size);
-
-
-  /* printf("\n\n====================================================\n"); */
-  /* fpvm_vm_init(&vm, b.code, NULL, NULL); */
-  /* while (fpvm_vm_step(&vm)) {} */
-
-  fpvm_builder_deinit(&b);
-
-  return -1;
+  fi->codegen = bp;
+  
+  return 0;
 }
 
 

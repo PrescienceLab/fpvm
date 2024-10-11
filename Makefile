@@ -24,7 +24,9 @@ CXX = g++
 CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
+
 TARGET=build/fpvm.so
+
 all: $(TARGET) # build/test_fpvm
 
 .PHONY: foo test_lorenz
@@ -60,6 +62,10 @@ $(BUILD)/%.cpp.o: %.cpp
 $(TARGET): $(BUILD) $(OBJS) 
 	@echo " LD   $(TARGET)"
 	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+
+build/fpvm_main: $(BUILD) $(OBJS) 
+	@echo " LD   build/fpvm_main"
+	@$(CC) $(CFLAGS) $(OBJS) -o build/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
 
 

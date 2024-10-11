@@ -510,7 +510,11 @@ static void show_current_fe_exceptions()
 }
 */
 
+#if CONFIG_HAVE_MAIN
+static void fpvm_init(void);
+#else
 static __attribute__((constructor )) void fpvm_init(void);
+#endif
 
 #if DEBUG_OUTPUT
 
@@ -1455,7 +1459,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 static void fp_trap_handler(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
-  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP]; // pointer to subtract instruction
   uint8_t *start_rip = rip;
 
   int inst_promotions = 0, inst_demotions = 0, inst_clobbers = 0;
@@ -1510,7 +1514,7 @@ static void fp_trap_handler(ucontext_t *uc)
 #define DUMP_CUR_INSTR()
 #endif
     
-  fpvm_inst_t *fi = 0;
+  fpvm_inst_t *fi = 0; //fi is pointer to decoded instruction, decoded is one we will emulate (we don't have it yet, so set to 0)
   int do_insert = 0;
   char instbuf[256];
   int instindex = 0;
@@ -1522,7 +1526,7 @@ static void fp_trap_handler(ucontext_t *uc)
   // instindex = index of current instruction in sequence
   // rip = address of current instruction
   
-  for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) {
+  for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) { // Pretend it only executes once, normally a seq
 
     DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
 
@@ -1580,8 +1584,12 @@ static void fp_trap_handler(ucontext_t *uc)
       }
     }
     
-    DUMP_CUR_INSTR();
-    
+    DUMP_CUR_INSTR(); // macro that prints it out (sanity check)
+    // Instruction is currently unbound(no mapping), bind xmm0 and xmm1 with actual values
+    // We could bind to immediate, register, or memory location
+    // OS has dumped register out into memory for us, bind every operand with a memory address
+    // OS has called us because of the signal
+    // one reason for virtual vm: do this once (don't need to decode and bind over and over again)
     
     // acquire pointers to the GP and FP register state
     // from the mcontext.
@@ -1591,7 +1599,7 @@ static void fp_trap_handler(ucontext_t *uc)
     // so this always reflects the current
     fpvm_regs_t regs;
     
-    regs.mcontext = &uc->uc_mcontext;
+    regs.mcontext = &uc->uc_mcontext; // pointer to where the kernel dumped all your registers so you can restore it later
     
     // PAD: This stupidly just treats everything as SSE2
     // and must be fixed
@@ -1601,7 +1609,7 @@ static void fp_trap_handler(ucontext_t *uc)
     
     // bind operands
     START_PERF(mc, bind);
-    if (fpvm_decoder_bind_operands(fi, &regs)) {
+    if (fpvm_decoder_bind_operands(fi, &regs)) { // when we are done, everything is bound (bound instruction)
       if (instindex == 0) ERROR("Could not bind operands. instindex=%d\n", instindex);
       END_PERF(mc, bind);
       if (instindex==0) { 
@@ -1650,7 +1658,7 @@ static void fp_trap_handler(ucontext_t *uc)
     // #endif
     
     START_PERF(mc, emulate);
-    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers)) {
+    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers)) { // call emulator to emulate instruction
       END_PERF(mc, emulate);
       if (instindex == 0) {
         ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
@@ -1678,7 +1686,7 @@ static void fp_trap_handler(ucontext_t *uc)
     DEBUG("instruction emulation created %d promotions, %d demotions, and %d clobbers; sequence so far has %d promotions, %d demotions, and %d clobbers\n", inst_promotions, inst_demotions, inst_clobbers, seq_promotions, seq_demotions, seq_clobbers);
 #endif
     
-    rip += fi->length;
+    rip += fi->length; // skipping the original instruction, just don't need to run since we emulated
     
     // DEBUG("Emulation done:\n");
     // #if DEBUG_OUTPUT
@@ -1689,7 +1697,7 @@ static void fp_trap_handler(ucontext_t *uc)
     // #endif
     
     // Skip those instructions we just emulated.
-    uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+    uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip; // special place where kernel dumped all register contents, overwrite this, we overwrote some the registers and rip
     
     if (do_insert) {
       // put into the cache for next time
@@ -2059,8 +2067,10 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
+#if !CONFIG_HAVE_MAIN
 // This is defined in the LD_PRELOAD for the wrapper
 extern int fpvm_setup_additional_wrappers();
+#endif
 
 static int bringup() {
   // fpvm_gc_init();
@@ -2076,10 +2086,11 @@ static int bringup() {
     return -1;
   }
 
+#if !CONFIG_HAVE_MAIN
   if (fpvm_setup_additional_wrappers()) {
     ERROR("Some additional wrapper setup failed - ignoring\n");
   }
-
+#endif
   
   ORIG_IF_CAN(feclearexcept, exceptmask);
 
@@ -2262,8 +2273,14 @@ static void config_round_daz_ftz(char *buf) {
   DEBUG("Configuring rounding control to 0x%08x\n", our_mxcsr_round_daz_ftz_mask);
 }
 
+
+
 // Called on load of preload library
-static __attribute__((constructor)) void fpvm_init(void) {
+#if CONFIG_HAVE_MAIN
+static void fpvm_init(void) {
+#else
+static __attribute__((constructor )) void fpvm_init(void) {
+#endif
   INFO("init\n");
   //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
@@ -2312,7 +2329,11 @@ static __attribute__((constructor)) void fpvm_init(void) {
 }
 
 // Called on unload of preload library
+#if CONFIG_HAVE_MAIN
+static void fpvm_deinit(void) {
+#else
 static __attribute__((destructor)) void fpvm_deinit(void) {
+#endif
   DEBUG("deinit\n");
   dump_execution_contexts_info();
 
@@ -2321,3 +2342,77 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
   inited = 0;
   DEBUG("done\n");
 }
+
+
+ 
+
+#if CONFIG_HAVE_MAIN
+
+#include "fpvm/vm.h"
+ 
+asm (
+".global my_instruction\n"
+"my_instruction:\n"
+// "   addsd %xmm0, %xmm1\n"
+// "   addsd (%rax), %xmm0\n"
+// "   vaddsd %xmm0, %xmm1, %xmm2\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+"   addpd %xmm2, %xmm3\n"
+);
+
+extern uint8_t my_instruction[];
+ 
+int main(int argc, char *argv[])
+{
+  
+  INFO("hello world\n");
+
+  if (fpvm_decoder_init()) {
+    ERROR("cannot initialize decoder\n");
+    abort();
+  }
+  
+  fpvm_inst_t *fi = fpvm_decoder_decode_inst(my_instruction);
+
+  if (!fi) {
+    ERROR("cannot decode instruction\n");
+    abort();
+  }
+
+  if (fpvm_vm_compile(fi)) {
+    ERROR("cannot compile instruction\n");
+    abort();
+  }
+
+  INFO("successfully decoded and compiled instruction\n");
+  
+  INFO("Now displaying generated code\n");
+  fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
+
+
+  INFO("Now trying to execute generated code\n");
+
+  fpvm_vm_t vm;
+  
+  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, NULL, NULL); 
+  
+  int count=0;
+  while (1) {
+    INFO("executing instruction %d\n",count);
+    fpvm_vm_step(&vm);
+    count++;
+    if (count>60) {
+      ERROR("stopping early\n");
+      break;
+    }
+  }
+
+  return 0;
+}
+#endif

@@ -7,7 +7,7 @@
 #include "number_system.h"
 
 // generic operation type
-typedef int (*op_t)(
+typedef int (*op_t)( // op_t is pointer to function that takes all of these arguments
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4);
 
 typedef op_t op_map_t[2];  // single, double

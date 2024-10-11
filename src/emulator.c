@@ -33,7 +33,7 @@ FPVM_NUMBER_SYSTEM_INIT();
 // Interface TBD, put possibly as simple as the one for compiler-based approach
 
 static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
-    [0 ... FPVM_OP_LAST - 1] = {bad, bad},
+    [0 ... FPVM_OP_LAST - 1] = {bad, bad}, // initializer syntax (base is fill everything up with we can't do it)
     [FPVM_OP_ADD] = {vanilla_add_float, vanilla_add_double},
     [FPVM_OP_SUB] = {vanilla_sub_float, vanilla_sub_double},
     [FPVM_OP_MUL] = {vanilla_mul_float, vanilla_mul_double},
@@ -235,7 +235,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     DEBUG("Doing scalar instruction - (common operand size=%lu)\n",fi->common->op_size);
   }
 
-  switch (fi->common->op_type) {
+  switch (fi->common->op_type) { // the bulk of the work
       // unary
     case FPVM_OP_SQRT:
       dest = fi->operand_addrs[0];
@@ -262,7 +262,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_MIN:
     case FPVM_OP_MAX:
       // operands are in the intel order...
-      if (fi->operand_count == 2) {
+      if (fi->operand_count == 2) { // internally think 3 operands to make life easier
         dest = fi->operand_addrs[0];
         src1 = fi->operand_addrs[0];
         src2 = fi->operand_addrs[1];
@@ -276,10 +276,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         return -1;
       }
 
-      if (fi->common->op_size == 4) {
+      if (fi->common->op_size == 4) { // subsd, another version is subss (float instead of double), can't jam a pointer into 4 bytes
         ERROR("Using vanilla op map for float binop %d\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][0];
-      } else if (fi->common->op_size == 8) {
+      } else if (fi->common->op_size == 8) { // MAIN ONE TO FOCUS ON!
         func = op_map[fi->common->op_type][1];
       } else {
         ERROR("Cannot handle binary instruction with op_size = %d for float binop %d\n", fi->common->op_size,fi->common->op_type);
@@ -549,8 +549,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   // PAD: if count>1, then this is a vector instruction, and we
   // had better have the steps for all operands correct
 
-#define increment(a, step) (void *)(a ? (char *)a + step : 0)
-  for (int i = 0; i < count; i++, dest = increment(dest, dest_step),
+#define increment(a, step) (void *)(a ? (char *)a + step : 0) // Loop is only here to deal with VECTOR version of instruction, not SCALAR
+  for (int i = 0; i < count; i++, dest = increment(dest, dest_step), // pointer to destination, src1, src2
            src1 = increment(src1, src_step), src2 = increment(src2, src_step),
            src3 = increment(src3, src_step), src4 = increment(src4, src_step)) {
 #if CONFIG_DEBUG
@@ -563,7 +563,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       snprintf(buf,255,"%p",func);
     }
     DEBUG(
-        "%d/%d : calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), "
+        "%d/%d : calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), " // print what function we calling
         "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
 	i+1, count, buf,
 	special.byte_width, special.truncate, special.unordered, special.compare_type ,
@@ -601,7 +601,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     //   fprintf(stderr, "\e[0m");
     // }
 
-    rc |= func(&special, dest, src1, src2, src3, src4);
+    // special makes side effects
+    rc |= func(&special, dest, src1, src2, src3, src4); // might not use them all, it's all good
 
     if (fi->common->op_type==FPVM_OP_MOVE && fi->is_simple_mov && fi->is_gpr_mov && src_step != dest_step) {
       uint64_t temp = *(uint64_t*)dest;
@@ -1003,7 +1004,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     if (src3) { s3 = *((uint64_t*)src3); }
     if (src4) { s4 = *((uint64_t*)src4); }
 #endif
-    rc |= func(&special, dest, src1, src2, src3, src4);
+    rc |= func(&special, dest, src1, src2, src3, src4); // CALLING THE FUNCTION!
 #if CONFIG_TELEMETRY_PROMOTIONS
     if (dest) { *demotions += *((uint64_t*)dest)!=d;  DEBUG("demoted dest\n"); }
     if (src1 && src1!=dest) { *demotions += *((uint64_t*)src1)!=s1; DEBUG("demoted src1\n"); }

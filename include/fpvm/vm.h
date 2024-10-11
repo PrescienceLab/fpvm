@@ -38,7 +38,6 @@ typedef enum {
 } fpvm_opcode_t;
 
 
-void fpvm_disas(FILE *stream, uint8_t *code, size_t codesize);
 
 // A structure to help in building the opcode stream
 typedef struct {
@@ -50,6 +49,8 @@ typedef struct {
 void fpvm_builder_init(fpvm_builder_t *);
 void fpvm_builder_deinit(fpvm_builder_t *);
 
+
+void fpvm_builder_disas(FILE *stream, fpvm_builder_t *b);
 
 
 /**
