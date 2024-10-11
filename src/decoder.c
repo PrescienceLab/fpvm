@@ -801,7 +801,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
     return 0;
   }
 
-  return fi; // returning fpvm instruction
+  return fi;
 }
 
 int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix)
