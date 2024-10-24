@@ -62,7 +62,6 @@
     return 0;                                                                                   \
   }
   
-  // all the same thing, just call function that does the thing
 #define BIN_FUNC(TYPE, ITYPE, NAME, FUNC, SPEC, ISPEC)                                     \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
@@ -87,7 +86,7 @@
                                                                                            \
     return 0;                                                                              \
   }
-// gluing strings together for you, doesn't know what it's doing
+
 BIN_OP(double, uint64_t, add, +, "%lf", "%016lx");
 BIN_OP(double, uint64_t, sub, -, "%lf", "%016lx");
 BIN_OP(double, uint64_t, div, /, "%lf", "%016lx");
@@ -140,7 +139,6 @@ static inline float minf(float a, float b) {
   }
 }
 
-// built functions
 BIN_FUNC(double, uint64_t, max, maxd, "%lf", "%016lx");
 BIN_FUNC(double, uint64_t, min, mind, "%lf", "%016lx");
 BIN_FUNC(float, uint32_t, max, maxf, "%f", "%08x");

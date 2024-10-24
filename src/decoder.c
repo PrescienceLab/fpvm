@@ -644,7 +644,7 @@ static int decode_to_common(fpvm_inst_t *fi) {
   fi->addr = (void *)inst->address;
   fi->length = inst->size;
 
-  fi->common = &capstone_to_common[inst->id]; // look up in table, and translate to our convention
+  fi->common = &capstone_to_common[inst->id];
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
@@ -767,14 +767,14 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
 
   DEBUG("Decoding instruction at %p\n", addr);
 
-  size_t count = cs_disasm(handle, addr, 16, (uint64_t)addr, 1, &inst); // decodes an x86 instruction
+  size_t count = cs_disasm(handle, addr, 16, (uint64_t)addr, 1, &inst);
 
-  if (count != 1) { //inst point to representation of instruction
+  if (count != 1) {
     ERROR("Failed to decode instruction (return=%lu, errno=%d)\n", count, cs_errno(handle));
     return 0;
   }
 
-  fpvm_inst_t *fi = malloc(sizeof(fpvm_inst_t)); // fpvm_inst_t is higher level abstraction
+  fpvm_inst_t *fi = malloc(sizeof(fpvm_inst_t));
   if (!fi) {
     ERROR("Can't allocate instruction\n");
     return 0;
@@ -783,7 +783,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   fi->addr = addr;
   fi->internal = inst;
 
-  if (decode_to_common(fi)) { // fills out inst_common_t
+  if (decode_to_common(fi)) {
     DEBUG("Can't decode to common representation\n");
     fpvm_decoder_free_inst(fi);
     return 0;
@@ -1033,7 +1033,7 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
 // after this function is complete, every operand pointer in
 // fi will be pointing to the relavent memory location or a
 // a field (register snapshot) in fr.
-int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) { // regs_t: can look at any register we want
+int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
@@ -1066,7 +1066,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) { // regs_t: ca
 
   fi->operand_count = 0;
 
-  for (i = 0; i < x86->op_count; i++) { // for sub, walk thru ALL 2 operands. goal is have op0 point to xmm0, op1 point to where xmm1 is stored
+  for (i = 0; i < x86->op_count; i++) {
     cs_x86_op *o = &x86->operands[i];
     switch (o->type) {
       case X86_OP_REG:
@@ -1078,14 +1078,14 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) { // regs_t: ca
           // this is confusing that's the system-specific defn of an mcontext. it
           // may be that we have to explicitly handle FPRs beyond these by a dump
           // and restore chunk of assembly
-          ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) && ((o->reg - X86_REG_XMM0) < 16) && // can we handle this
+          ASSERT(IS_NORMAL_FPR(o->reg) && IS_XMM(o->reg) && ((o->reg - X86_REG_XMM0) < 16) &&
                  ((o->reg - X86_REG_XMM0) >= 0));
 
           if (IS_NORMAL_FPR(o->reg)) {
             if (IS_XMM(o->reg)) {
               // PAD: probably wrong for > xmm15
               fi->operand_addrs[fi->operand_count] =
-                  fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0); // differ by single unit, just 1 (where we start + 16 * 1), finding specific operand in memory [in memory copy of registers contents dumped by kernel]
+                  fr->fprs + fr->fpr_size * (o->reg - X86_REG_XMM0);
               if (fr->fpr_size >= 16) {
                 fi->operand_sizes[fi->operand_count] = 16;
 		UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
@@ -1237,7 +1237,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) { // regs_t: ca
         // Now we ignore the segment assuming we are in 64 bit mode
 
         // Now process in the usual order disp(base, index, scale)
-        uint64_t addr = segbase + mo->disp; // first add the displacement
+        uint64_t addr = segbase + mo->disp;
 
         if (mo->base != X86_REG_INVALID) {
           //
@@ -1256,7 +1256,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) { // regs_t: ca
           // PAD: this is probably OK, it just means there is no base register
         }
 
-        if (mo->index != X86_REG_INVALID) { // emulating D + rbase + (rindex * scale)
+        if (mo->index != X86_REG_INVALID) {
           // PAD: again, assuming the mapping to mcontext are correct and no
           // surprise pseudoregister
           reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);

@@ -125,11 +125,11 @@ typedef enum {
 } fpvm_inst_extend_t;
 
 
-typedef struct fpvm_inst { // wrapper for instruction, the thing we are emulating
-  void *addr; // of instruction
+typedef struct fpvm_inst {
+  void *addr;
   unsigned length;
 
-  fpvm_inst_common_t *common; // for everything in common
+  fpvm_inst_common_t *common;
 
   fpvm_inst_compare_t compare; 
   fpvm_inst_extend_t  extend;
@@ -142,7 +142,7 @@ typedef struct fpvm_inst { // wrapper for instruction, the thing we are emulatin
   unsigned operand_count;
   void *operand_addrs[16];     // where each operand is
   unsigned operand_sizes[16];  // size of operand (different from op_size in the
-                               // case of registers), //up to 16 opernads
+                               // case of registers)
 
   uint64_t *side_effect_addrs[8];
   // For x86:
