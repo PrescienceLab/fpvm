@@ -32,8 +32,8 @@ FPVM_NUMBER_SYSTEM_INIT();
 //
 // Interface TBD, put possibly as simple as the one for compiler-based approach
 
-static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
-    [0 ... FPVM_OP_LAST - 1] = {bad, bad}, // initializer syntax (base is fill everything up with we can't do it)
+op_map_t vanilla_op_map[FPVM_OP_LAST] = {
+    [0 ... FPVM_OP_LAST - 1] = {bad, bad},
     [FPVM_OP_ADD] = {vanilla_add_float, vanilla_add_double},
     [FPVM_OP_SUB] = {vanilla_sub_float, vanilla_sub_double},
     [FPVM_OP_MUL] = {vanilla_mul_float, vanilla_mul_double},

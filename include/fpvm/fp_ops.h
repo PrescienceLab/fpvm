@@ -7,8 +7,7 @@
 #include "number_system.h"
 
 // generic operation type
-typedef int (*op_t)( // op_t is pointer to function that takes all of these arguments
-    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4);
+typedef int (*op_t)(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4);
 
 typedef op_t op_map_t[2];  // single, double
 
@@ -50,3 +49,5 @@ static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *
   static op_map_t op_map[FPVM_OP_LAST] = {[0 ... FPVM_OP_LAST - 1] = {bad, bad}, \
                                                                                  \
       FP_BIN_OP()}
+
+extern op_map_t vanilla_op_map[FPVM_OP_LAST];

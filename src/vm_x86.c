@@ -258,7 +258,17 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   int op_count = x86->op_count;
 
   int lanes = 1;
-
+  op_t func = NULL;
+  if (fi->common->op_size == 4) {
+    ERROR("Using vanilla op map for float binop %d\n",fi->common->op_type);
+    func = vanilla_op_map[fi->common->op_type][0];
+  } else if (fi->common->op_size == 8) {
+    func = op_map[fi->common->op_type][1];
+  } else {
+    ERROR("Cannot handle binary instruction with op_size = %d for float binop %d\n", fi->common->op_size,fi->common->op_type);
+    ASSERT(0);
+    return -1;
+  }
 
   for (int vl = 0; vl < lanes; vl++) {
     switch (fi->common->op_type) {
@@ -272,13 +282,13 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
           compile_operand(bp, fi, &x86->operands[1], vl);  // src2
           compile_operand(bp, fi, &x86->operands[0], vl);  // src1
           fpvm_build_dup(bp);                              // dest
-          fpvm_build_call2s1d(bp, op_map[fi->common->op_type][0]);
+          fpvm_build_call2s1d(bp, func);
         } else if (op_count == 3) {
           // 3 operand (dest != src1)
           compile_operand(bp, fi, &x86->operands[2], vl);  // src2
           compile_operand(bp, fi, &x86->operands[1], vl);  // src1
           compile_operand(bp, fi, &x86->operands[0], vl);  // dest
-          fpvm_build_call2s1d(bp, op_map[fi->common->op_type][0]);
+          fpvm_build_call2s1d(bp, func);
         }
         break;
       default:

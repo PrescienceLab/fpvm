@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <dlfcn.h>
 #include "fpvm/decoder.h"
+#include <fpvm/fp_ops.h>
 
 
 // Return the size of the instruction pointed to by `code`
@@ -200,6 +201,7 @@ void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpsta
 
 #define PUSH(v) (*(vm->sp++) = (uint64_t)(v))  // Push a value to the stack
 #define POP(T) (*(T *)(--vm->sp))              // Pop from the stack as type T
+#define PEEK(T) (*(T *)(vm->sp-1))             // Read from the stack as type T
 #define O(T) (*(T *)(operand))                 // Read the operand of the instruction as type T
 
 int fpvm_vm_step(fpvm_vm_t *vm) {
@@ -220,6 +222,24 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
 
     case fpvm_opcode_mcptr:
       PUSH(vm->mcstate + O(uint16_t));
+      break;
+
+    case fpvm_opcode_dup:
+      uint64_t x = PEEK(uint64_t);
+      PUSH(x);
+      break;
+
+    case fpvm_opcode_call2s1d:
+      op_t op = O(op_t);
+      void *dest = POP(void *);
+      void *src1 = POP(void *);
+      void *src2 = POP(void *);
+
+      int error = op(NULL, dest, src1, src2, NULL, NULL);
+      if (error != 0) {
+        fprintf(stderr, "WARNING: OP FAILED\n");
+      }
+
       break;
 
     default:

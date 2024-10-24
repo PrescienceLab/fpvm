@@ -2400,7 +2400,10 @@ int main(int argc, char *argv[])
 
   fpvm_vm_t vm;
   
-  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, NULL, NULL); 
+  uint64_t gpregs[512];
+  char fpregs[4096];
+
+  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, gpregs, fpregs); 
   
   int count=0;
   while (1) {
