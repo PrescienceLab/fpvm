@@ -2348,21 +2348,28 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 asm (
 ".global my_instruction\n"
 "my_instruction:\n"
-// "   addsd %xmm0, %xmm1\n"
-// "   addsd (%rax), %xmm0\n"
-// "   vaddsd %xmm0, %xmm1, %xmm2\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
-"   addpd %xmm2, %xmm3\n"
+"   sqrtpd %xmm2, %xmm3\n"
+// "   maxsd %xmm2, %xmm3\n"
+// "   subpd %xmm2, %xmm3\n"
+// "   mulpd %xmm2, %xmm3\n"
 );
 
 extern uint8_t my_instruction[];
- 
+struct xmm {
+  double low;
+  double high;
+};
+
+void print_fpregs(struct xmm *fpregs) {
+  for (int i = 0; i < 16; i++) {
+    printf("%16.8lf ", fpregs[i].low);
+    if (i == 7) {
+      printf("\n");
+    }
+  }
+  printf("\n");
+}
+
 int main(int argc, char *argv[])
 {
   
@@ -2396,20 +2403,17 @@ int main(int argc, char *argv[])
   fpvm_vm_t vm;
   
   uint64_t gpregs[512];
-  char fpregs[4096];
-
-  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, gpregs, fpregs); 
-  
-  int count=0;
-  while (1) {
-    INFO("executing instruction %d\n",count);
-    fpvm_vm_step(&vm);
-    count++;
-    if (count>60) {
-      ERROR("stopping early\n");
-      break;
-    }
+  struct xmm fpregs[16];
+  for (int i = 0; i < 16; i++) {
+    fpregs[i].low = (double)i;
   }
+
+  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, (uint8_t*)gpregs, (uint8_t*)fpregs); 
+  print_fpregs(fpregs);
+
+  fpvm_vm_run(&vm);
+
+  print_fpregs(fpregs);
 
   return 0;
 }

@@ -215,6 +215,10 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
   // Move the instruction pointer
   vm->code += fpvm_opcode_size(vm->code);
 
+  op_t op;
+  void *src1, *src2, *dest;
+  uint64_t x;
+  int error;
   switch (opcode) {
     case fpvm_opcode_fpptr:
       PUSH(vm->fpstate + O(uint16_t));
@@ -225,17 +229,32 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       break;
 
     case fpvm_opcode_dup:
-      uint64_t x = PEEK(uint64_t);
+      x = PEEK(uint64_t);
       PUSH(x);
       break;
 
-    case fpvm_opcode_call2s1d:
-      op_t op = O(op_t);
-      void *dest = POP(void *);
-      void *src1 = POP(void *);
-      void *src2 = POP(void *);
+    case fpvm_opcode_done:
+      return 0;
 
-      int error = op(NULL, dest, src1, src2, NULL, NULL);
+    case fpvm_opcode_call1s1d:
+      op = O(op_t);
+      dest = POP(void *);
+      src1 = POP(void *);
+
+      error = op(NULL, dest, src1, NULL, NULL, NULL);
+      if (error != 0) {
+        fprintf(stderr, "WARNING: OP FAILED\n");
+      }
+
+      break;
+
+    case fpvm_opcode_call2s1d:
+      op = O(op_t);
+      dest = POP(void *);
+      src1 = POP(void *);
+      src2 = POP(void *);
+
+      error = op(NULL, dest, src1, src2, NULL, NULL);
       if (error != 0) {
         fprintf(stderr, "WARNING: OP FAILED\n");
       }
@@ -252,7 +271,20 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
   return 1;
 }
 
+int fpvm_vm_run(fpvm_vm_t *vm) {
+  int count=0;
+  while (1) {
+    INFO("executing instruction %d\n",count);
+    int result = fpvm_vm_step(vm);
+    count++;
+    if (result == 0) {
+      ERROR("stopping early\n");
+      break;
+    }
+  }
 
+  return 0;
+}
 
 void fpvm_vm_dump(fpvm_vm_t *vm, FILE *stream) {
   fprintf(stream, "Opcode:\n");

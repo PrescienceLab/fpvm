@@ -27,6 +27,9 @@ void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpsta
 // Step one instruction in the virtual machine, returning
 // 0 if no more instructions are available to be run.
 int fpvm_vm_step(fpvm_vm_t *);
+// Run the virtual machine until a done instruction
+// Returns 0 if done instruction is reached, nonzero if there was an error
+int fpvm_vm_run(fpvm_vm_t *);
 void fpvm_vm_dump(fpvm_vm_t *, FILE *stream);
 
 

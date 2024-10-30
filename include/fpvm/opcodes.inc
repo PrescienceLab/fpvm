@@ -36,7 +36,8 @@ OPCODE_ARG(immptr, void*)
 // Calls an op_t with a null special, 1 dest, and 2 sources.
 OPCODE_ARG(call2s1d, void*)
 
-
+// Calls an op_t with a null special, 1 dest, and 1 source.
+OPCODE_ARG(call1s1d, void*)
 
 // Push a pointer to an offset in the machine context
 OPCODE_ARG(mcptr, uint16_t)
