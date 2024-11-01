@@ -32,6 +32,8 @@ OPCODE_ARG(imm32, uint32_t)
 OPCODE_ARG(imm64, uint64_t)
 OPCODE_ARG(immptr, void*)
 
+// Calls an op_t with a null special, 1 dest, and 3 sources.
+OPCODE_ARG(call3s1d, void*)
 
 // Calls an op_t with a null special, 1 dest, and 2 sources.
 OPCODE_ARG(call2s1d, void*)

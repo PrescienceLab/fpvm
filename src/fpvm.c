@@ -2348,7 +2348,8 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 asm (
 ".global my_instruction\n"
 "my_instruction:\n"
-"   sqrtpd %xmm2, %xmm3\n"
+"   vfmaddsd %xmm1, %xmm2, %xmm3, %xmm4\n"
+// "   sqrtpd %xmm2, %xmm3\n"
 // "   maxsd %xmm2, %xmm3\n"
 // "   subpd %xmm2, %xmm3\n"
 // "   mulpd %xmm2, %xmm3\n"

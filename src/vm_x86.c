@@ -298,6 +298,13 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
         compile_operand(bp, fi, &x86->operands[0], vl);  // dest
         fpvm_build_call1s1d(bp, func);
         break;
+      case FPVM_OP_MADD:
+        compile_operand(bp, fi, &x86->operands[3], vl);  // src3
+        compile_operand(bp, fi, &x86->operands[2], vl);  // src2
+        compile_operand(bp, fi, &x86->operands[1], vl);  // src1
+        compile_operand(bp, fi, &x86->operands[0], vl);  // dest
+        fpvm_build_call3s1d(bp, func);
+        break;
       default:
         break;
     }

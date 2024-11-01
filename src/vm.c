@@ -216,7 +216,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
   vm->code += fpvm_opcode_size(vm->code);
 
   op_t op;
-  void *src1, *src2, *dest;
+  void *src1, *src2, *src3, *dest;
   uint64_t x;
   int error;
   switch (opcode) {
@@ -255,6 +255,20 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       src2 = POP(void *);
 
       error = op(NULL, dest, src1, src2, NULL, NULL);
+      if (error != 0) {
+        fprintf(stderr, "WARNING: OP FAILED\n");
+      }
+
+      break;
+
+    case fpvm_opcode_call3s1d:
+      op = O(op_t);
+      dest = POP(void *);
+      src1 = POP(void *);
+      src2 = POP(void *);
+      src3 = POP(void *);
+
+      error = op(NULL, dest, src1, src2, src3, NULL);
       if (error != 0) {
         fprintf(stderr, "WARNING: OP FAILED\n");
       }
