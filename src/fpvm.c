@@ -2344,7 +2344,8 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 #if CONFIG_HAVE_MAIN
 
 #include "fpvm/vm.h"
- 
+
+/*
 asm (
 ".global my_instruction\n"
 "my_instruction:\n"
@@ -2354,12 +2355,17 @@ asm (
 // "   subpd %xmm2, %xmm3\n"
 // "   mulpd %xmm2, %xmm3\n"
 );
+*/
 
+ 
 extern uint8_t my_instruction[];
 struct xmm {
   double low;
   double high;
 };
+
+
+void fpvm_test_instr(struct xmm *p);
 
 void print_fpregs(struct xmm *fpregs) {
   for (int i = 0; i < 16; i++) {
@@ -2401,19 +2407,38 @@ int main(int argc, char *argv[])
 
   INFO("Now trying to execute generated code\n");
 
-  fpvm_vm_t vm;
-  
+  INFO("Testing ground truth\n");
   uint64_t gpregs[512];
   struct xmm fpregs[16];
   for (int i = 0; i < 16; i++) {
     fpregs[i].low = (double)i;
   }
+  INFO("Register initial state\n");
+  print_fpregs(fpregs);
+
+  fpvm_test_instr(fpregs);
+  
+  INFO("Register final state\n");
+  print_fpregs(fpregs);
+
+
+  INFO("Now testing with VM\n");
+  
+
+  fpvm_vm_t vm;
+
+ 
+  for (int i = 0; i < 16; i++) {
+    fpregs[i].low = (double)i;
+  }
+  INFO("Register initial state\n");
+  print_fpregs(fpregs);
 
   fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, (uint8_t*)gpregs, (uint8_t*)fpregs); 
-  print_fpregs(fpregs);
 
   fpvm_vm_run(&vm);
 
+  INFO("Register final state\n");
   print_fpregs(fpregs);
 
   return 0;
