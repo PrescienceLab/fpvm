@@ -305,6 +305,14 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
         compile_operand(bp, fi, &x86->operands[0], vl);  // dest
         fpvm_build_call3s1d(bp, func);
         break;
+      case FPVM_OP_CMPXX:
+        fpvm_build_clspecial(bp);
+        fpvm_build_setcti(bp, fi->compare);
+        compile_operand(bp, fi, &x86->operands[1], vl);  // src2
+        compile_operand(bp, fi, &x86->operands[0], vl);  // src1
+        fpvm_build_dup(bp);                              // dest
+        fpvm_build_call2s1d(bp, func);
+        break;
       default:
         break;
     }

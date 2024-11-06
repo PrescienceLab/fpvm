@@ -32,13 +32,13 @@ OPCODE_ARG(imm32, uint32_t)
 OPCODE_ARG(imm64, uint64_t)
 OPCODE_ARG(immptr, void*)
 
-// Calls an op_t with a null special, 1 dest, and 3 sources.
+// Calls an op_t with a special, 1 dest, and 3 sources.
 OPCODE_ARG(call3s1d, void*)
 
-// Calls an op_t with a null special, 1 dest, and 2 sources.
+// Calls an op_t with a special, 1 dest, and 2 sources.
 OPCODE_ARG(call2s1d, void*)
 
-// Calls an op_t with a null special, 1 dest, and 1 source.
+// Calls an op_t with a special, 1 dest, and 1 source.
 OPCODE_ARG(call1s1d, void*)
 
 // Push a pointer to an offset in the machine context
@@ -46,6 +46,11 @@ OPCODE_ARG(mcptr, uint16_t)
 // Push a pointer to an offset into the fpregs context
 OPCODE_ARG(fpptr, uint16_t)
 
+// Set compare type immediate (this is for special)
+OPCODE_ARG(setcti, uint32_t)
+
+// Clear the special to be 0
+OPCODE(clspecial)
 
 // Make sure to undef the macros here, so we don't have to
 // remember to do so in the user code

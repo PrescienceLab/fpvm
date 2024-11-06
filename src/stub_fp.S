@@ -22,8 +22,9 @@ fpvm_test_instr:
    movupd 0xf0(%rdi), %xmm15
 .global my_instruction
 my_instruction:
+   cmpltsd %xmm2, %xmm1
 //   vfmaddsd %xmm1, %xmm2, %xmm3, %xmm4
-   vfmadd132sd %xmm1, %xmm2, %xmm3
+//   vfmadd132sd %xmm1, %xmm2, %xmm3
 //    sqrtpd %xmm2, %xmm3
 //    maxsd %xmm2, %xmm3
 //    subpd %xmm2, %xmm3

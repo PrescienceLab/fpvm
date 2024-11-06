@@ -2407,27 +2407,15 @@ int main(int argc, char *argv[])
 
   INFO("Now trying to execute generated code\n");
 
-  INFO("Testing ground truth\n");
-  uint64_t gpregs[512];
-  struct xmm fpregs[16];
-  for (int i = 0; i < 16; i++) {
-    fpregs[i].low = (double)i;
-  }
-  INFO("Register initial state\n");
-  print_fpregs(fpregs);
-
-  fpvm_test_instr(fpregs);
-  
-  INFO("Register final state\n");
-  print_fpregs(fpregs);
-
 
   INFO("Now testing with VM\n");
   
 
   fpvm_vm_t vm;
 
- 
+  uint64_t gpregs[512];
+  struct xmm fpregs[16];
+
   for (int i = 0; i < 16; i++) {
     fpregs[i].low = (double)i;
   }
@@ -2438,6 +2426,18 @@ int main(int argc, char *argv[])
 
   fpvm_vm_run(&vm);
 
+  INFO("Register final state\n");
+  print_fpregs(fpregs);
+
+  INFO("Testing ground truth\n");
+  for (int i = 0; i < 16; i++) {
+    fpregs[i].low = (double)i;
+  }
+  INFO("Register initial state\n");
+  print_fpregs(fpregs);
+
+  fpvm_test_instr(fpregs);
+  
   INFO("Register final state\n");
   print_fpregs(fpregs);
 

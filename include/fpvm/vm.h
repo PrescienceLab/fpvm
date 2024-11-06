@@ -5,10 +5,13 @@
 #include <stdio.h>
 #include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
+#include <fpvm/number_system.h>
 
 
 #define FPVM_VM_STACK_SIZE 128
 typedef struct {
+  op_special_t special;
+
   // The code that is currently executing
   uint8_t *code;
 

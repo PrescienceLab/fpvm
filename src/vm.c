@@ -241,7 +241,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       dest = POP(void *);
       src1 = POP(void *);
 
-      error = op(NULL, dest, src1, NULL, NULL, NULL);
+      error = op(&vm->special, dest, src1, NULL, NULL, NULL);
       if (error != 0) {
         fprintf(stderr, "WARNING: OP FAILED\n");
       }
@@ -254,7 +254,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       src1 = POP(void *);
       src2 = POP(void *);
 
-      error = op(NULL, dest, src1, src2, NULL, NULL);
+      error = op(&vm->special, dest, src1, src2, NULL, NULL);
       if (error != 0) {
         fprintf(stderr, "WARNING: OP FAILED\n");
       }
@@ -268,11 +268,19 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       src2 = POP(void *);
       src3 = POP(void *);
 
-      error = op(NULL, dest, src1, src2, src3, NULL);
+      error = op(&vm->special, dest, src1, src2, src3, NULL);
       if (error != 0) {
         fprintf(stderr, "WARNING: OP FAILED\n");
       }
 
+      break;
+
+    case fpvm_opcode_clspecial:
+      memset(&vm->special, 0, sizeof(op_special_t));
+      break;
+
+    case fpvm_opcode_setcti:
+      vm->special.compare_type = O(uint32_t);
       break;
 
     default:
