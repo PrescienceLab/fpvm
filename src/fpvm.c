@@ -226,6 +226,9 @@ typedef struct execution_context {
   uint64_t decode_cache_hits;
   uint64_t decode_cache_unique;
 
+  fpvm_vm_t *vm;     // vm associated with this execution context, if any
+
+  
 #if CONFIG_INSTR_TRACES
   fpvm_instr_trace_context_t *trace_context;
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
@@ -1853,26 +1856,19 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
       ERROR("cannot compile instruction\n");
       goto fail_do_trap;
     }
-    fi->vm = malloc(sizeof(fpvm_vm_t));
-    if (!fi->vm) {
-      ERROR("failed to allocate a vm context for instruction at %p\n",rip);
-      goto fail_do_trap;
-    }
-    DEBUG("successfully decoded and compiled instruction, which follows (also allocated vm context):\n");
+    DEBUG("successfully decoded and compiled instruction, which follows:\n");
     fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
     do_insert = 1;
   } else {
     DEBUG("Instruction already found in the decode cache, ignoring decode, bind, codegen, and vm context creation\n");
     do_insert = 0;
   }
-    
-  // this should really just take in the fpvm_regs_t struct... 
-  fpvm_vm_init(fi->vm,
-	       ((fpvm_builder_t*)fi->codegen)->code,
-	       (uint8_t*)regs.mcontext->gregs,
-	       (uint8_t*)regs.fprs);
 
-  if (fpvm_vm_run(fi->vm)) {
+  DEBUG("vm init\n");
+  fpvm_vm_init(mc->vm, fi, &regs);
+  
+  DEBUG("vm run\n");
+  if (fpvm_vm_run(mc->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n");
     // this would be very bad since it could have partially completed, mangling stuff
     goto fail_do_trap;
@@ -2183,7 +2179,14 @@ static int bringup_execution_context(int tid) {
     c->decode_cache_size = decode_cache_size;
     memset(c->decode_cache, 0, sizeof(fpvm_inst_t *) * c->decode_cache_size);
   }
-
+#if CONFIG_USE_NVM
+  c->vm = malloc(sizeof(*(c->vm)));
+  if (!c->vm) {
+    ERROR("Cannot allocate vm for context\n");
+  } else {
+    memset(c->vm, 0, sizeof(*(c->vm)));
+  }
+#endif
   __fpvm_current_execution_context = c;
 
   DEBUG("brought up execution context for thread %lu at %p (state %d)\n",gettid(),c,c->state);

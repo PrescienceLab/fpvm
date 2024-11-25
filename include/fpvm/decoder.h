@@ -153,8 +153,6 @@ typedef struct fpvm_inst {
 
   void *codegen; // vm-generated instructions for this instruction, if any
 
-  void *vm;     // vm associated with this instruction, if any
-
   void *link;  // for use by the caller in any way they want (decoder cache, say)
 
 } fpvm_inst_t;

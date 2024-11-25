@@ -26,7 +26,7 @@ typedef struct {
 } fpvm_vm_t;
 
 
-void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpstate);
+void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs);
 // Step one instruction in the virtual machine, returning
 // 0 if no more instructions are available to be run.
 int fpvm_vm_step(fpvm_vm_t *);

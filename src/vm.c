@@ -191,11 +191,11 @@ void vm_test_decode(fpvm_inst_t *fi) {
 
 
 
-void fpvm_vm_init(fpvm_vm_t *vm, uint8_t *code, uint8_t *mcstate, uint8_t *fpstate) {
+void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs) {
   memset(vm, 0, sizeof(fpvm_vm_t));
-  vm->mcstate = mcstate;
-  vm->fpstate = fpstate;
-  vm->code = code;
+  vm->mcstate = (uint8_t*)regs->mcontext->gregs;
+  vm->fpstate = (uint8_t*)regs->fprs;
+  vm->code = ((fpvm_builder_t*)inst->codegen)->code;
   vm->sp = vm->stack;
 }
 
@@ -234,7 +234,9 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       break;
 
     case fpvm_opcode_done:
+      // no more work to do
       return 0;
+      break;
 
     case fpvm_opcode_call1s1d:
       op = O(op_t);
@@ -300,7 +302,7 @@ int fpvm_vm_run(fpvm_vm_t *vm) {
     int result = fpvm_vm_step(vm);
     count++;
     if (result == 0) {
-      ERROR("stopping early\n");
+      DEBUG("no more work to do - success!\n");
       break;
     }
   }
