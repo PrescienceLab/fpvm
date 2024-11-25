@@ -49,6 +49,9 @@ OPCODE_ARG(fpptr, uint16_t)
 // Set compare type immediate (this is for special)
 OPCODE_ARG(setcti, uint32_t)
 
+// TODO: Set rflags (this is for special)
+// OPCODE_ARG(setrflags, )
+
 // Clear the special to be 0
 OPCODE(clspecial)
 

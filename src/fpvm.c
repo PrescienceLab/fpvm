@@ -2529,9 +2529,20 @@ struct xmm {
 
 void fpvm_test_instr(struct xmm *p);
 
-void print_fpregs(struct xmm *fpregs) {
+void print_fpregs_decimal(struct xmm *fpregs) {
   for (int i = 0; i < 16; i++) {
     printf("%16.8lf ", fpregs[i].low);
+    if (i == 7) {
+      printf("\n");
+    }
+  }
+  printf("\n");
+}
+
+void print_fpregs_hex(struct xmm *fpregs) {
+  for (int i = 0; i < 16; i++) {
+    uint64_t *bits = (uint64_t *)&fpregs[i].low;
+    printf("0x%016lX ", *bits);
     if (i == 7) {
       printf("\n");
     }
@@ -2553,6 +2564,31 @@ int main(int argc, char *argv[])
 
   if (!fi) {
     ERROR("cannot decode instruction\n");
+    abort();
+  }
+
+    // acquire pointers to the GP and FP register state
+    // from the mcontext.
+    //
+    // Note that we update the mcontext each time we
+    // complete an instruction in the current sequence
+    // so this always reflects the current
+    fpvm_regs_t regs;
+    
+    ucontext_t uc;
+    getcontext(&uc);
+    regs.mcontext = &uc.uc_mcontext;
+    
+    // PAD: This stupidly just treats everything as SSE2
+    // and must be fixed
+    regs.fprs = uc.uc_mcontext.fpregs->_xmm;
+    regs.fpr_size = 16;
+
+  // Doing fake bind here to capture operand sizes
+  // If we do it this way, we will only bind the first time we see the instruction
+  // and otherwise keep it in the decode cache
+  if (fpvm_decoder_bind_operands(fi, &regs)) {
+    ERROR("Cannot bind operands of instruction\n");
     abort();
   }
 
@@ -2580,28 +2616,56 @@ int main(int argc, char *argv[])
 
   for (int i = 0; i < 16; i++) {
     fpregs[i].low = (double)i;
+    fpregs[i].high = (double)i + 0.5;
   }
+
   INFO("Register initial state\n");
-  print_fpregs(fpregs);
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register initial state (in hex)\n");
+  // print_fpregs_hex(fpregs);
+
+  printf("\n\n");
 
   fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, (uint8_t*)gpregs, (uint8_t*)fpregs); 
 
   fpvm_vm_run(&vm);
 
   INFO("Register final state\n");
-  print_fpregs(fpregs);
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register final state (in hex)\n");
+  // print_fpregs_hex(fpregs);
+
+  printf("\n\n");
 
   INFO("Testing ground truth\n");
   for (int i = 0; i < 16; i++) {
     fpregs[i].low = (double)i;
+    fpregs[i].high = (double)i + 0.5;
   }
   INFO("Register initial state\n");
-  print_fpregs(fpregs);
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
 
   fpvm_test_instr(fpregs);
+
+  printf("\n");
   
   INFO("Register final state\n");
-  print_fpregs(fpregs);
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register final state (in hex)\n");
+  // print_fpregs_hex(fpregs);
 
   return 0;
 }

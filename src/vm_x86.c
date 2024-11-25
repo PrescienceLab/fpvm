@@ -128,20 +128,20 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
 #define MCOFF(m) ((*m)[1])
 #define MCSIZE(m) ((*m)[2])
 
-
-static void compile_fp_ptr(fpvm_builder_t *b, cs_x86_op *o, unsigned vector_lane) {
+// Consider fp_ptr_offset instruction
+static void compile_fp_ptr(fpvm_builder_t *b, cs_x86_op *o, unsigned vector_offset) {
   // TODO: figure this out.
   const int fpr_size = 16;
 
   if (IS_NORMAL_FPR(o->reg)) {
     if (IS_XMM(o->reg)) {
-      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_XMM0));
+      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_XMM0) + vector_offset);
     } else if (IS_YMM(o->reg)) {
       //
-      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_YMM0));
+      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_YMM0) + vector_offset);
     } else if (IS_ZMM(o->reg)) {
       //
-      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_ZMM0));
+      fpvm_build_fpptr(b, fpr_size * (o->reg - X86_REG_ZMM0) + vector_offset);
     }
   } else {
     abort();
@@ -162,7 +162,7 @@ static void compile_gpr_ptr(fpvm_builder_t *b, x86_reg r) {
 }
 
 
-static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o) {
+static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o, long vector_offset) {
   // push the base GPR, load it to get the address, then augment that value appropriately
   // steps:
   x86_op_mem *mo = &o->mem;
@@ -205,16 +205,21 @@ static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o
     fpvm_build_imm64(b, mo->disp);
     fpvm_build_iadd(b);
   }
+
+  if (vector_offset != 0) {
+    fpvm_build_imm64(b, vector_offset);
+    fpvm_build_iadd(b);
+  }
 }
 
 
 // given an x86 operand, create the bytecode that leaves a pointer to the intended data on TOS
 static void compile_operand(
-    fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o, unsigned vector_lane) {
+    fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o, unsigned vector_offset) {
   switch (o->type) {
     case X86_OP_REG: {
       if (IS_FPR(o->reg)) {
-        compile_fp_ptr(b, o, vector_lane);
+        compile_fp_ptr(b, o, vector_offset);
       } else {
         // TODO: assert vector_offset is zero
         compile_gpr_ptr(b, o->reg);
@@ -227,7 +232,7 @@ static void compile_operand(
       break;
 
     case X86_OP_MEM:
-      compile_mem_operand(b, fi, o);
+      compile_mem_operand(b, fi, o, vector_offset);
       break;
 
     case X86_OP_INVALID:
@@ -272,7 +277,21 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
     return -1;
   }
 
-  for (int vl = 0; vl < lanes; vl++) {
+  int count = 1;
+  int dest_step = 0, src_step = 0;
+
+  if (fi->common->is_vector) {
+    count = fi->operand_sizes[0] / fi->common->op_size;
+    dest_step = fi->common->op_size;
+    src_step = fi->common->op_size;  // PAD: these can technically be different - FIX FIX FIX
+    DEBUG("Doing vector instruction - this might break (dest operand size=%lu common operand size=%lu computed count=%lu dest_step=%lu src_step=%lu)\n",fi->operand_sizes[0],fi->common->op_size,count,dest_step,src_step);
+  } else {
+    dest_step = fi->common->op_size;
+    src_step = fi->common->op_size;
+    DEBUG("Doing scalar instruction - (common operand size=%lu)\n",fi->common->op_size);
+  }
+
+  for (int vl = 0; vl < count; vl++) {
     switch (fi->common->op_type) {
       case FPVM_OP_ADD:
       case FPVM_OP_SUB:
@@ -281,35 +300,35 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
       case FPVM_OP_MIN:
       case FPVM_OP_MAX:
         if (op_count == 2) {
-          compile_operand(bp, fi, &x86->operands[1], vl);  // src2
-          compile_operand(bp, fi, &x86->operands[0], vl);  // src1
+          compile_operand(bp, fi, &x86->operands[1], vl * src_step);  // src2
+          compile_operand(bp, fi, &x86->operands[0], vl * src_step);  // src1
           fpvm_build_dup(bp);                              // dest
           fpvm_build_call2s1d(bp, func);
         } else if (op_count == 3) {
           // 3 operand (dest != src1)
-          compile_operand(bp, fi, &x86->operands[2], vl);  // src2
-          compile_operand(bp, fi, &x86->operands[1], vl);  // src1
-          compile_operand(bp, fi, &x86->operands[0], vl);  // dest
+          compile_operand(bp, fi, &x86->operands[2], vl * src_step);  // src2
+          compile_operand(bp, fi, &x86->operands[1], vl * src_step);  // src1
+          compile_operand(bp, fi, &x86->operands[0], vl * dest_step);  // dest
           fpvm_build_call2s1d(bp, func);
         }
         break;
       case FPVM_OP_SQRT:
-        compile_operand(bp, fi, &x86->operands[1], vl);  // src1
-        compile_operand(bp, fi, &x86->operands[0], vl);  // dest
+        compile_operand(bp, fi, &x86->operands[1], vl * src_step);  // src1
+        compile_operand(bp, fi, &x86->operands[0], vl * dest_step);  // dest
         fpvm_build_call1s1d(bp, func);
         break;
       case FPVM_OP_MADD:
-        compile_operand(bp, fi, &x86->operands[3], vl);  // src3
-        compile_operand(bp, fi, &x86->operands[2], vl);  // src2
-        compile_operand(bp, fi, &x86->operands[1], vl);  // src1
-        compile_operand(bp, fi, &x86->operands[0], vl);  // dest
+        compile_operand(bp, fi, &x86->operands[3], vl * src_step);  // src3
+        compile_operand(bp, fi, &x86->operands[2], vl * src_step);  // src2
+        compile_operand(bp, fi, &x86->operands[1], vl * src_step);  // src1
+        compile_operand(bp, fi, &x86->operands[0], vl * dest_step);  // dest
         fpvm_build_call3s1d(bp, func);
         break;
       case FPVM_OP_CMPXX:
         fpvm_build_clspecial(bp);
         fpvm_build_setcti(bp, fi->compare);
-        compile_operand(bp, fi, &x86->operands[1], vl);  // src2
-        compile_operand(bp, fi, &x86->operands[0], vl);  // src1
+        compile_operand(bp, fi, &x86->operands[1], vl * src_step);  // src2
+        compile_operand(bp, fi, &x86->operands[0], vl * src_step);  // src1
         fpvm_build_dup(bp);                              // dest
         fpvm_build_call2s1d(bp, func);
         break;
