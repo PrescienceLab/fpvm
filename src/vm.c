@@ -184,7 +184,7 @@ int fpvm_vm_compile(fpvm_inst_t *fi) {
 }
 
 void vm_test_decode(fpvm_inst_t *fi) {
-  printf("vm test: %p\n", fi);
+  DEBUG("vm test: %p\n", fi);
   fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
 }
 
@@ -205,8 +205,8 @@ void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs) {
 #define O(T) (*(T *)(operand))                 // Read the operand of the instruction as type T
 
 int fpvm_vm_step(fpvm_vm_t *vm) {
-  printf("\n\nBEFORE:\n");
-  fpvm_vm_dump(vm, stdout);
+  DEBUG("BEFORE:\n");
+  fpvm_vm_dump(vm, stderr);
 
   uint8_t opcode = *vm->code;
   // May or may not be one of these...
@@ -238,6 +238,38 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       return 0;
       break;
 
+    case fpvm_opcode_ld64: 
+      x = *POP(uint64_t*);
+      PUSH(x);
+      break;
+
+  case fpvm_opcode_imm64:
+    x = O(int64_t);
+    PUSH(x);
+    break;
+
+  case fpvm_opcode_imm32:
+    x = O(int32_t);
+    PUSH(x);
+    break;
+    
+  case fpvm_opcode_imm16:
+    x = O(int16_t);
+    PUSH(x);
+    break;
+    
+  case fpvm_opcode_imm8:
+    x = O(int8_t);
+    PUSH(x);
+    break;
+
+  case fpvm_opcode_iadd:
+    x = POP(uint64_t);
+    x+= POP(uint64_t);
+    PUSH(x);
+    break;
+    
+      
     case fpvm_opcode_call1s1d:
       op = O(op_t);
       dest = POP(void *);
@@ -245,7 +277,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
 
       error = op(&vm->special, dest, src1, NULL, NULL, NULL);
       if (error != 0) {
-        fprintf(stderr, "WARNING: OP FAILED\n");
+        DEBUG("WARNING: OP FAILED\n");
       }
 
       break;
@@ -258,7 +290,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
 
       error = op(&vm->special, dest, src1, src2, NULL, NULL);
       if (error != 0) {
-        fprintf(stderr, "WARNING: OP FAILED\n");
+        DEBUG("WARNING: OP FAILED\n");
       }
 
       break;
@@ -272,7 +304,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
 
       error = op(&vm->special, dest, src1, src2, src3, NULL);
       if (error != 0) {
-        fprintf(stderr, "WARNING: OP FAILED\n");
+        DEBUG("WARNING: OP FAILED\n");
       }
 
       break;
@@ -286,11 +318,11 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       break;
 
     default:
-      fprintf(stderr, "WARNING: UNHANDLED OPCODE\n");
+      DEBUG("WARNING: UNHANDLED OPCODE: %d\n", opcode);
       return 0;
   }
-  printf("AFTER:\n");
-  fpvm_vm_dump(vm, stdout);
+  DEBUG("AFTER:\n");
+  fpvm_vm_dump(vm, stderr);
 
   return 1;
 }
@@ -298,7 +330,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
 int fpvm_vm_run(fpvm_vm_t *vm) {
   int count=0;
   while (1) {
-    INFO("executing instruction %d\n",count);
+    DEBUG("executing instruction %d\n",count);
     int result = fpvm_vm_step(vm);
     count++;
     if (result == 0) {

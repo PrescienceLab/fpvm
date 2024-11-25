@@ -242,8 +242,8 @@ static void compile_operand(
 }
 
 int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
-  printf("x86 vm test: %p\n", fi);
-  fpvm_decoder_decode_and_print_any_inst(fi->addr, stdout, "vm: ");
+  DEBUG("x86 vm test: %p\n", fi);
+  fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "vm: ");
 
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
