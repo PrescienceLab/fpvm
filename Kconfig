@@ -6,7 +6,14 @@ config HAVE_MAIN
     help
        This compiles it with a main function
        that can be used for testing without LD_PRELOAD
-       This is for hacking around on the VM
+       This is for hacking around on NVM
+
+config USE_NVM
+    bool "Use NVM"
+    default n
+    help
+       Use the NVM virtual machine for ordinary processing
+       This is for hacking around on NVM
       
 config NO_OUTPUT
     bool "Disable output"

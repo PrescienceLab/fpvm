@@ -66,6 +66,7 @@
 #include <fpvm/emulator.h>
 #include <fpvm/fpvm_common.h>
 #include <fpvm/gc.h>
+#include <fpvm/vm.h>
 #include <fpvm/util.h>
 
 #include <fpvm/perf.h>
@@ -1456,7 +1457,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 //        Correctness Trap via SIGTRAP
 //     -> FP Traps On + Single Step Mode Off
 //
-static void fp_trap_handler(ucontext_t *uc)
+static void fp_trap_handler_emu(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
@@ -1783,6 +1784,169 @@ fail_do_trap:
   return;
 }
 
+
+// Attempt at handler for simple single instruction trap
+static void fp_trap_handler_nvm(ucontext_t *uc)
+{
+  execution_context_t *mc = find_my_execution_context();
+  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+
+  // Let the garbage collector run
+  fpvm_gc_run();
+
+  // sanity check state and abort if needed
+  if (!mc || mc->state != AWAIT_FPE) {
+    clear_fp_exceptions_context(uc);        // exceptions cleared
+    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+    set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
+    set_trap_flag_context(uc, 0);  // traps disabled
+    if (mc) { 
+      abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
+    } else {
+      abort_operation("Cannot find execution context during sigfpvm_handler exec");
+    }
+    ASSERT(0);
+    return;
+  }
+
+  mc->fp_traps++;
+
+#if 0 && DEBUG_OUTPUT
+#define DUMP_CUR_INSTR() fpvm_decoder_print_inst(fi, stderr);
+#else
+#define DUMP_CUR_INSTR()
+#endif
+    
+  fpvm_inst_t *fi = 0;
+  int do_insert = 0;
+  char instbuf[256];
+  
+  DEBUG("Handling instruction (rip = %p)\n",rip);
+
+  fi = decode_cache_lookup(mc, rip);
+
+  if (!fi) {
+    DEBUG("Instruction is not in the decode cache\n");
+    fi = fpvm_decoder_decode_inst(rip);
+    if (!fi) {
+      ERROR("failed to decode instruction at %p\n",rip);
+      goto fail_do_trap;
+    }
+    if (fpvm_vm_compile(fi)) {
+      ERROR("cannot compile instruction\n");
+      goto fail_do_trap;
+    }
+    fi->vm = malloc(sizeof(fpvm_vm_t));
+    if (!fi->vm) {
+      ERROR("failed to allocate a vm context for instruction at %p\n",rip);
+      goto fail_do_trap;
+    }
+    DEBUG("successfully decoded and compiled instruction, which follows (also allocated vm context):\n");
+    fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
+    do_insert = 1;
+  } else {
+    DEBUG("Instruction already found in the decode cache, ignoring decode, codegen, and vm context creation\n");
+    do_insert = 0;
+  }
+    
+  // acquire pointers to the GP and FP register state
+  // from the mcontext.
+  //
+  // Note that we update the mcontext each time we
+  // complete an instruction in the current sequence
+  // so this always reflects the current
+  fpvm_regs_t regs;
+  uint8_t    *gpregs  = (uint8_t*)(uc->uc_mcontext.gregs);
+    
+  regs.mcontext = &uc->uc_mcontext;
+    
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;
+
+  // this should really just take in the fpvm_regs_t struct... 
+  fpvm_vm_init(fi->vm,((fpvm_builder_t*)fi->codegen)->code, gpregs,regs.fprs);
+
+  if (fpvm_vm_run(fi->vm)) {
+    ERROR("failed to execute VM successfully for instruction at %p\n");
+    // this would be very bad since it could have partially completed, mangling stuff
+    goto fail_do_trap;
+  }
+
+  
+  rip += fi->length;
+    
+  // DEBUG("Emulation done:\n");
+  // #if DEBUG_OUTPUT
+  //   fpvm_dump_xmms_double(stderr, regs.fprs);
+  //   fpvm_dump_xmms_float(stderr, regs.fprs);
+  //   fpvm_dump_float_control(stderr, uc);
+  //   fpvm_dump_gprs(stderr, uc);
+  // #endif
+    
+  // Skip those instructions we just emulated.
+  uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+  
+  if (do_insert) {
+    // put into the cache for next time
+    decode_cache_insert(mc, fi);
+  }
+    
+  // stay in state AWAIT_FPE
+    
+  mc->emulated_inst++;
+  
+  DEBUG("FPE succesfully done (emulated one instruction)\n");
+  
+  DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  
+  DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  
+  return;
+  
+  // we should only get here if the instruction
+  // could not be handled
+fail_do_trap:
+
+  DEBUG("doing fail do trap for %p\n",rip);
+
+  if (fi) {
+    DEBUG("have decoded failing instruction\n");
+    // only free if we didn't find it in the decode cache...
+    if (do_insert) {
+      fpvm_decoder_free_inst(fi);
+    }
+  }
+
+  DEBUG("switching to trap mode\n");
+
+  // switch to trap mode, so we can re-enable FP traps after this instruction is
+  // done
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_trap_flag_context(uc, 1);  // traps disabled
+  
+  mc->state = AWAIT_TRAP;
+
+  // our next stop should be the instruction, and then, immediately afterwards,
+  // the sigtrap handler
+
+  return;
+}
+
+
+static inline void fp_trap_handler(ucontext_t *uc)
+{
+#if CONFIG_USE_NVM
+  return fp_trap_handler_nvm(uc);
+#else
+  return fp_trap_handler_emu(uc);
+#endif
+}
 
 //
 // Entry point for FP Trap for trap short circuiting (kernel module)
@@ -2342,8 +2506,6 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
  
 
 #if CONFIG_HAVE_MAIN
-
-#include "fpvm/vm.h"
 
 /*
 asm (
