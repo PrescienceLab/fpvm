@@ -1820,7 +1820,17 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
-  char instbuf[256];
+  fpvm_regs_t regs;
+  
+  regs.mcontext = &uc->uc_mcontext;
+    
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  // we get the registers early since
+  // we will need to do a fake bind the first
+  // time we see an instruction
+  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;  
   
   DEBUG("Handling instruction (rip = %p)\n",rip);
 
@@ -1831,6 +1841,12 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     fi = fpvm_decoder_decode_inst(rip);
     if (!fi) {
       ERROR("failed to decode instruction at %p\n",rip);
+      goto fail_do_trap;
+    }
+    // Doing fake bind here to capture operand sizes
+    // which is needed by the vm compilation
+    if (fpvm_decoder_bind_operands(fi, &regs)) {
+      ERROR("Cannot fake-bind operands of instruction\n");
       goto fail_do_trap;
     }
     if (fpvm_vm_compile(fi)) {
@@ -1846,28 +1862,15 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
     do_insert = 1;
   } else {
-    DEBUG("Instruction already found in the decode cache, ignoring decode, codegen, and vm context creation\n");
+    DEBUG("Instruction already found in the decode cache, ignoring decode, bind, codegen, and vm context creation\n");
     do_insert = 0;
   }
     
-  // acquire pointers to the GP and FP register state
-  // from the mcontext.
-  //
-  // Note that we update the mcontext each time we
-  // complete an instruction in the current sequence
-  // so this always reflects the current
-  fpvm_regs_t regs;
-  uint8_t    *gpregs  = (uint8_t*)(uc->uc_mcontext.gregs);
-    
-  regs.mcontext = &uc->uc_mcontext;
-    
-  // PAD: This stupidly just treats everything as SSE2
-  // and must be fixed
-  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
-  regs.fpr_size = 16;
-
   // this should really just take in the fpvm_regs_t struct... 
-  fpvm_vm_init(fi->vm,((fpvm_builder_t*)fi->codegen)->code, gpregs,regs.fprs);
+  fpvm_vm_init(fi->vm,
+	       ((fpvm_builder_t*)fi->codegen)->code,
+	       (uint8_t*)regs.mcontext->gregs,
+	       (uint8_t*)regs.fprs);
 
   if (fpvm_vm_run(fi->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n");
