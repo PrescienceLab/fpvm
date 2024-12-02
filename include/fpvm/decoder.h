@@ -74,7 +74,6 @@ typedef enum {
 
 typedef struct {
   fpvm_op_t op_type;
-  fpvm_round_mode_t round_mode; // explicit for some architectures...
   int is_vector;     // is this a vector FP?
   int has_mask;      // mask vector?
   unsigned op_size;  // size of operands
@@ -144,6 +143,8 @@ typedef struct fpvm_inst {
 
   fpvm_inst_common_t *common;
 
+  fpvm_round_mode_t   round_mode;
+  
   fpvm_inst_compare_t compare; 
   fpvm_inst_extend_t  extend;
 
