@@ -864,6 +864,12 @@ int restore_double(
   return 0;
 }
 
+void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p)
+{
+  // does not do anything for vanilla
+}
+
+
 // demote
 int restore_float(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {

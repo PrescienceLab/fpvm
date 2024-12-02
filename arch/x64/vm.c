@@ -159,6 +159,7 @@ static void compile_gpr_ptr(fpvm_builder_t *b, x86_reg r) {
 
   uint16_t off = MCREG(m) * 8 + MCOFF(m);
   fpvm_build_mcptr(b, off);
+
 }
 
 
@@ -180,6 +181,13 @@ static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o
     // and capstone better not use some out of range psuedoregister
     compile_gpr_ptr(b, mo->base);
     fpvm_build_ld64(b);
+
+    if (mo->base == X86_REG_RIP) {
+      // for PC relative, it is the address of the next instruction that matters
+      // so we need to add the instruction length to it
+      fpvm_build_imm8(b,fi->length);
+      fpvm_build_iadd(b);
+    }
 
     /* reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->base); */
     /* addr += fr->mcontext->gregs[MCREG(m)]; */
