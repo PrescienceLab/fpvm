@@ -269,8 +269,8 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
     func = vanilla_op_map[fi->common->op_type][0];
   } else if (fi->common->op_size == 8) {
     // TODO: this is for testing. Use op_map to enable NAN boxing
-    // func = op_map[fi->common->op_type][1];
-    func = vanilla_op_map[fi->common->op_type][1];
+    //func = vanilla_op_map[fi->common->op_type][1];
+    func = op_map[fi->common->op_type][1];
   } else {
     ERROR("Cannot handle binary instruction with op_size = %d for float binop %d\n", fi->common->op_size,fi->common->op_type);
     ASSERT(0);

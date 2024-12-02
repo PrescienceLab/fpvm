@@ -60,8 +60,21 @@ typedef enum {
 } fpvm_op_t;
 
 
+typedef enum {
+  FPVM_ROUND_DEFAULT=0, // current config..
+  FPVM_ROUND_NEAREST=1,
+  FPVM_ROUND_NEGATIVE=2,
+  FPVM_ROUND_POSITIVE=3,
+  FPVM_ROUND_ZERO=4,
+  FPVM_ROUND_NEAREST_MAXMAG=5,
+  FPVM_ROUND_DYNAMIC=6
+} fpvm_round_mode_t;
+
+
+
 typedef struct {
   fpvm_op_t op_type;
+  fpvm_round_mode_t round_mode; // explicit for some architectures...
   int is_vector;     // is this a vector FP?
   int has_mask;      // mask vector?
   unsigned op_size;  // size of operands

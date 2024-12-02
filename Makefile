@@ -6,24 +6,42 @@
 export FPVM_HOME:=$(shell pwd)
 export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
 
+# this should come from from config... 
+ARCH=x64
+#ARCH=riscv64
 
-SRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
-INCS := $(shell find include -name '*.hpp' -or -name '*.h')
+# hard coded assuming we are doing cross-compilation
+ifeq ($(ARCH),riscv64)
+  PREFIX=riscv64-unknown-linux-gnu-
+else
+  PREFIX=
+endif
+
+
+ARCHSRCDIR = arch/$(ARCH)
+ARCHINCDIR = $(ARCHSRCDIR)
+
+ARCHSRCS := $(shell find $(ARCHSRCDIR) -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
+GENERICSRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
+SRCS = $(GENERICSRCS) $(ARCHSRCS)
+
+ARCHINCS := $(shell find $(ARCHINCDIR) -name '*.hpp' -or -name '*.h')
+GENERICINCS := $(shell find include -name '*.hpp' -or -name '*.h')
+INCS := $(GENERICINCS) $(ARCHINCS)
 
 
 BUILD=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ # include/capstone/
+INC_DIRS := include/ $(ARCHINCDIR)/ # include/capstone/
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CC = gcc
-AS = gcc
-CXX = g++
+CC = $(PREFIX)gcc
+AS = $(PREFIX)gcc
+CXX = $(PREFIX)g++
 CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
-
 
 TARGET=build/fpvm.so
 

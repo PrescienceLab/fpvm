@@ -2574,23 +2574,23 @@ int main(int argc, char *argv[])
     abort();
   }
 
-    // acquire pointers to the GP and FP register state
-    // from the mcontext.
-    //
-    // Note that we update the mcontext each time we
-    // complete an instruction in the current sequence
-    // so this always reflects the current
-    fpvm_regs_t regs;
+  // acquire pointers to the GP and FP register state
+  // from the mcontext.
+  //
+  // Note that we update the mcontext each time we
+  // complete an instruction in the current sequence
+  // so this always reflects the current
+  fpvm_regs_t regs;
     
-    ucontext_t uc;
-    getcontext(&uc);
-    regs.mcontext = &uc.uc_mcontext;
-    
-    // PAD: This stupidly just treats everything as SSE2
-    // and must be fixed
-    regs.fprs = uc.uc_mcontext.fpregs->_xmm;
-    regs.fpr_size = 16;
-
+  ucontext_t uc;
+  getcontext(&uc);
+  regs.mcontext = &uc.uc_mcontext;
+  
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  regs.fprs = uc.uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;
+  
   // Doing fake bind here to capture operand sizes
   // If we do it this way, we will only bind the first time we see the instruction
   // and otherwise keep it in the decode cache
@@ -2612,19 +2612,20 @@ int main(int argc, char *argv[])
 
   INFO("Now trying to execute generated code\n");
 
-
   INFO("Now testing with VM\n");
   
 
   fpvm_vm_t vm;
 
-  uint64_t gpregs[512];
   struct xmm fpregs[16];
 
   for (int i = 0; i < 16; i++) {
     fpregs[i].low = (double)i;
     fpregs[i].high = (double)i + 0.5;
   }
+
+  regs.fprs = fpregs;
+  regs.fpr_size = 16;
 
   INFO("Register initial state\n");
   // print_fpregs_decimal(fpregs);
@@ -2637,7 +2638,7 @@ int main(int argc, char *argv[])
 
   printf("\n\n");
 
-  fpvm_vm_init(&vm, ((fpvm_builder_t*)fi->codegen)->code, (uint8_t*)gpregs, (uint8_t*)fpregs); 
+  fpvm_vm_init(&vm, fi, &regs);
 
   fpvm_vm_run(&vm);
 
