@@ -73,7 +73,7 @@ config INSTR_SEQ_EMULATION
        Emulate as many instructions as possible per trap
 
 config MAGIC_CORRECTNESS_TRAP
-    bool "Correctness traps via calls"
+    bool "Correctness traps via calls (Magic trap)"
     default n
     help
        Add support to deliver correctness traps via
