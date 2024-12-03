@@ -39,6 +39,8 @@
 #define MPFR_DEBUG(...)
 #endif
 
+
+
 static int mpfr_bits(void) {
   static int bits = 0;
   if (bits != 0) {
@@ -69,8 +71,8 @@ mpfr_t *allocate_mpfr(double initial_value = 0.0) {
 // convert it to a double. Designed for debugging
 static double decode_to_double(void *ptr) {
   double value = *(double *)ptr;
-  mpfr_t *mpfr_value = (mpfr_t *)fpvm_gc_unbox(value);
-  uint64_t sign_bit = (!!((*(uint64_t *)ptr) >> 63));
+  int sign_bit;
+  mpfr_t *mpfr_value = (mpfr_t *)fpvm_gc_unbox(value, &sign_bit);
   if (mpfr_value != NULL) {
     value = mpfr_get_d(*mpfr_value, ROUNDING_MODE);
     // invert if the sign is different.
@@ -83,20 +85,26 @@ static double decode_to_double(void *ptr) {
   return value;
 }
 
+static uint64_t decode_to_double_bits(void *ptr) {
+  double v = decode_to_double(ptr);
+  return *(uint64_t*)&v;
+}
+
 // if the value being boxed is negative, state that in the NaN.
 static double mpfr_box(mpfr_t *ptr) {
-  double value = fpvm_gc_box((void *)ptr);
-  if (mpfr_signbit(*ptr)) {
-    *(uint64_t *)&value |= (1LLU << 63);
-  }
+  int sign = mpfr_signbit(*ptr);
+  double value = fpvm_gc_box((void *)ptr, sign);
+  // if (mpfr_signbit(*ptr)) {
+  //   *(uint64_t *)&value |= (1LLU << 63);
+  // }
   return value;
 }
 
 // Decode an mpfr pointer from a pointer to a double, or construct a new one
 static mpfr_t *mpfr_unbox(void *double_ptr) {
   double value = *(double *)double_ptr;
-  uint64_t sign_bit = (!!((*(uint64_t *)double_ptr) >> 63));
-  auto *mpfr_value = (mpfr_t *)fpvm_gc_unbox(value);
+  int sign;
+  auto *mpfr_value = (mpfr_t *)fpvm_gc_unbox(value, &sign);
 
   if (mpfr_value == NULL) {
     // allocate the value
@@ -107,7 +115,7 @@ static mpfr_t *mpfr_unbox(void *double_ptr) {
     // updating the sign would change the sign on all other boxes that share
     // a reference to this mpfr_t
     // MPFR_DEBUG("sign bits: %lx %lx\n", sign_bit, mpfr_signbit(*mpfr_value));
-    if (sign_bit != mpfr_signbit(*mpfr_value)) {
+    if (sign != mpfr_signbit(*mpfr_value)) {
       auto *new_value = allocate_mpfr();
       mpfr_neg(*new_value, *mpfr_value, ROUNDING_MODE);
       mpfr_value = new_value;
@@ -302,6 +310,171 @@ int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
   return 0;
 }
 
+
+int cmpxx_float(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  ERROR("cmpxx float is not implemented\n");
+  return -1;
+}
+
+
+
+
+int cmpxx_double(
+    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  // TODO: this function should operate in MPFR precision, but just to
+  // get things working we'll do it in double-land
+  double a = decode_to_double(src1);
+  double b = decode_to_double(src2);
+  uint64_t r=0;
+
+  switch (special->compare_type) {
+  case FPVM_INST_COMPARE_INVALID:
+    ERROR("invalid compare - should not happen\n");
+    return -1;
+    break;
+  case FPVM_INST_COMPARE_EQ:
+    // ordered, signaling qnan
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT:
+    // ordered, signaling qnan
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE:
+    // ordered, signaling qnan
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD:
+    // unordered, non-signaling qnan
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ:
+    // ordered, signaling qnan
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT:
+    // ordered, signaling qnan
+    r = !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE:
+    // ordered, signaling qnan
+    r = !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD:
+    // ordered, signaling qnan
+    r = !isnan(a) && !isnan(b);
+    break;
+  case FPVM_INST_COMPARE_EQ_UQ:
+    // unordered, non-signaling qnan
+    r = isnan(a) || isnan(b) || a==b;
+    break;
+  case FPVM_INST_COMPARE_NGE:
+    // ordered, non-signaling qnan
+    r = !(a>=b);
+    break;
+  case FPVM_INST_COMPARE_NGT:
+    // ordered, non-signaling qnan
+    r = !(a>b);
+    break;
+  case FPVM_INST_COMPARE_FALSE:
+    // orderd, non-signaling
+    r = 0;
+    break;
+  case FPVM_INST_COMPARE_NEQ_OQ:
+    // ordered, non-signaling
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_GE:
+    // ordered, non-signaling
+    r = a>=b;
+    break;
+  case FPVM_INST_COMPARE_GT:
+    // ordered, non-signaling
+    r = a>b;
+    break;
+  case FPVM_INST_COMPARE_TRUE:
+    // ordered, non-signaling
+    r = 1;
+    break;
+  case FPVM_INST_COMPARE_EQ_OS:
+    // ordered, signaling
+    r = a==b;
+    break;
+  case FPVM_INST_COMPARE_LT_OQ:
+    // ordered, non-signaling
+    r = a<b;
+    break;
+  case FPVM_INST_COMPARE_LE_OQ:
+    // ordered, non-signaling
+    r = a<=b;
+    break;
+  case FPVM_INST_COMPARE_UNORD_S:
+    // unordered, signaling
+    r = isnan(a) || isnan(b);
+    break;
+  case FPVM_INST_COMPARE_NEQ_US:
+    // unordered, signaling
+    r = isnan(a) || isnan(b) || a!=b;
+    break;
+  case FPVM_INST_COMPARE_NLT_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a<b);
+    break;
+  case FPVM_INST_COMPARE_NLE_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a<=b);
+    break;
+  case FPVM_INST_COMPARE_ORD_S:
+    // ordered signaling
+    r = !isnan(a) && !isnan(b);
+    break;
+  case FPVM_INST_COMPARE_EQ_US:
+    // unordered, signalling
+    r = isnan(a) || isnan(b) || a==b;
+    break;
+  case FPVM_INST_COMPARE_NGE_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a>=b);
+    break;
+  case FPVM_INST_COMPARE_NGT_UQ:
+    // unordered, non-signaling
+    r = isnan(a) || isnan(b) || !(a>b);
+    break;
+  case FPVM_INST_COMPARE_FALSE_OS:
+    // ordered, non-signaling
+    r = 0;
+    break;
+  case FPVM_INST_COMPARE_NEQ_OS:
+    // ordered, non-signaling
+    r = a!=b;
+    break;
+  case FPVM_INST_COMPARE_GE_OQ:
+    // ordered, non-signaling
+    r = a>=b;
+    break;
+  case FPVM_INST_COMPARE_GT_OQ:
+    // ordered, non-signaling
+    r = a>b;
+    break;
+  case FPVM_INST_COMPARE_TRUE_US:
+    r = 1;
+    break;
+  default:
+    return -1;
+    break;
+  }
+
+  *(uint64_t*)dest = r;
+
+  return 0;
+
+}
+
+
+
+
+
 int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
                void *src3, void *src4) {
 
@@ -334,10 +507,10 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
   return 0;
 }
 
-// void demoted_count(void* a, void* b, int* counter){
-//   if (*(uint64_t*) a != *(uint64_t*) b)
-//     *counter += 1;
-// }
+
+void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
+  *p = decode_to_double_bits((void*)p);
+}
 
 int restore_double(op_special_t *special, void *dest, void *src1, void *src2,
                    void *src3, void *src4) {
