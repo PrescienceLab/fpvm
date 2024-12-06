@@ -179,7 +179,8 @@ int fpvm_vm_compile(fpvm_inst_t *fi) {
   extern int fpvm_vm_x86_compile(fpvm_inst_t *);
   return fpvm_vm_x86_compile(fi);
 #else
-#error "FPVM's vm only works on x86_64 for now..."
+#warning "FPVM's vm only works on x86_64 for now..."
+  return -1;
 #endif  // __amd64__
 }
 

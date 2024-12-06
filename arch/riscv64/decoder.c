@@ -39,7 +39,7 @@ typedef struct riscv_r4type {
   uint8_t rs2:5;
   uint8_t funct2:2;
   uint8_t rs3:5;
-} riscv_r4type_t
+} riscv_r4type_t;
 
 typedef struct riscv_ltype {
   uint8_t opcode:7;
@@ -93,6 +93,7 @@ typedef struct riscv_jtype {
   uint8_t imm20:1;
 } __attribute__((packed)) riscv_jtype_t;
 
+// Not 32 -> low order 2 bits are not 11
 
 typedef union riscv_inst {
   uint32_t        val;
@@ -173,7 +174,7 @@ static inline int decode_f2_to_size(uint8_t f2)
 }
 
 
-static inline void decode_f3_to_round_mode(uint8_t f3)
+static inline fpvm_round_mode_t decode_f3_to_round_mode(uint8_t f3)
 {
     switch (f3) {
     case 0: return FPVM_ROUND_NEAREST; break;
@@ -188,7 +189,7 @@ static inline void decode_f3_to_round_mode(uint8_t f3)
 static inline void decode_3r(fpvm_inst_t *fi, riscv_inst_t *r)
 {
   fi->operand_count=3;
-  fi->operand_addrs[0] = r->r.rd; // stash register number to ease later binding
+  fi->operand_addrs[0] = (void*)r->r.rd; // stash register number to ease later binding
   fi->operand_addrs[1] = r->r.rs1;
   fi->operand_addrs[2] = r->r.rs2;
 }
@@ -242,6 +243,8 @@ static int decode_to_common(fpvm_inst_t *fi)
       decode_3r(fi,&ri);
       break;
 
+      // look at the spike implementation, perhaps 
+      //
       /* WTF.... 
 Floating-point to floating-point sign-injection instructions, FSGNJ.S,
 FSGNJN.S, and FSGNJX.S, produce a result that takes all bits except
