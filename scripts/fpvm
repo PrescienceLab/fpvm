@@ -191,7 +191,8 @@ def run_fpvm_binary(bin: Path,
                     logfile=None,
                     stdout=None,
                     stderr=None,
-                    debug=False):
+                    debug=False,
+                    perf=False):
   # Called in a forked child where we can get rusage accurately
   def _run(bin: Path, args: list[str], send):
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
@@ -205,8 +206,13 @@ def run_fpvm_binary(bin: Path,
     start = time.time()
 
     cmd = [bin, *args]
-    if debug:
-        cmd = ['gdb', '-ix', f'{FPVM_HOME}/scripts/gdb-init'] + cmd
+    if perf:
+        cmd = ['sudo', 'perf', 'record', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
+        print(cmd)
+        del env['LD_PRELOAD']
+    # if debug:
+    #     cmd = ['gdb', '-ix', f'{FPVM_HOME}/scripts/gdb-init'] + cmd
+        
 
 
     proc = subprocess.Popen(
@@ -262,6 +268,7 @@ def cmd_run(args):
                         args.argv,
                         # stdout=subprocess.DEVNULL
                         debug=args.debug,
+                        perf=args.perf,
                         use_fpvm=not args.baseline)
   print(out)
 
@@ -444,6 +451,25 @@ def cmd_benchmark(args):
 
 
 
+# build FPVM for all the different configurations using test/sweep/base_config (if needed)
+#    Sweep these configurations:
+#     - Trap short circuiting     (I think the kernel module can be inserted, but
+#                                  FPVM will configure it if needed)
+#     - Instruction Sequence      (This could honestly just be an environment variable)
+#     - Correction trap via calls (Make this script be able to enable/disable this)
+# run the benchmark against all those FPVM configs, and save useful data
+def cmd_sweep(args):
+    # for each of the configurations, keyed with the git revision...
+    # create a cache directory, and build FPVM with that configuration if needed.
+    # run the binary, saving results as needed.
+    # ...
+    # This is where cmake would be awesome.
+    # ...
+    # We need to modify .config in the filesystem with the configuration of the run.
+    # Then, we need to run the menuconfig to sync the .config and the autoconf.h
+    print(args)
+    pass
+
 
 
 
@@ -478,6 +504,7 @@ if __name__ == '__main__':
   p.add_argument('--nopatch', help='Dont patch the binary', action='store_true')
   p.add_argument('--onlywrap', help='Only wrap the binary', action='store_true')
   p.add_argument('--debug', help='Debug the binary in GDB', action='store_true')
+  p.add_argument('--perf', help='Profile the binary in perf', action='store_true')
   p.add_argument('binary', help='Binary to run')
   p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
   p.set_defaults(func=cmd_run)
@@ -507,6 +534,13 @@ if __name__ == '__main__':
   p.add_argument('-f', '--from-file', help='file which contains a symbol on each line')
   p.add_argument('binary', help='Binary to wrap')
   p.set_defaults(func=cmd_wrap)
+
+
+  # The sweep command
+  p = sub.add_parser('sweep', help='Run a program, sweeping the configurations for the accel paper')
+  p.add_argument('binary', help='Binary to run')
+  p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
+  p.set_defaults(func=cmd_sweep)
 
   # The clear-cache command
   p = sub.add_parser('clear-cache', help='Delete the FPVM cache directory')
