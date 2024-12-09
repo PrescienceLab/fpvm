@@ -90,11 +90,17 @@
 #define ASSERT(E)
 #endif
 
+#if CONFIG_ARCH_X64
 // somehow this also causes stack alignment to be screwed up...
 #define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
-
 #define FXSAVE_ALIGN __attribute__((aligned (16)));
 #define XMM_ALIGN __attribute__((aligned (16)));
+#else
+#warning Ignoring directives on this architecture!  Beware!
+#define NO_TOUCH_FLOAT
+#define FXSAVE_ALIGN
+#define XMM_ALIGN
+#endif
 
 
 // somehow incomplete... 

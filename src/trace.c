@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <stdlib.h>
 #include <signal.h>
 #include <ucontext.h>
 
@@ -10,9 +11,6 @@
 #include <fpvm/decoder.h>
 #include <fpvm/fpvm_common.h>
 
-#include <capstone/capstone.h>
-
-static csh handle;
 
 fpvm_instr_trace_context_t *fpvm_instr_tracer_create(void)
 {

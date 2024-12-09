@@ -3,6 +3,7 @@
 
 #include <ucontext.h>
 
+
 typedef enum {
   FPVM_OP_ADD = 0,
   FPVM_OP_SUB,
@@ -57,6 +58,18 @@ typedef enum {
   // marker
   FPVM_OP_LAST,
 } fpvm_op_t;
+
+
+typedef enum {
+  FPVM_ROUND_DEFAULT=0, // current config..
+  FPVM_ROUND_NEAREST=1,
+  FPVM_ROUND_NEGATIVE=2,
+  FPVM_ROUND_POSITIVE=3,
+  FPVM_ROUND_ZERO=4,
+  FPVM_ROUND_NEAREST_MAXMAG=5,
+  FPVM_ROUND_DYNAMIC=6
+} fpvm_round_mode_t;
+
 
 
 typedef struct {
@@ -130,6 +143,8 @@ typedef struct fpvm_inst {
 
   fpvm_inst_common_t *common;
 
+  fpvm_round_mode_t   round_mode;
+  
   fpvm_inst_compare_t compare; 
   fpvm_inst_extend_t  extend;
 
@@ -149,6 +164,8 @@ typedef struct fpvm_inst {
 
   
   void *internal;  // internal representation (e.g., capstone)
+
+  void *codegen; // vm-generated instructions for this instruction, if any
 
   void *link;  // for use by the caller in any way they want (decoder cache, say)
 

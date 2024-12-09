@@ -34,6 +34,7 @@
 
 */
 
+
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dlfcn.h>
@@ -48,7 +49,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ptrace.h>
-#include <sys/reg.h>
+//#include <sys/reg.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/user.h>
@@ -66,6 +67,7 @@
 #include <fpvm/emulator.h>
 #include <fpvm/fpvm_common.h>
 #include <fpvm/gc.h>
+#include <fpvm/vm.h>
 #include <fpvm/util.h>
 
 #include <fpvm/perf.h>
@@ -224,6 +226,9 @@ typedef struct execution_context {
   uint64_t decode_cache_hits;
   uint64_t decode_cache_unique;
 
+  fpvm_vm_t *vm;     // vm associated with this execution context, if any
+
+  
 #if CONFIG_INSTR_TRACES
   fpvm_instr_trace_context_t *trace_context;
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
@@ -510,7 +515,11 @@ static void show_current_fe_exceptions()
 }
 */
 
+#if CONFIG_HAVE_MAIN
+static void fpvm_init(void);
+#else
 static __attribute__((constructor )) void fpvm_init(void);
+#endif
 
 #if DEBUG_OUTPUT
 
@@ -1452,7 +1461,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 //        Correctness Trap via SIGTRAP
 //     -> FP Traps On + Single Step Mode Off
 //
-static void fp_trap_handler(ucontext_t *uc)
+static void fp_trap_handler_emu(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
   uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
@@ -1581,7 +1590,6 @@ static void fp_trap_handler(ucontext_t *uc)
     }
     
     DUMP_CUR_INSTR();
-    
     
     // acquire pointers to the GP and FP register state
     // from the mcontext.
@@ -1780,6 +1788,165 @@ fail_do_trap:
   return;
 }
 
+
+// Attempt at handler for simple single instruction trap
+static void fp_trap_handler_nvm(ucontext_t *uc)
+{
+  execution_context_t *mc = find_my_execution_context();
+  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+
+  // Let the garbage collector run
+  fpvm_gc_run();
+
+  // sanity check state and abort if needed
+  if (!mc || mc->state != AWAIT_FPE) {
+    clear_fp_exceptions_context(uc);        // exceptions cleared
+    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+    set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
+    set_trap_flag_context(uc, 0);  // traps disabled
+    if (mc) { 
+      abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
+    } else {
+      abort_operation("Cannot find execution context during sigfpvm_handler exec");
+    }
+    ASSERT(0);
+    return;
+  }
+
+  mc->fp_traps++;
+
+#if 0 && DEBUG_OUTPUT
+#define DUMP_CUR_INSTR() fpvm_decoder_print_inst(fi, stderr);
+#else
+#define DUMP_CUR_INSTR()
+#endif
+    
+  fpvm_inst_t *fi = 0;
+  int do_insert = 0;
+  fpvm_regs_t regs;
+  
+  regs.mcontext = &uc->uc_mcontext;
+    
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  // we get the registers early since
+  // we will need to do a fake bind the first
+  // time we see an instruction
+  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;  
+  
+  DEBUG("Handling instruction (rip = %p)\n",rip);
+
+  fi = decode_cache_lookup(mc, rip);
+
+  if (!fi) {
+    DEBUG("Instruction is not in the decode cache\n");
+    fi = fpvm_decoder_decode_inst(rip);
+    if (!fi) {
+      ERROR("failed to decode instruction at %p\n",rip);
+      goto fail_do_trap;
+    }
+    // Doing fake bind here to capture operand sizes
+    // which is needed by the vm compilation
+    if (fpvm_decoder_bind_operands(fi, &regs)) {
+      ERROR("Cannot fake-bind operands of instruction\n");
+      goto fail_do_trap;
+    }
+    if (fpvm_vm_compile(fi)) {
+      ERROR("cannot compile instruction\n");
+      goto fail_do_trap;
+    }
+    DEBUG("successfully decoded and compiled instruction, which follows:\n");
+    fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
+    do_insert = 1;
+  } else {
+    DEBUG("Instruction already found in the decode cache, ignoring decode, bind, codegen, and vm context creation\n");
+    do_insert = 0;
+  }
+
+  DEBUG("vm init\n");
+  fpvm_vm_init(mc->vm, fi, &regs);
+  
+  DEBUG("vm run\n");
+  if (fpvm_vm_run(mc->vm)) {
+    ERROR("failed to execute VM successfully for instruction at %p\n");
+    // this would be very bad since it could have partially completed, mangling stuff
+    goto fail_do_trap;
+  }
+
+  
+  rip += fi->length;
+    
+  // DEBUG("Emulation done:\n");
+  // #if DEBUG_OUTPUT
+  //   fpvm_dump_xmms_double(stderr, regs.fprs);
+  //   fpvm_dump_xmms_float(stderr, regs.fprs);
+  //   fpvm_dump_float_control(stderr, uc);
+  //   fpvm_dump_gprs(stderr, uc);
+  // #endif
+    
+  // Skip those instructions we just emulated.
+  uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+  
+  if (do_insert) {
+    // put into the cache for next time
+    decode_cache_insert(mc, fi);
+  }
+    
+  // stay in state AWAIT_FPE
+    
+  mc->emulated_inst++;
+  
+  DEBUG("FPE succesfully done (emulated one instruction)\n");
+  
+  DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  
+  DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  
+  return;
+  
+  // we should only get here if the instruction
+  // could not be handled
+fail_do_trap:
+
+  DEBUG("doing fail do trap for %p\n",rip);
+
+  if (fi) {
+    DEBUG("have decoded failing instruction\n");
+    // only free if we didn't find it in the decode cache...
+    if (do_insert) {
+      fpvm_decoder_free_inst(fi);
+    }
+  }
+
+  DEBUG("switching to trap mode\n");
+
+  // switch to trap mode, so we can re-enable FP traps after this instruction is
+  // done
+  clear_fp_exceptions_context(uc);        // exceptions cleared
+  set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_trap_flag_context(uc, 1);  // traps disabled
+  
+  mc->state = AWAIT_TRAP;
+
+  // our next stop should be the instruction, and then, immediately afterwards,
+  // the sigtrap handler
+
+  return;
+}
+
+
+static inline void fp_trap_handler(ucontext_t *uc)
+{
+#if CONFIG_USE_NVM
+  return fp_trap_handler_nvm(uc);
+#else
+  return fp_trap_handler_emu(uc);
+#endif
+}
 
 //
 // Entry point for FP Trap for trap short circuiting (kernel module)
@@ -2012,7 +2179,14 @@ static int bringup_execution_context(int tid) {
     c->decode_cache_size = decode_cache_size;
     memset(c->decode_cache, 0, sizeof(fpvm_inst_t *) * c->decode_cache_size);
   }
-
+#if CONFIG_USE_NVM
+  c->vm = malloc(sizeof(*(c->vm)));
+  if (!c->vm) {
+    ERROR("Cannot allocate vm for context\n");
+  } else {
+    memset(c->vm, 0, sizeof(*(c->vm)));
+  }
+#endif
   __fpvm_current_execution_context = c;
 
   DEBUG("brought up execution context for thread %lu at %p (state %d)\n",gettid(),c,c->state);
@@ -2059,8 +2233,10 @@ static int teardown_execution_context(int tid) {
 extern void * _user_fpvm_entry;
 #endif
 
+#if !CONFIG_HAVE_MAIN
 // This is defined in the LD_PRELOAD for the wrapper
 extern int fpvm_setup_additional_wrappers();
+#endif
 
 static int bringup() {
   // fpvm_gc_init();
@@ -2076,10 +2252,11 @@ static int bringup() {
     return -1;
   }
 
+#if !CONFIG_HAVE_MAIN
   if (fpvm_setup_additional_wrappers()) {
     ERROR("Some additional wrapper setup failed - ignoring\n");
   }
-
+#endif
   
   ORIG_IF_CAN(feclearexcept, exceptmask);
 
@@ -2262,8 +2439,14 @@ static void config_round_daz_ftz(char *buf) {
   DEBUG("Configuring rounding control to 0x%08x\n", our_mxcsr_round_daz_ftz_mask);
 }
 
+
+
 // Called on load of preload library
-static __attribute__((constructor)) void fpvm_init(void) {
+#if CONFIG_HAVE_MAIN
+static void fpvm_init(void) {
+#else
+static __attribute__((constructor )) void fpvm_init(void) {
+#endif
   INFO("init\n");
   //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
@@ -2312,7 +2495,11 @@ static __attribute__((constructor)) void fpvm_init(void) {
 }
 
 // Called on unload of preload library
+#if CONFIG_HAVE_MAIN
+static void fpvm_deinit(void) {
+#else
 static __attribute__((destructor)) void fpvm_deinit(void) {
+#endif
   DEBUG("deinit\n");
   dump_execution_contexts_info();
 
@@ -2321,3 +2508,173 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
   inited = 0;
   DEBUG("done\n");
 }
+
+
+ 
+
+#if CONFIG_HAVE_MAIN
+
+/*
+asm (
+".global my_instruction\n"
+"my_instruction:\n"
+"   vfmaddsd %xmm1, %xmm2, %xmm3, %xmm4\n"
+// "   sqrtpd %xmm2, %xmm3\n"
+// "   maxsd %xmm2, %xmm3\n"
+// "   subpd %xmm2, %xmm3\n"
+// "   mulpd %xmm2, %xmm3\n"
+);
+*/
+
+ 
+extern uint8_t my_instruction[];
+struct xmm {
+  double low;
+  double high;
+};
+
+
+void fpvm_test_instr(struct xmm *p);
+
+void print_fpregs_decimal(struct xmm *fpregs) {
+  for (int i = 0; i < 16; i++) {
+    printf("%16.8lf ", fpregs[i].low);
+    if (i == 7) {
+      printf("\n");
+    }
+  }
+  printf("\n");
+}
+
+void print_fpregs_hex(struct xmm *fpregs) {
+  for (int i = 0; i < 16; i++) {
+    uint64_t *bits = (uint64_t *)&fpregs[i].low;
+    printf("0x%016lX ", *bits);
+    if (i == 7) {
+      printf("\n");
+    }
+  }
+  printf("\n");
+}
+
+int main(int argc, char *argv[])
+{
+  
+  INFO("hello world\n");
+
+  if (fpvm_decoder_init()) {
+    ERROR("cannot initialize decoder\n");
+    abort();
+  }
+  
+  fpvm_inst_t *fi = fpvm_decoder_decode_inst(my_instruction);
+
+  if (!fi) {
+    ERROR("cannot decode instruction\n");
+    abort();
+  }
+
+  // acquire pointers to the GP and FP register state
+  // from the mcontext.
+  //
+  // Note that we update the mcontext each time we
+  // complete an instruction in the current sequence
+  // so this always reflects the current
+  fpvm_regs_t regs;
+    
+  ucontext_t uc;
+  getcontext(&uc);
+  regs.mcontext = &uc.uc_mcontext;
+  
+  // PAD: This stupidly just treats everything as SSE2
+  // and must be fixed
+  regs.fprs = uc.uc_mcontext.fpregs->_xmm;
+  regs.fpr_size = 16;
+  
+  // Doing fake bind here to capture operand sizes
+  // If we do it this way, we will only bind the first time we see the instruction
+  // and otherwise keep it in the decode cache
+  if (fpvm_decoder_bind_operands(fi, &regs)) {
+    ERROR("Cannot bind operands of instruction\n");
+    abort();
+  }
+
+  if (fpvm_vm_compile(fi)) {
+    ERROR("cannot compile instruction\n");
+    abort();
+  }
+
+  INFO("successfully decoded and compiled instruction\n");
+  
+  INFO("Now displaying generated code\n");
+  fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
+
+
+  INFO("Now trying to execute generated code\n");
+
+  INFO("Now testing with VM\n");
+  
+
+  fpvm_vm_t vm;
+
+  struct xmm fpregs[16];
+
+  for (int i = 0; i < 16; i++) {
+    fpregs[i].low = (double)i;
+    fpregs[i].high = (double)i + 0.5;
+  }
+
+  regs.fprs = fpregs;
+  regs.fpr_size = 16;
+
+  INFO("Register initial state\n");
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register initial state (in hex)\n");
+  // print_fpregs_hex(fpregs);
+
+  printf("\n\n");
+
+  fpvm_vm_init(&vm, fi, &regs);
+
+  fpvm_vm_run(&vm);
+
+  INFO("Register final state\n");
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register final state (in hex)\n");
+  // print_fpregs_hex(fpregs);
+
+  printf("\n\n");
+
+  INFO("Testing ground truth\n");
+  for (int i = 0; i < 16; i++) {
+    fpregs[i].low = (double)i;
+    fpregs[i].high = (double)i + 0.5;
+  }
+  INFO("Register initial state\n");
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  fpvm_test_instr(fpregs);
+
+  printf("\n");
+  
+  INFO("Register final state\n");
+  // print_fpregs_decimal(fpregs);
+  fpvm_dump_xmms_double(stderr, fpregs);
+
+  printf("\n");
+
+  // INFO("Register final state (in hex)\n");
+  // print_fpregs_hex(fpregs);
+
+  return 0;
+}
+#endif

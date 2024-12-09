@@ -6,25 +6,45 @@
 export FPVM_HOME:=$(shell pwd)
 export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
 
+# this should come from from config... 
+ARCH=x64
+#ARCH=riscv64
 
-SRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
-INCS := $(shell find include -name '*.hpp' -or -name '*.h')
+# hard coded assuming we are doing cross-compilation
+ifeq ($(ARCH),riscv64)
+  PREFIX=riscv64-unknown-linux-gnu-
+else
+  PREFIX=
+endif
+
+
+ARCHSRCDIR = arch/$(ARCH)
+ARCHINCDIR = $(ARCHSRCDIR)
+
+ARCHSRCS := $(shell find $(ARCHSRCDIR) -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
+GENERICSRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
+SRCS = $(GENERICSRCS) $(ARCHSRCS)
+
+ARCHINCS := $(shell find $(ARCHINCDIR) -name '*.hpp' -or -name '*.h')
+GENERICINCS := $(shell find include -name '*.hpp' -or -name '*.h')
+INCS := $(GENERICINCS) $(ARCHINCS)
 
 
 BUILD=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ # include/capstone/
+INC_DIRS := include/ $(ARCHINCDIR)/ # include/capstone/
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
-CC = gcc
-AS = gcc
-CXX = g++
+CC = $(PREFIX)gcc
+AS = $(PREFIX)gcc
+CXX = $(PREFIX)g++
 CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
 TARGET=build/fpvm.so
+
 all: $(TARGET) # build/test_fpvm
 
 .PHONY: foo test_lorenz
@@ -35,27 +55,41 @@ foo:
 
 # assembly
 $(BUILD)/%.s.o: %.s
-	@mkdir -p $(dir $@)
-	$(AS) -fPIC -shared -c $< -o $@
+	@@mkdir -p $(dir $@)
+	@echo " AS   $<"
+	@$(AS) -fPIC -shared -c $< -o $@
 
 $(BUILD)/%.S.o: %.S
 	@mkdir -p $(dir $@)
-	$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
+	@echo " AS   $<"
+	@$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
 
 # c source
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
+	@echo " CC   $<"
+	@$(CC) $(CFLAGS) -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
 
 # c++ source
 $(BUILD)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
+	@echo " CXX  $<"
+	@$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
 # $(CC) $(CFLAGS) -fPIC -shared $(OBJS) -lcapstone -lmpfr -lm -ldl -lstdc++ -o $@
 $(TARGET): $(BUILD) $(OBJS) 
-	@echo "Linking"
-	$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+	@echo " LD   $(TARGET)"
+	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+
+build/fpvm_main: $(BUILD) $(OBJS) 
+	@echo " LD   build/fpvm_main"
+	@$(CC) $(CFLAGS) $(OBJS) -o build/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+
+
+
+build/vmtest: $(BUILD) $(OBJS) bin/vmtest.c
+	@$(CC) $(CFLAGS) bin/vmtest.c src/vm.c -o build/vmtest -Wl,-rpath -Wl,./lib/-lm -ldl
+
 
 build/test_fpvm: test_fpvm.c
 	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test_fpvm.c -lm -o $@

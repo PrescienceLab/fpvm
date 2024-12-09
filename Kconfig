@@ -1,5 +1,36 @@
 mainmenu "FPVM Configuration"
 
+choice
+    prompt "Target Architecture"
+    default ARCH_X64
+
+    config ARCH_X64
+        bool "x64"
+	help 
+            Intel 64 bit with at least SSE
+
+    
+    config ARCH_RISCV64
+        bool "RISC-V (64)"
+	help
+	    RISC-V 64 bit architecture with at least F and D
+endchoice    
+
+config HAVE_MAIN
+    bool "Add a main function"
+    default n
+    help
+       This compiles it with a main function
+       that can be used for testing without LD_PRELOAD
+       This is for hacking around on NVM
+
+config USE_NVM
+    bool "Use NVM"
+    default n
+    help
+       Use the NVM virtual machine for ordinary processing
+       This is for hacking around on NVM
+      
 config NO_OUTPUT
     bool "Disable output"
     default n

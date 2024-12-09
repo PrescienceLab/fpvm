@@ -3,7 +3,7 @@
 #include <ucontext.h>
 
 // to allow access to fs base and gs base
-#include <asm/prctl.h>  
+#include <asm/prctl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -13,10 +13,15 @@
 
 #include <fpvm/decoder.h>
 #include <fpvm/fpvm_common.h>
+#include <fpvm/vm.h>
 
 #include <capstone/capstone.h>
 
+
 static csh handle;
+
+
+
 
 
 
@@ -237,7 +242,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_VCMPGE_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
     [X86_INS_VCMPGT_OQPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
     [X86_INS_VCMPTRUE_USPD] = {FPVM_OP_CMPXX, 1, 0, 8, 0},
-    
+
     /*
       Additional comparison instructions we can consider -PAD
 
@@ -311,7 +316,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 	X86_INS_VCMPTRUE_USPS,
 
     */
-    
+
     // float to integer conversion
 
     [X86_INS_CVTSD2SI] = {FPVM_OP_F2I, 0, 0, 8, 4},
@@ -412,14 +417,14 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_MOVNTQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
     [X86_INS_MOVSX] = {FPVM_OP_MOVE, 0, 0, 2, 8}, // depends on a lot
     [X86_INS_MOVSXD] = {FPVM_OP_MOVE, 0, 0, 4, 8}, // depends on a lot
-    [X86_INS_MOVZX] = {FPVM_OP_MOVE, 0, 0, 2, 8}, // depends on a lot    
+    [X86_INS_MOVZX] = {FPVM_OP_MOVE, 0, 0, 2, 8}, // depends on a lot
 
     [X86_INS_VMOVD] = {FPVM_OP_MOVE, 0, 0, 4, 4},
     [X86_INS_VMOVQ] = {FPVM_OP_MOVE, 0, 0, 8, 8},
-    
-    
+
+
     // FP moves
-    
+
     [X86_INS_MOVSS] = {FPVM_OP_MOVE, 0, 0, 4, 4},
     [X86_INS_MOVSD] = {FPVM_OP_MOVE, 0, 0, 8, 8},
     [X86_INS_MOVAPS] = {FPVM_OP_MOVE, 1, 0, 4, 4},
@@ -584,7 +589,7 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     // are identifed by fpvm_patch.sh as being departures
     // from the patched codebase (i.e., foreign calls)
     // such departures can come due to calls, jumps, and
-    // conditional jumps.  
+    // conditional jumps.
     // push is also included here because that is
     // instruction that the patcher marks, instead of
     // the call following it
@@ -668,7 +673,7 @@ static int decode_move(fpvm_inst_t *fi) {
     fi->is_gpr_mov = 1;
     fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
-    
+
   case X86_INS_MOVZX:
     fi->is_simple_mov = 1;
     fi->is_gpr_mov = 1;
@@ -709,22 +714,22 @@ static int decode_comparison(fpvm_inst_t *fi)
   if (fi->common->op_type!=FPVM_OP_CMPXX) {
     return 0;
   }
-  
+
   cs_insn *inst = (cs_insn *)fi->internal;
- 
+
   // first try AVX CCs
   if (inst->detail->x86.avx_cc != X86_AVX_CC_INVALID) {
     DEBUG("avx comparison encoding:  %d\n", inst->detail->x86.avx_cc);
     fi->compare = inst->detail->x86.avx_cc;
     return 0;
   }
-    
+
   if (inst->detail->x86.sse_cc != X86_SSE_CC_INVALID) {
     DEBUG("sse comparison encoding:  %d\n", inst->detail->x86.sse_cc);
     fi->compare = inst->detail->x86.sse_cc;
     return 0;
   }
-    
+
   ERROR("cmpxx operation but has no valid comparison type\n");
   return -1;
 }
@@ -753,7 +758,11 @@ void fpvm_decoder_free_inst(fpvm_inst_t *fi) {
   free(fi);
 }
 
+
+
+
 fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
+
   cs_insn *inst;
 
   DEBUG("Decoding instruction at %p\n", addr);
@@ -767,7 +776,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
 
   fpvm_inst_t *fi = malloc(sizeof(fpvm_inst_t));
   if (!fi) {
-    ERROR("Can't allocate instruciton\n");
+    ERROR("Can't allocate instruction\n");
     return 0;
   }
   memset(fi, 0, sizeof(*fi));
@@ -791,7 +800,7 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
     fpvm_decoder_free_inst(fi);
     return 0;
   }
-  
+
   return fi;
 }
 
@@ -812,11 +821,11 @@ int  fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix)
   fprintf(out, "%s%s\t\t%s (%u bytes)\n", prefix, inst->mnemonic, inst->op_str, inst->size);
 
   len = inst->size;
-  
+
   cs_free(inst, 1);
-  
+
   return len;
-  
+
 }
 
 
@@ -1028,14 +1037,14 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
   cs_x86 *x86 = &det->x86;
-  
+
   // operand sizes for memory operands cannot be determined
   // trivially, so the idea here is to make memory operands
   // correspond to the largest operand size we encounter
   // in the instruction.   This is done in two passes
   uint8_t max_operand_size=0;
 #define UPDATE_MAX_OPERAND_SIZE(s) max_operand_size = ((s)>max_operand_size) ? (s) : max_operand_size;
-  
+
   int i;
 
   DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n", fr->mcontext, fr->fprs,
@@ -1340,7 +1349,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 	DEBUG("Mapped memory operand to %p (%lu [weird]) data ?\n",
 	      addr,
 	      size);
-	
+
 	break;
       }
     }

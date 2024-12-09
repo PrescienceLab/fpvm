@@ -476,6 +476,7 @@ int vanilla_cmpxx_double(
   double b = *(double *)src2;
   uint64_t r=0;
 
+  printf("special val: %d\n", special->compare_type);
   switch (special->compare_type) {
   case FPVM_INST_COMPARE_INVALID:
     ERROR("invalid compare - should not happen\n");
@@ -616,7 +617,7 @@ int vanilla_cmpxx_double(
 
   MATH_DEBUG("cmpxx_double(%lf,%lf,%d) = %lu\n", a,b,special->compare_type,r);
 
-  *(uint64_t*)dest=r;
+  *(uint64_t*)dest=r ? -1 : 0;
 
   return 0;
 
@@ -862,6 +863,12 @@ int restore_double(
 
   return 0;
 }
+
+void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p)
+{
+  // does not do anything for vanilla
+}
+
 
 // demote
 int restore_float(

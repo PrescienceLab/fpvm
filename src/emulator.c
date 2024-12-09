@@ -24,16 +24,7 @@
 
 #define IS_OUR_NAN(x) fpvm_gc_is_tracked_nan_from_uint(x)
 
-static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
-  ERROR("Cannot emulate instruction\n");
-  return -1;
-}
 
-// generic operation type
-typedef int (*op_t)(
-    op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4);
-
-typedef op_t op_map_t[2];  // single, double
 
 FPVM_NUMBER_SYSTEM_INIT();
 
@@ -41,7 +32,7 @@ FPVM_NUMBER_SYSTEM_INIT();
 //
 // Interface TBD, put possibly as simple as the one for compiler-based approach
 
-static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
+op_map_t vanilla_op_map[FPVM_OP_LAST] = {
     [0 ... FPVM_OP_LAST - 1] = {bad, bad},
     [FPVM_OP_ADD] = {vanilla_add_float, vanilla_add_double},
     [FPVM_OP_SUB] = {vanilla_sub_float, vanilla_sub_double},
@@ -55,7 +46,7 @@ static op_map_t vanilla_op_map[FPVM_OP_LAST] = {
 
     [FPVM_OP_MIN] = {vanilla_min_float, vanilla_min_double},
     [FPVM_OP_MAX] = {vanilla_max_float, vanilla_max_double},
-    
+
     [FPVM_OP_CMP] = {vanilla_cmp_float, vanilla_cmp_double},
     [FPVM_OP_UCMP] = {vanilla_cmp_float, vanilla_cmp_double},
 
@@ -126,7 +117,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
       DEBUG("should not emulate - is correctness based\n");
       return 0;
     }
-    
+
     if (fi->common->op_size != 8) {
       // currently only can nanbox in doubles
       // therefore, this is not an emulatable instruction
@@ -136,15 +127,15 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 
     int i,j;
     int count = 1;
-    // although src_step is not currently used, it is possible for 
+    // although src_step is not currently used, it is possible for
     // the src_step to be different from the dest_step
     int dest_step = fi->common->op_size;
     void *cur;
-    
+
 
     if (fi->common->is_vector) {
       count = fi->operand_sizes[0] / fi->common->op_size;
-      if (count<2) { 
+      if (count<2) {
 	DEBUG("may allow emulation for suspicious vector instr count=%d\n", count);
       }
     }
@@ -162,10 +153,10 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 	}
       }
     }
-    
+
     // no nans found
     DEBUG("should not emulate - none of the %d x %d (size %u) operands are tracked\n", fi->operand_count, count, fi->common->op_size);
-    
+
     return 0;
   }
 }
@@ -208,12 +199,12 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   if (CONFIG_DEBUG) {
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: ");
   }
-  
+
 #if CONFIG_TELEMETRY_PROMOTIONS
   // currently only promotions will be tracked
   *promotions = *demotions = *clobbers = 0;
-#endif  
-  
+#endif
+
   if (fi->common->has_mask) {
     ERROR("Cannot handle masks yet\n");
     // ASSERT(0);
@@ -240,7 +231,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     DEBUG("Doing vector instruction - this might break (dest operand size=%lu common operand size=%lu computed count=%lu dest_step=%lu src_step=%lu)\n",fi->operand_sizes[0],fi->common->op_size,count,dest_step,src_step);
   } else {
     dest_step = fi->common->op_size;
-    src_step = fi->common->op_size;  
+    src_step = fi->common->op_size;
     DEBUG("Doing scalar instruction - (common operand size=%lu)\n",fi->common->op_size);
   }
 
@@ -526,7 +517,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       }
 
       break;
-      
+
     default:
       ERROR("Cannot handle unknown op type %d at %p\n", fi->common->op_type, fi->addr);
       return -1;
@@ -553,8 +544,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 #endif
 
 #define FETCH(p,s) ((uint64_t)((p) ? ((s)==8 ?*(uint64_t*)(p) : (s)==4 ? *(uint32_t*)(p) : 0) : 0))
-  
-  
+
+
   // PAD: if count>1, then this is a vector instruction, and we
   // had better have the steps for all operands correct
 
@@ -574,7 +565,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     DEBUG(
         "%d/%d : calling %s((byte_width=%d,truncate=%d,unordered=%d,compare_type=%d), "
         "%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx),%p (%016lx))\n",
-	i+1, count, buf, 
+	i+1, count, buf,
 	special.byte_width, special.truncate, special.unordered, special.compare_type ,
 	dest, FETCH(dest,dest_step),
 	src1, FETCH(src1,src_step),
@@ -582,7 +573,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	src3, FETCH(src3,src_step),
 	src4, FETCH(src4,src_step));
 #endif
-    
+
     // HACK(NCW): Some instructions have a 16 byte width, but that doesn't make any sense.
     //            If this begins to cause problems, we will have to fix that
     if (special.byte_width > 8) {
@@ -609,14 +600,14 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     //   fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"INS_MOV: ");
     //   fprintf(stderr, "\e[0m");
     // }
-    
+
     rc |= func(&special, dest, src1, src2, src3, src4);
 
     if (fi->common->op_type==FPVM_OP_MOVE && fi->is_simple_mov && fi->is_gpr_mov && src_step != dest_step) {
       uint64_t temp = *(uint64_t*)dest;
       extend_write(fi,dest,&temp, dest_step, src_step);
     }
-    
+
     // handle CMPXX writeback here because where to place the result depends on
     // the instruction set.  It is only for SSE that we overwrite the
     // whole destination with either an all 1 pattern or an all 0 pattern
@@ -644,7 +635,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     // only a destination can be clobbered
     if (!skip_pro && dest) {
 	if (d  != (*(uint64_t*)dest)) {
-	  if ((IS_OUR_NAN(d))) { 
+	  if ((IS_OUR_NAN(d))) {
 	    (*clobbers)++;  DEBUG("destination clobbered\n");
 	  }
 	  if (fi->common->op_type != FPVM_OP_MOVE) {
@@ -656,11 +647,11 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	  }
 	}
     }
-    if (!skip_pro && src1 && src1!=dest) { 
+    if (!skip_pro && src1 && src1!=dest) {
       // only handle src1 separately if it is distinct from dest
       // source operands should only be promoted...
       if (s1  != (*(uint64_t*)src1)) {
-	if ((IS_OUR_NAN(s1))) { 
+	if ((IS_OUR_NAN(s1))) {
 	  (*clobbers)++;  DEBUG("src1 clobbered\n");
 	}
 	if (IS_OUR_NAN(*(uint64_t*)src1)) {
@@ -672,7 +663,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (!skip_pro && src2) {
       if (s2  != (*(uint64_t*)src2)) {
-	if ((IS_OUR_NAN(s2))) { 
+	if ((IS_OUR_NAN(s2))) {
 	  (*clobbers)++;  DEBUG("src2 clobbered\n");
 	}
 	if (IS_OUR_NAN(*(uint64_t*)src2)) {
@@ -684,7 +675,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (!skip_pro && src3) {
       if (s3  != (*(uint64_t*)src3)) {
-	if ((IS_OUR_NAN(s3))) { 
+	if ((IS_OUR_NAN(s3))) {
 	  (*clobbers)++;  DEBUG("src3 clobbered\n");
 	}
 	if (IS_OUR_NAN(*(uint64_t*)src3)) {
@@ -696,7 +687,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     }
     if (!skip_pro && src4) {
       if (s4  != (*(uint64_t*)src4)) {
-	if ((IS_OUR_NAN(s4))) { 
+	if ((IS_OUR_NAN(s4))) {
 	  (*clobbers)++;  DEBUG("src4 clobbered\n");
 	}
 	if (IS_OUR_NAN(*(uint64_t*)src4)) {
@@ -715,7 +706,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 }
 
 /*
-  Note 
+  Note
   SSE:   128 bit regs -  8 regs on 32 bit mode, 16 on 64 bit mode (16 is what we care about)
   SSE2:    SSE + extended use of the 16 128 bit registers
   SSE3:    SSE2 + more extended uses of the 16 128 bit registers
@@ -752,7 +743,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   -mvzeroupper                		[enabled]
  */
 
-int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr) 
+int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 {
   int demotions=0;
   SAFE_DEBUG("handling fp register demotions\n");
@@ -775,7 +766,7 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
   SAFE_DEBUG("demotions done\n");
   return demotions;
 }
-				   
+
 
 
 
@@ -804,7 +795,7 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
 //
 // For memory instructions, we need to emulate the instruction,
 // downcasting any source that is a nanboxed value.
-// 
+//
 //
 fpvm_emulator_correctness_response_t
 fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int *demotions)
@@ -820,10 +811,10 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	fi->common->is_vector, fi->common->has_mask,
 	fi->common->op_size, fi->common->dest_size);
 
-#if CONFIG_TELEMETRY_PROMOTIONS  
+#if CONFIG_TELEMETRY_PROMOTIONS
   *demotions=0;
 #endif
-  
+
   if (fi->common->has_mask) {
     ERROR("Cannot handle masks yet\n");
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
@@ -850,7 +841,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     return FPVM_CORRECT_CONTINUE;
   }
 
-  if (fi->common->op_type == FPVM_OP_WARN) { 
+  if (fi->common->op_type == FPVM_OP_WARN) {
     ERROR("instruction decodes to warning type, treating as move - this is LIKELY BOGUS\n");
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
     // fall through, treat as move
@@ -858,7 +849,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 
   // if we got to here, we are dealing with a memory instruction
   DEBUG("handling problematic memory instruction of op type %d\n",fi->common->op_type);
-  
+
   op_special_t special = {0, 0, 0};
   void *src1 = 0, *src2 = 0, *src3 = 0, *src4 = 0, *dest = 0;
 
@@ -905,7 +896,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   }
 
   // note that the following should consider the different
-  // op types, ideally, but wer 
+  // op types, ideally, but wer
   switch (fi->common->op_type) {
   default:
     DEBUG("default type\n");
@@ -943,9 +934,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
       fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr: ");
       goto complex_transforms_sources_yikes;
     }
-    
+
     DEBUG("handling move count=%d os=%d ds=%d ss=%d os0=%d os1=%d\n",count,os,ds,os0,os1);
-    
+
     for (int i=0;i<count;i++, dest+=ds, src2+=os) {
       // copy out entire quantity, based on size
       uint64_t temp =
@@ -954,13 +945,13 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	os==4 ? *(uint32_t*)src2 :
 	os==8 ? *(uint64_t*)src2 :
 	8; // should not happen
-      
+
       uint64_t old = temp;
       // now convert that temp via the alternative math library
       func(0,0,&temp,0,0,0);
-      
+
       extend_write(fi,dest,&temp, ds, os);
-      
+
 #if CONFIG_TELEMETRY_PROMOTIONS
       if (old!=temp) {
 	DEBUG("value actually demoted (%016lx => %016lx)\n",old,temp);
@@ -969,7 +960,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 	DEBUG("value not demoted (not actually a nanbox)\n");
       }
 #endif
-      
+
       DEBUG("completed emulation of move successully\n");
       return FPVM_CORRECT_SKIP;
     }
@@ -978,11 +969,11 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
  complex_transforms_sources_yikes:
 
   fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"problematic correctness instr (YIKES): ");
-    
+
   int rc = 0;
 
 #define increment(a, step) (void *)(a ? (char *)a + step : 0)
-  
+
   for (int i = 0; i < count; i++, dest = increment(dest, dest_step),
            src1 = increment(src1, src_step), src2 = increment(src2, src_step),
            src3 = increment(src3, src_step), src4 = increment(src4, src_step)) {
@@ -997,7 +988,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
     }
     DEBUG(
         "calling %s((byte_width=%d,truncate=%d,unordered=%d), "
-        "%p,%p,%p,%p,%p)\n", buf, 
+        "%p,%p,%p,%p,%p)\n", buf,
 	special.byte_width, special.truncate, special.unordered, dest, src1, src2, src3,
         src4);
 #endif
@@ -1027,7 +1018,7 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
 #if CONFIG_TELEMETRY_PROMOTIONS
   DEBUG("demotions: %d\n",*demotions);
 #endif
-  
+
   if (rc) {
     ERROR("source demotion failed, so trying to execute instruction (BOGUS)\n");
     return FPVM_CORRECT_CONTINUE;
