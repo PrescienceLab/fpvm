@@ -158,5 +158,9 @@ defconfig:
 cfg:
 	@scripts/menuconfig.py
 
+# run `make reconfig` if `.config` has changed.
+reconfig:
+	@echo "q" | env TERM=xterm-256color python3 scripts/menuconfig.py >/dev/null
+
 
 -include $(DEPS)
