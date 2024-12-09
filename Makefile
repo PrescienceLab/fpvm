@@ -30,7 +30,7 @@ GENERICINCS := $(shell find include -name '*.hpp' -or -name '*.h')
 INCS := $(GENERICINCS) $(ARCHINCS)
 
 
-BUILD=build
+BUILD?=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
@@ -43,9 +43,9 @@ CXX = $(PREFIX)g++
 CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
-TARGET=build/fpvm.so
+TARGET=$(BUILD)/fpvm.so
 
-all: $(TARGET) # build/test_fpvm
+all: $(TARGET) # $(BUILD)/test_fpvm
 
 .PHONY: foo test_lorenz
 foo:
@@ -81,17 +81,17 @@ $(TARGET): $(BUILD) $(OBJS)
 	@echo " LD   $(TARGET)"
 	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
-build/fpvm_main: $(BUILD) $(OBJS) 
-	@echo " LD   build/fpvm_main"
-	@$(CC) $(CFLAGS) $(OBJS) -o build/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+$(BUILD)/fpvm_main: $(BUILD) $(OBJS) 
+	@echo " LD   $(BUILD)/fpvm_main"
+	@$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
 
 
-build/vmtest: $(BUILD) $(OBJS) bin/vmtest.c
-	@$(CC) $(CFLAGS) bin/vmtest.c src/vm.c -o build/vmtest -Wl,-rpath -Wl,./lib/-lm -ldl
+$(BUILD)/vmtest: $(BUILD) $(OBJS) bin/vmtest.c
+	@$(CC) $(CFLAGS) bin/vmtest.c src/vm.c -o $(BUILD)/vmtest -Wl,-rpath -Wl,./lib/-lm -ldl
 
 
-build/test_fpvm: test_fpvm.c
+$(BUILD)/test_fpvm: test_fpvm.c
 	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test_fpvm.c -lm -o $@
 
 $(BUILD):
@@ -100,13 +100,13 @@ $(BUILD):
 clean:
 	@rm -rf $(BUILD)
 
-test: $(TARGET) build/test_fpvm
+test: $(TARGET) $(BUILD)/test_fpvm
 	@echo ==================================
-	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y build/test_fpvm 2>&1 > test.log
+	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y $(BUILD)/test_fpvm 2>&1 > test.log
 
 
 
-test_miniaero: $(TARGET) build/test_fpvm
+test_miniaero: $(TARGET) $(BUILD)/test_fpvm
 	@echo ==================================
 	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y test/miniaero_patched
 
@@ -137,13 +137,13 @@ test/double_pendulum.patched: test/double_pendulum
 lorenz: test/lorenz_attractor
 
 
-test_enzo: $(TARGET) build/test_fpvm
+test_enzo: $(TARGET) $(BUILD)/test_fpvm
 	@echo ==================================
 	@echo source env.sh first !
 	@echo ==================================
 	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y test/enzo/enzo_patched -d test/enzo/input
 
-test_fbench: $(TARGET) build/test_fpvm
+test_fbench: $(TARGET) $(BUILD)/test_fpvm
 	@echo ==================================
 	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y DISABLE_PTHREADS=y test/fbench_patched
 
