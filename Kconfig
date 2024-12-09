@@ -30,6 +30,10 @@ config USE_NVM
     help
        Use the NVM virtual machine for ordinary processing
        This is for hacking around on NVM
+config ENABLE_NVM_LOGGING
+    bool "Enable NVM Logging"
+    depends on USE_NVM
+    default n
       
 config NO_OUTPUT
     bool "Disable output"

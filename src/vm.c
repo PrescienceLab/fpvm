@@ -19,6 +19,13 @@
 #include "fpvm/decoder.h"
 #include <fpvm/fp_ops.h>
 
+#if CONFIG_ENABLE_NVM_LOGGING
+#define VM_FPRINTF fprintf
+#else
+#define VM_FPRINTF(...) ({})
+#endif
+
+
 
 // Return the size of the instruction pointed to by `code`
 size_t fpvm_opcode_size(uint8_t *code) {
@@ -57,17 +64,17 @@ static void _disas_operand_pointer(FILE *stream, void *ptr) {
   Dl_info dli;
   dladdr(ptr, &dli);
   if (dli.dli_sname) {
-    fprintf(stream, "%s <%p>", dli.dli_sname, ptr);
+    VM_FPRINTF(stream, "%s <%p>", dli.dli_sname, ptr);
   } else {
-    fprintf(stream, "%p", ptr);
+    VM_FPRINTF(stream, "%p", ptr);
   }
 }
 
 void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   const char *op = fpvm_opcode_name(code);
-  fprintf(stream, "\e[32m");
-  fprintf(stream, "%-14s ", op);
-  fprintf(stream, "\e[0m");
+  VM_FPRINTF(stream, "\e[32m");
+  VM_FPRINTF(stream, "%-14s ", op);
+  VM_FPRINTF(stream, "\e[0m");
 
   void *arg = code + 1;
 
@@ -76,48 +83,48 @@ void fpvm_disas_opcode(FILE *stream, uint8_t *code) {
   case fpvm_opcode_##opcode:     \
     _Generic((type)0, \
     void * : _disas_operand_pointer(stream, *(void**)arg), \
-    default : fprintf(stream, "$%d", *(type*)arg) \
+    default : VM_FPRINTF(stream, "$%d", *(type*)arg) \
     );          \
     break;
 #include <fpvm/opcodes.inc>
   }
 
-  fprintf(stream, "\n");
+  VM_FPRINTF(stream, "\n");
 }
 
 
 void fpvm_builder_disas(FILE *stream, fpvm_builder_t *b) {
   uint8_t *code = b->code;
   uint64_t codesize = b->size;
-  
+
   off_t o = 0;
 
-  fprintf(stream, "<%p>:\n", code);
+  VM_FPRINTF(stream, "<%p>:\n", code);
   while (o < codesize) {
     if (*code == fpvm_opcode_invalid) {
-      fprintf(stream, "\n");
+      VM_FPRINTF(stream, "\n");
       break;
     }
     size_t length = fpvm_opcode_size(code);
     if (length == 0) break;
 
-    fprintf(stream, "  %04x | ", o);
+    VM_FPRINTF(stream, "  %04x | ", o);
 
     // print out the bytes
-    fprintf(stream, "\e[90m");
+    VM_FPRINTF(stream, "\e[90m");
     for (int i = 0; i < 9; i++) {
       if (i < length) {
-        fprintf(stream, "%02x ", code[i]);
+        VM_FPRINTF(stream, "%02x ", code[i]);
       } else {
-        fprintf(stream, "   ");
+        VM_FPRINTF(stream, "   ");
       }
     }
-    fprintf(stream, "\e[0m");
-    fprintf(stream, "| ");
+    VM_FPRINTF(stream, "\e[0m");
+    VM_FPRINTF(stream, "| ");
 
-    // fprintf(stream, "\e[32m");
+    // VM_FPRINTF(stream, "\e[32m");
     fpvm_disas_opcode(stream, code);
-    // fprintf(stream, "\e[0m");
+    // VM_FPRINTF(stream, "\e[0m");
     o += length;
     code += length;
   }
@@ -239,7 +246,7 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       return 0;
       break;
 
-    case fpvm_opcode_ld64: 
+    case fpvm_opcode_ld64:
       x = *POP(uint64_t*);
       PUSH(x);
       break;
@@ -253,12 +260,12 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
     x = O(int32_t);
     PUSH(x);
     break;
-    
+
   case fpvm_opcode_imm16:
     x = O(int16_t);
     PUSH(x);
     break;
-    
+
   case fpvm_opcode_imm8:
     x = O(int8_t);
     PUSH(x);
@@ -269,8 +276,8 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
     x+= POP(uint64_t);
     PUSH(x);
     break;
-    
-      
+
+
     case fpvm_opcode_call1s1d:
       op = O(op_t);
       dest = POP(void *);
@@ -344,16 +351,16 @@ int fpvm_vm_run(fpvm_vm_t *vm) {
 }
 
 void fpvm_vm_dump(fpvm_vm_t *vm, FILE *stream) {
-  fprintf(stream, "Opcode:\n");
+  VM_FPRINTF(stream, "Opcode:\n");
   fpvm_disas_opcode(stream, vm->code);
 
   // Print the stack.
-  fprintf(stream, "Stack:\n");
+  VM_FPRINTF(stream, "Stack:\n");
   int ind = 0;
   for (uint64_t *sp = vm->sp - 1; sp >= vm->stack; sp--) {
-    fprintf(stream, "  %04d: 0x%016zx", ind, *sp);
-    if (ind == 0) fprintf(stream, " <- tos");
-    fprintf(stream, "\n");
+    VM_FPRINTF(stream, "  %04d: 0x%016zx", ind, *sp);
+    if (ind == 0) VM_FPRINTF(stream, " <- tos");
+    VM_FPRINTF(stream, "\n");
     ind++;
   }
 }
