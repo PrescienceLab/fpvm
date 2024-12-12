@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import itertools
 import argparse
 import shutil
 from pathlib import Path
@@ -207,7 +208,7 @@ def run_fpvm_binary(bin: Path,
 
     cmd = [bin, *args]
     if perf:
-        cmd = ['sudo', 'perf', 'record', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
+        cmd = ['sudo', 'perf', 'record', '-g', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
         print(cmd)
         del env['LD_PRELOAD']
     # if debug:
@@ -353,12 +354,12 @@ def div_clamp(a, b):
   return 0
 
 
-def cmd_benchmark(args):
-  bin = path_expand(args.binary)
+def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1, baseline=True):
+  bin = path_expand(binary)
 
-  name = args.name or os.path.basename(bin)
+  name = name or os.path.basename(bin)
 
-  output = Path(args.output)
+  output = Path(output).absolute()
   # Make sure the result dir is valid
   os.makedirs(output, exist_ok=True)
 
@@ -369,26 +370,27 @@ def cmd_benchmark(args):
 
   # Construct the environ the binary should be run with
   fpvm_env = os.environ.copy()
-  fpvm_env['LD_PRELOAD'] = args.fpvm
+  fpvm_env['LD_PRELOAD'] = fpvm
 
   runs = [
-    ('baseline', bin, os.environ.copy()),
-    ('magic', get_patched_binary(bin, 'magic'), fpvm_env),
-    # (f'{name}_trap', get_patched_binary(bin, 'trap'), fpvm_env),
+    ('magic', get_patched_binary(binary, 'magic'), fpvm_env),
   ]
+
+  if baseline:
+      runs += ('baseline', binary, os.environ.copy()),
 
   for run_name, bin, env in runs:
     usages = []
     amortized = []
     use_fpvm = run_name != 'baseline'
-    for run_idx in range(args.count):
+    for run_idx in range(count):
       factor = f'{run_name}_{run_idx}'
       log = output / f'{factor}.fpvm_log'
       print(f'Running {factor} into {log}')
       with open(output / f'{factor}.stdout', 'w') as stdout:
         with open(output / f'{factor}.stderr', 'w') as stderr:
           usage = run_fpvm_binary(bin,
-                                  args.argv,
+                                  argv,
                                   use_fpvm=use_fpvm,
                                   logfile=log,
                                   stdout=stdout,
@@ -449,6 +451,15 @@ def cmd_benchmark(args):
 
   # ...
 
+def cmd_benchmark(args):
+  run_benchmark_binary(args.name,
+                       args.output,
+                       args.binary,
+                       args.argv,
+                       fpvm=args.fpvm,
+                       count=args.count,
+                       baseline=True)
+
 
 
 # build FPVM for all the different configurations using test/sweep/base_config (if needed)
@@ -467,7 +478,71 @@ def cmd_sweep(args):
     # ...
     # We need to modify .config in the filesystem with the configuration of the run.
     # Then, we need to run the menuconfig to sync the .config and the autoconf.h
-    print(args)
+
+    
+
+    # First things first, this is the baseline configuration we will use for each compilation
+    base_config = [
+        'CONFIG_ARCH_X64=y',
+        'CONFIG_ALT_MATH_BOXED_IEEE=y',
+        'CONFIG_TELEMETRY=y',
+        'CONFIG_TELEMETRY_PROMOTIONS=y',
+        'CONFIG_TELEMETRY_PERIOD=0',
+        'CONFIG_PERF_STATS=y',
+        'CONFIG_PERF_STATS_PERIOD=0',
+    ]
+
+    under_test = [
+        'CONFIG_INSTR_SEQ_EMULATION=y',
+        'CONFIG_TRAP_SHORT_CIRCUITING=y',
+        'CONFIG_MAGIC_CORRECTNESS_TRAP=y'
+    ]
+
+    # backup the original .config that the user was using
+    print("Backing up original `.config`. \033[5;41mDO NOT\033[0m attempt to change anything about FPVM's configuration OR attempt to compile FPVM while this script is running!")
+    os.system(f'mv {FPVM_HOME}/.config {FPVM_HOME}/.config.bak')
+
+
+    for L in range(len(under_test) + 1):
+        if L == 0:
+            continue
+
+        for perm in itertools.combinations(under_test, L):
+            print('\n\n\n\n')
+            print('Running configuration combination ', perm)
+            print('\n\n')
+            # continue
+            config = base_config + list(perm)
+            # Apply the configuration file
+            with open(f'{FPVM_HOME}/.config', "w") as file:
+                file.write('\n'.join(config))
+
+            run_name = '-'.join(map(lambda x: x.replace('CONFIG_', '').lower().split('=')[0], perm))
+            # Make the build directory
+            build_dir = f'{FPVM_HOME}/build-sweep/{run_name}'
+            os.system(f'mkdir -p {build_dir}')
+
+
+            # Reconfigure
+            os.system(f'make --no-print-directory -C {FPVM_HOME} reconfig')
+
+            # Compile FPVM, building into the new build dir we made.
+            os.system(f'make --no-print-directory -C {FPVM_HOME} -j BUILD={build_dir} > {build_dir}/make_out 2> {build_dir}/make_err')
+
+            bin = path_expand(args.binary)
+            bin_name = os.path.basename(bin)
+
+            output_dir = f'./sweep-results/{bin_name}/{run_name}/'
+
+            run_benchmark_binary(bin_name, output_dir, bin, args.argv, fpvm=f'{build_dir}/fpvm.so', baseline=False)
+
+
+    print("Restoring original `.config`")
+    os.system(f'mv {FPVM_HOME}/.config.bak {FPVM_HOME}/.config')
+    os.system(f'make --no-print-directory -C {FPVM_HOME} reconfig')
+    print('\033[32mDONE with the sweep!\033[0m You can now safely work on FPVM')
+
+
     pass
 
 

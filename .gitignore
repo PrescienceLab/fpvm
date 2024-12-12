@@ -2,6 +2,7 @@
 fpvm.so
 test_fpvm
 build/
+build-sweep/
 miniaero*
 setupmesh.0
 .config
@@ -39,3 +40,4 @@ analysis/workspace
 /include/fpvm/additional_wrappers.h
 /src/additional_wrappers.S
 /compile_commands.json
+/sweep-results/
