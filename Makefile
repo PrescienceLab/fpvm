@@ -79,6 +79,8 @@ $(BUILD)/%.cpp.o: %.cpp
 # $(CC) $(CFLAGS) -fPIC -shared $(OBJS) -lcapstone -lmpfr -lm -ldl -lstdc++ -o $@
 $(TARGET): $(BUILD) $(OBJS) 
 	@echo " LD   $(TARGET)"
+	@cp .config $(BUILD)/.config
+	@cp include/fpvm/config.h $(BUILD)/config.h
 	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS) 
@@ -160,7 +162,8 @@ cfg:
 
 # run `make reconfig` if `.config` has changed.
 reconfig:
-	@echo "q" | env TERM=xterm-256color python3 scripts/menuconfig.py >/dev/null
+	@touch .config
+	@echo -e "q" | env TERM=xterm-256color python3 scripts/menuconfig.py >/dev/null
 
 
 -include $(DEPS)

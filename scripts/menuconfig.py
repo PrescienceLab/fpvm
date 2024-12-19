@@ -706,6 +706,7 @@ class Kconfig(object):
         chunks = [header]  # "".join()ed later
         add = chunks.append
 
+        # add('#include <stdlib.h>\n')
         for sym in self.unique_defined_syms:
             # _write_to_conf is determined when the value is calculated. This
             # is a hidden function call due to property magic.
@@ -739,6 +740,35 @@ class Kconfig(object):
 
                 add("#define {}{} {}\n"
                     .format(self.config_prefix, sym.name, val))
+
+
+        add('#ifndef __ASSEMBLER__\n')
+        add('#ifndef ENABLED_CONFIGURATIONS\n')
+        add('#define ENABLED_CONFIGURATIONS\n')
+        add("static const char *enabled_configurations[] = {\n")
+        for sym in self.unique_defined_syms:
+            val = sym.str_value
+            if not sym._write_to_conf:
+                continue
+
+            if sym.orig_type in _BOOL_TRISTATE:
+                if val == "y":
+                    add('    "{}=y",\n'.format(sym.name))
+            elif sym.orig_type is STRING:
+                add('    "{}={}"\n'
+                    .format(sym.name, escape(val)))
+            else:  # sym.orig_type in _INT_HEX:
+                if sym.orig_type is HEX and \
+                   not val.startswith(("0x", "0X")):
+                    val = "0x" + val
+
+                add('    "{}={}"\n'
+                    .format(sym.name, val))
+
+        add("    0,\n")
+        add("};\n")
+        add('#endif\n')
+        add('#endif\n')
 
         return "".join(chunks)
 
@@ -843,8 +873,8 @@ class Kconfig(object):
             filename = standard_config_filename()
 
         contents = self._config_contents(header)
-        if self._contents_eq(filename, contents):
-            return "No change to configuration in '{}'".format(filename)
+        # if self._contents_eq(filename, contents):
+        #     return "No change to configuration in '{}'".format(filename)
 
         if save_old:
             _save_old(filename)
@@ -1537,6 +1567,7 @@ class Kconfig(object):
         self._reuse_tokens = True
 
     def _write_if_changed(self, filename, contents):
+        print('writing', filename)
         # Writes 'contents' into 'filename', but only if it differs from the
         # current contents of the file.
         #
@@ -1549,8 +1580,8 @@ class Kconfig(object):
         # Returns True if the file has changed and is updated, and False
         # otherwise.
 
-        if self._contents_eq(filename, contents):
-            return False
+        # if false or self._contents_eq(filename, contents):
+        #     return False
         with self._open(filename, "w") as f:
             f.write(contents)
         return True
@@ -6968,6 +6999,7 @@ def _needs_save():
     # Returns True if a just-loaded .config file is outdated (would get
     # modified when saving)
 
+    return True
     if _kconf.missing_syms:
         # Assignments to undefined symbols in the .config
         return True

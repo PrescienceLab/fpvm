@@ -2239,6 +2239,7 @@ extern int fpvm_setup_additional_wrappers();
 #endif
 
 static int bringup() {
+
   // fpvm_gc_init();
   fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
 
@@ -2266,6 +2267,7 @@ static int bringup() {
     ERROR("Failed to start up execution context at startup\n");
     return -1;
   }
+
 
   struct sigaction sa;
 
@@ -2468,6 +2470,13 @@ static __attribute__((constructor )) void fpvm_init(void) {
       DEBUG("Attempting to use FPVM kernel suppport\n");
       kernel = 1;
     }
+
+
+    INFO("LD_PRELOAD=%s\n", getenv("LD_PRELOAD"));
+    for (int i = 0; enabled_configurations[i]; i++) {
+        INFO("Enabled config %s\n", enabled_configurations[i]);
+    }
+
     if (getenv("FPVM_AGGRESSIVE") && tolower(getenv("FPVM_AGGRESSIVE")[0]) == 'y') {
       DEBUG("Setting AGGRESSIVE\n");
       aggressive = 1;

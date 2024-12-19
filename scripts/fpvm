@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+
+import hashlib
 import itertools
 import argparse
 import shutil
@@ -189,6 +191,7 @@ def get_wrapped_binary(binary: Path, version: str='magic', mode: str = 'reverse'
 def run_fpvm_binary(bin: Path,
                     args: list[str],
                     use_fpvm: bool=True,
+                    fpvm=FPVM_LOCATION,
                     logfile=None,
                     stdout=None,
                     stderr=None,
@@ -200,17 +203,17 @@ def run_fpvm_binary(bin: Path,
 
     env = os.environ.copy()
     if use_fpvm:
-      env['LD_PRELOAD'] = str(FPVM_LOCATION) + ' ' + str(get_additional_wrappers(WRAP_LIST))
+      env['LD_PRELOAD'] = str(fpvm) + ' ' + str(get_additional_wrappers(WRAP_LIST))
     if logfile is not None:
       env['FPVM_LOG_FILE'] = str(logfile)
 
     start = time.time()
 
     cmd = [bin, *args]
-    if perf:
-        cmd = ['sudo', 'perf', 'record', '-g', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
-        print(cmd)
-        del env['LD_PRELOAD']
+    # if perf_metrics:
+    #     cmd = ['sudo', 'perf', 'record', '-g', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
+    #     print(cmd)
+    #     del env['LD_PRELOAD']
     # if debug:
     #     cmd = ['gdb', '-ix', f'{FPVM_HOME}/scripts/gdb-init'] + cmd
         
@@ -354,7 +357,7 @@ def div_clamp(a, b):
   return 0
 
 
-def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1, baseline=True):
+def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1, baseline=True, only_baseline=False):
   bin = path_expand(binary)
 
   name = name or os.path.basename(bin)
@@ -365,21 +368,23 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
 
   # Save the .config that FPVM was compiled with
   shutil.copy(FPVM_HOME/'.config', output/'config')
+  shutil.copy(fpvm, output/'fpvm.so')
   # Save the git hash of the most recent commit
   os.system(f'git -C {FPVM_HOME} rev-parse HEAD > {output / "GIT"}')
 
   # Construct the environ the binary should be run with
   fpvm_env = os.environ.copy()
-  fpvm_env['LD_PRELOAD'] = fpvm
+  print('running with fpvm at', fpvm)
+  fpvm_env['LD_PRELOAD'] = output / 'fpvm.so'
 
-  runs = [
-    ('magic', get_patched_binary(binary, 'magic'), fpvm_env),
-  ]
+  runs = []
 
   if baseline:
-      runs += ('baseline', binary, os.environ.copy()),
+      runs.append(('baseline', binary, os.environ.copy()))
+  runs.append(('fpvm_magic', get_patched_binary(binary, 'magic'), fpvm_env))
 
   for run_name, bin, env in runs:
+    print(run_name)
     usages = []
     amortized = []
     use_fpvm = run_name != 'baseline'
@@ -387,11 +392,15 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
       factor = f'{run_name}_{run_idx}'
       log = output / f'{factor}.fpvm_log'
       print(f'Running {factor} into {log}')
+      with open(output / f'{factor}.ENV', 'w') as e:
+        for var in env:
+          e.write(f'{var}={env[var]}\n')
       with open(output / f'{factor}.stdout', 'w') as stdout:
         with open(output / f'{factor}.stderr', 'w') as stderr:
           usage = run_fpvm_binary(bin,
                                   argv,
                                   use_fpvm=use_fpvm,
+                                  fpvm=output/'fpvm.so',
                                   logfile=log,
                                   stdout=stdout,
                                   stderr=stderr)
@@ -402,53 +411,50 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
 
       # If this run is using FPVM, make sure to record telemetry, perf, and amortized metrics.
       if use_fpvm:
+        try:
+          t = get_telemetry(log)
+          pd.DataFrame([t]).to_csv(output / f'{factor}_telem.csv', index=False)
 
+          perf_metrics = get_performance(log)
+          pd.DataFrame(perf_metrics).to_csv(output / f'{factor}_perf.csv', index=False)
 
+          # Create a nicer version of the perf data for use here:
+          perf = {}
+          for metric in perf_metrics:
+            perf[metric['name']] = metric
+          amor = {}
 
-        t = get_telemetry(log)
-        pd.DataFrame([t]).to_csv(output / f'{factor}_telem.csv', index=False)
+          numfpe = t.get('fp_traps', 0)
+          numcor = t.get('correctness_traps', 0)
+          numfor = t.get('correctness_foreign_calls', 0)
+          numinst = t.get('instructions_emulated', 0)
 
-        perf_metrics = get_performance(log)
-        pd.DataFrame(perf_metrics).to_csv(output / f'{factor}_perf.csv', index=False)
+          amor['name'] = name
+          amor['run'] = run_name
+          amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*numfpe,numinst);
+          amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*numfpe,numinst);
+          amor['decache'] = div_clamp(perf['decode_cache']['sum'],numinst);
+          amor['decode'] = div_clamp(perf['decoder']['sum'],numinst);
+          amor['bind'] = div_clamp(perf['bind']['sum'],numinst);
+          amor['emul'] = div_clamp(perf['emulate']['sum'],numinst);
+          amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numinst);
+          amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numinst);
+          amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numinst);
+          amor['total'] = amor['hw']+amor['kern']+amor['decache']+amor['decode']+amor['bind']+amor['emul']+amor['gc']+amor['fcall']+amor['corr'];
 
-        # Create a nicer version of the perf data for use here:
-        perf = {}
-        for metric in perf_metrics:
-          perf[metric['name']] = metric
-
-        amor = {}
-
-        numfpe = t['fp_traps']
-        numcor = t['correctness_traps']
-        numfor = t['correctness_foreign_calls']
-        numinst = t['instructions_emulated']
-
-        amor['name'] = name
-        amor['run'] = run_name
-        amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*numfpe,numinst);
-        amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*numfpe,numinst);
-        amor['decache'] = div_clamp(perf['decode_cache']['sum'],numinst);
-        amor['decode'] = div_clamp(perf['decoder']['sum'],numinst);
-        amor['bind'] = div_clamp(perf['bind']['sum'],numinst);
-        amor['emul'] = div_clamp(perf['emulate']['sum'],numinst);
-        amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numinst);
-        amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numinst);
-        amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numinst);
-        amor['total'] = amor['hw']+amor['kern']+amor['decache']+amor['decode']+amor['bind']+amor['emul']+amor['gc']+amor['fcall']+amor['corr'];
-
-        amortized.append(amor)
+          amortized.append(amor)
+        except Exception as e:
+          print(e)
+          print("failed to get amortized timing information. Maybe you turned it off?")
 
       usages.append(usage)
 
 
+    pd.DataFrame(usages).to_csv(output / f'{run_name}_rusage.csv', index=False)
     if use_fpvm:
       pd.DataFrame(amortized).to_csv(output / f'{run_name}_amortized.csv', index=False)
       # Use peter's script to generate the graph inputs
       os.system(f'cd {output} && generate_graph_inputs.pl {name} {factor} {HW_TO_KERNEL_TIME} {KERNEL_TO_USER_TIME} {CALL_WRAP_TIME} {factor}.fpvm_log {log}')
-    pd.DataFrame(usages).to_csv(output / f'{run_name}_rusage.csv', index=False)
-
-
-
   # ...
 
 def cmd_benchmark(args):
@@ -479,18 +485,61 @@ def cmd_sweep(args):
     # We need to modify .config in the filesystem with the configuration of the run.
     # Then, we need to run the menuconfig to sync the .config and the autoconf.h
 
-    
+    all_options = []
+
+    with open(f'{FPVM_HOME}/Kconfig', 'r') as f:
+        for line in f:
+            stripped = line.strip()
+            words = stripped.split(' ')
+            if len(words) != 2:
+                continue
+            if words[0] != 'config':
+                continue
+
+            name = words[1]
+            full_name = 'CONFIG_' + name
+            all_options.append(full_name)
 
     # First things first, this is the baseline configuration we will use for each compilation
     base_config = [
         'CONFIG_ARCH_X64=y',
-        'CONFIG_ALT_MATH_BOXED_IEEE=y',
-        'CONFIG_TELEMETRY=y',
-        'CONFIG_TELEMETRY_PROMOTIONS=y',
-        'CONFIG_TELEMETRY_PERIOD=0',
-        'CONFIG_PERF_STATS=y',
-        'CONFIG_PERF_STATS_PERIOD=0',
     ]
+
+    telemetry_configs = [
+        ('basic_timing', [
+        'CONFIG_TELEMETRY=y',
+        "CONFIG_TELEMETRY_PROMOTIONS=y",
+        "CONFIG_TELEMETRY_PERIOD=0",
+        ]),
+        ('telem_perf', [
+            "CONFIG_TELEMETRY=y",
+            "CONFIG_TELEMETRY_PROMOTIONS=y",
+            "CONFIG_TELEMETRY_PERIOD=0",
+            "CONFIG_PERF_STATS=y",
+            "CONFIG_PERF_STATS_PERIOD=0",
+            # "CONFIG_INSTR_TRACES=n",
+            # "CONFIG_INSTR_TRACES_PERIOD=0"
+        ]),
+        ('instruction_traces', [
+            # "CONFIG_TELEMETRY=n",
+            # "CONFIG_TELEMETRY_PROMOTIONS=n",
+            # "CONFIG_TELEMETRY_PERIOD=0",
+            # "CONFIG_PERF_STATS=n",
+            # "CONFIG_PERF_STATS_PERIOD=0",
+            "CONFIG_INSTR_TRACES=y",
+            "CONFIG_INSTR_TRACES_PERIOD=0"
+        ]),
+    ]
+
+    alt_math_configs = [
+        ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
+        # ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
+        # ('mpfr', [
+        #     'CONFIG_ALT_MATH_MPFR=y',
+        #     'CONFIG_MPFR_PRECISION=200'
+        # ]),
+    ]
+
 
     under_test = [
         'CONFIG_INSTR_SEQ_EMULATION=y',
@@ -498,52 +547,69 @@ def cmd_sweep(args):
         'CONFIG_MAGIC_CORRECTNESS_TRAP=y'
     ]
 
-    # backup the original .config that the user was using
-    print("Backing up original `.config`. \033[5;41mDO NOT\033[0m attempt to change anything about FPVM's configuration OR attempt to compile FPVM while this script is running!")
-    os.system(f'mv {FPVM_HOME}/.config {FPVM_HOME}/.config.bak')
+
+    perm_configs = [] # (name, [config...])
 
 
     for L in range(len(under_test) + 1):
         if L == 0:
             continue
-
         for perm in itertools.combinations(under_test, L):
-            print('\n\n\n\n')
-            print('Running configuration combination ', perm)
-            print('\n\n')
-            # continue
-            config = base_config + list(perm)
-            # Apply the configuration file
-            with open(f'{FPVM_HOME}/.config', "w") as file:
-                file.write('\n'.join(config))
+            perm = list(perm)
+            perm_name = '-'.join(map(lambda x: x.replace('CONFIG_', '').lower().split('=')[0], perm))
+            perm_configs.append((perm_name, perm))
 
-            run_name = '-'.join(map(lambda x: x.replace('CONFIG_', '').lower().split('=')[0], perm))
-            # Make the build directory
-            build_dir = f'{FPVM_HOME}/build-sweep/{run_name}'
-            os.system(f'mkdir -p {build_dir}')
+    all_configs = [] # (name, [config...])
+
+    for alt_name, alt_config in alt_math_configs:
+        for perm_name, perm_config in perm_configs:
+            for telem_name, telem_config in telemetry_configs:
+                name = f'{alt_name}/{telem_name}/{perm_name}/'
+                all_configs.append((name, base_config + alt_config + telem_config + perm_config))
 
 
-            # Reconfigure
-            os.system(f'make --no-print-directory -C {FPVM_HOME} reconfig')
+    # backup the original .config that the user was using
+    print("Backing up original `.config`. \033[5;41mDO NOT\033[0m attempt to change anything about FPVM's configuration OR attempt to compile FPVM while this script is running!")
+    os.system(f'mv {FPVM_HOME}/.config {FPVM_HOME}/.config.bak')
 
-            # Compile FPVM, building into the new build dir we made.
-            os.system(f'make --no-print-directory -C {FPVM_HOME} -j BUILD={build_dir} > {build_dir}/make_out 2> {build_dir}/make_err')
+    print('configs: ', len(all_configs))
+    for name, config in all_configs:
+        # the configuration, as a dictionary
+        cfg = {}
 
-            bin = path_expand(args.binary)
-            bin_name = os.path.basename(bin)
+        for c in config:
+            option = c.split('=')[0]
+            val = c.split('=')[1]
+            cfg[option] = val
+        
+        config_path = f'{FPVM_HOME}/.config'
+        # print('Building fpvm for configuration', name)
+        # Apply the configuration file
+        with open(config_path, 'w') as file:
+            for option in all_options:
+                if option in cfg:
+                    file.write(f'{option}={cfg[option]}\n')
+                else:
+                    file.write(f'# {option} is not set\n')
 
-            output_dir = f'./sweep-results/{bin_name}/{run_name}/'
+        build_dir = f'{FPVM_HOME}/build-sweep/{name}'
+        os.system(f'mkdir -p {build_dir}')
 
-            run_benchmark_binary(bin_name, output_dir, bin, args.argv, fpvm=f'{build_dir}/fpvm.so', baseline=False)
+        # Reconfigure
+        os.system(f'make --no-print-directory -C {FPVM_HOME} reconfig')
+        # Compile FPVM, building into the new build dir we made.
+        os.system(f'make --no-print-directory -C {FPVM_HOME} -j BUILD={build_dir}')
 
+        bin = path_expand(args.binary)
+        bin_name = os.path.basename(bin)
+        output_dir = f'./sweep-results/{bin_name}/{name}/'
+        run_benchmark_binary(bin_name, output_dir, bin, args.argv, fpvm=f'{build_dir}/fpvm.so', baseline=True)
 
     print("Restoring original `.config`")
     os.system(f'mv {FPVM_HOME}/.config.bak {FPVM_HOME}/.config')
     os.system(f'make --no-print-directory -C {FPVM_HOME} reconfig')
     print('\033[32mDONE with the sweep!\033[0m You can now safely work on FPVM')
 
-
-    pass
 
 
 
