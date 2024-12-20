@@ -507,9 +507,9 @@ def cmd_sweep(args):
 
     telemetry_configs = [
         ('basic_timing', [
-        'CONFIG_TELEMETRY=y',
-        "CONFIG_TELEMETRY_PROMOTIONS=y",
-        "CONFIG_TELEMETRY_PERIOD=0",
+            # 'CONFIG_TELEMETRY=y',
+            # "CONFIG_TELEMETRY_PROMOTIONS=y",
+            # "CONFIG_TELEMETRY_PERIOD=0",
         ]),
         ('telem_perf', [
             "CONFIG_TELEMETRY=y",
@@ -532,8 +532,8 @@ def cmd_sweep(args):
     ]
 
     alt_math_configs = [
-        ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
-        # ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
+        # ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
+        ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
         # ('mpfr', [
         #     'CONFIG_ALT_MATH_MPFR=y',
         #     'CONFIG_MPFR_PRECISION=200'
@@ -549,6 +549,8 @@ def cmd_sweep(args):
 
 
     perm_configs = [] # (name, [config...])
+
+    perm_configs.append(('no_accel', []))
 
 
     for L in range(len(under_test) + 1):
@@ -573,7 +575,8 @@ def cmd_sweep(args):
     os.system(f'mv {FPVM_HOME}/.config {FPVM_HOME}/.config.bak')
 
     print('configs: ', len(all_configs))
-    for name, config in all_configs:
+    for i, (name, config) in enumerate(all_configs):
+        print(f'\033[32m[PROGRESS: {i + 1}/{len(all_configs)}]\033[0m')
         # the configuration, as a dictionary
         cfg = {}
 
@@ -603,7 +606,7 @@ def cmd_sweep(args):
         bin = path_expand(args.binary)
         bin_name = os.path.basename(bin)
         output_dir = f'./sweep-results/{bin_name}/{name}/'
-        run_benchmark_binary(bin_name, output_dir, bin, args.argv, fpvm=f'{build_dir}/fpvm.so', baseline=True)
+        run_benchmark_binary(bin_name, output_dir, bin, args.argv, fpvm=f'{build_dir}/fpvm.so', baseline=True, count=1)
 
     print("Restoring original `.config`")
     os.system(f'mv {FPVM_HOME}/.config.bak {FPVM_HOME}/.config')
