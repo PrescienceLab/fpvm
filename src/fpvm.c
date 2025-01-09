@@ -2466,6 +2466,7 @@ static __attribute__((constructor )) void fpvm_init(void) {
       DEBUG("no log file specified, using stderr\n");
     }
 
+    kernel = 1;
     if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
       DEBUG("Attempting to use FPVM kernel suppport\n");
       kernel = 1;

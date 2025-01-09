@@ -40,6 +40,11 @@ HW_TO_KERNEL_TIME=200 # cycles
 KERNEL_TO_USER_TIME=1950 # cycles for SIGFPE, 478 for kernel module
 # call wrap at 40 or 50   (this should be the cost of a double indirect call, I think, which I have not measured yet)
 
+
+# on roquefort
+KERNEL_TO_USER_TIME=5889
+
+
 fpvm_locations = [
     # Currently, only look in a few locations.
 
@@ -503,6 +508,7 @@ def cmd_sweep(args):
     # First things first, this is the baseline configuration we will use for each compilation
     base_config = [
         'CONFIG_ARCH_X64=y',
+        'CONFIG_MAGIC_CORRECTNESS_TRAP=y', # TODO: used to be an under-test
     ]
 
     telemetry_configs = [
@@ -532,7 +538,7 @@ def cmd_sweep(args):
     ]
 
     alt_math_configs = [
-        # ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
+        ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
         ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
         # ('mpfr', [
         #     'CONFIG_ALT_MATH_MPFR=y',
@@ -544,7 +550,6 @@ def cmd_sweep(args):
     under_test = [
         'CONFIG_INSTR_SEQ_EMULATION=y',
         'CONFIG_TRAP_SHORT_CIRCUITING=y',
-        'CONFIG_MAGIC_CORRECTNESS_TRAP=y'
     ]
 
 

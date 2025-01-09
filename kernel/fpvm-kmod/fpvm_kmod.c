@@ -102,7 +102,21 @@ static void upi_del(struct user_proc_info *upi) {
   list_del(&upi->node);
 }
 
+
+
+static inline uint64_t my_rdtsc(void) {
+  uint32_t lo, hi;
+  asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+  return lo | ((uint64_t)(hi) << 32);
+}
+
+
 void the_fpvm_hook(struct pt_regs *regs) {
+  /* if (regs->r15 == 0xFFEEFF) { */
+  /*   regs->r15 = my_rdtsc(); // Record the hw->kernel time into r15 */
+  /*   regs->ip += 4; // Skip the instruction which caused the fault */
+  /* } */
+
   struct user_proc_info *upi = upi_find(current->pid);
   if (upi) {
     /* saving RIP to stack */
