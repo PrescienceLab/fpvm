@@ -157,7 +157,11 @@ class BenchmarkResult:
                 amor["decache"] = div_clamp(perf["decode_cache"]["sum"], numinst)
                 amor["decode"] = div_clamp(perf["decoder"]["sum"], numinst)
                 amor["bind"] = div_clamp(perf["bind"]["sum"], numinst)
+
+                amor["altmath"] = div_clamp(perf["altmath"]["sum"], numinst)
                 amor["emul"] = div_clamp(perf["emulate"]["sum"], numinst)
+                amor["emul"] -= amor["altmath"]
+
                 amor["gc"] = div_clamp(perf["garbage_collector"]["sum"], numinst)
                 amor["fcall"] = div_clamp(
                     perf["foreign_call"]["sum"] + call_wrap_time * numfor, numinst
@@ -174,6 +178,7 @@ class BenchmarkResult:
                     + amor["decode"]
                     + amor["bind"]
                     + amor["emul"]
+                    + amor["altmath"]
                     + amor["gc"]
                     + amor["fcall"]
                     + amor["corr"]
@@ -307,6 +312,8 @@ s = load_ranks(group_thing)
 
 benchmark_names = s["benchmark"].unique()
 fig, axs = plt.subplots(len(benchmark_names), 1, figsize=(5, 2 * len(benchmark_names)))
+if len(benchmark_names) == 1:
+    axs = [axs]
 
 for i, bm in enumerate(benchmark_names):
     b = s[s["benchmark"] == bm]
@@ -375,7 +382,7 @@ plt.savefig(f"sweep-results/9_C.pdf", format="pdf")
 
 
 
-def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_name, output_name, configs):
+def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_name, output_name, configs, show_improvement=True):
 
     benchmark_names = fig_data[benchmark_column].unique()
     benchmark_count = len(benchmark_names)
@@ -386,22 +393,36 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
     group_width = 0.9
     bar_width = group_width / bar_count
     
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(6, 5))
     ax.spines['right'].set_visible(False)
-    ax.xaxis.grid(True)
+    # ax.xaxis.grid(True)
     ax.set_axisbelow(True)
 
 
     ax.set_yticks(bar_axis_ticks)
     ax.set_yticklabels(benchmark_names)
 
+    if not 'total' in fig_data:
+        show_improvement = False
+    if show_improvement:
+        base = fig_data[fig_data[hue] == 'NONE']
+        print(base)
+        bases = {}
+        for index, row in base.iterrows():
+            bases[row[benchmark_column]] = row['total']
+            print(row)
+        print(bases)
+        fig_data['total_frac'] = 1.0
+
+        for index, row in fig_data.iterrows():
+            b = bases[row[benchmark_column]]
+            fig_data.at[index, 'total_frac'] = row['total'] / b
     print(fig_data)
+
 
     for i, (name, config) in enumerate(configs):
         t = fig_data[fig_data[hue] == name]
-        print(t)
         ticks = bar_axis_ticks - (group_width / 2) + (i * bar_width) + (bar_width / 2)
-        print(name, ticks)
         for tick, benchmark in zip(ticks, benchmark_names):
             df = t[t[benchmark_column] == benchmark]
             if df.empty:
@@ -410,20 +431,30 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
             for col, hatch, color, label in bar_parts:
                 pt = df[col].mean()
 
-                ax.barh(tick, pt, label=label, height=bar_width, left=bottom, color=color, edgecolor='black', linewidth=0.8)
+                ax.barh(tick, pt, label=label, height=bar_width, left=bottom, color=color, hatch=hatch, edgecolor='black', linewidth=0.8)
                 bottom += pt
-            ax.text(bottom, tick, ' ' + name, horizontalalignment='left', verticalalignment='center', color='black', fontsize=8)
+            label = ' '  + name
+            if show_improvement and (not name is 'NONE'):
+                f = df['total_frac'].mean()
+                label += f' (-{100 - f * 100:.1f}%)'
+            print(label)
+            ax.text(bottom, tick, label, horizontalalignment='left', verticalalignment='center', color='black', fontsize=8)
 
     # Create the legend
     handles = [mpatches.Patch(color=color, hatch=hatch, label=label) for _, hatch, color, label in bar_parts]
-    ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.4, 1.15), ncol=4, frameon=False)
+    ax.legend(handles=handles,
+              loc='upper center',
+              bbox_to_anchor=(0.5, 1.15),
+              ncol=4,
+              fontsize=6.5,
+              frameon=False)
 
     # rename the benchmark names on the ticks
     def format_tick(tick):
         rename_table = {
             'lorenz_attractor': 'Lorenz',
-            'three_body_simulation': 'Three-body',
-            'double_pendulum': 'Double-Pendulum'
+            'three_body_simulation': 'Three body',
+            'double_pendulum': 'Double Pend.'
         }
         if tick in rename_table:
             return rename_table[tick]
@@ -431,6 +462,9 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
     ax.set_yticklabels(map(format_tick, (item.get_text() for item in ax.get_yticklabels())))
     ax.set_ylabel("Benchmark")
     ax.set_xlabel(axis_name)
+    plt.setp(ax.get_yticklabels(), rotation=90, ha='right', va='center')  # Adjust ha and va as needed
+
+    # ax.tick_params(axis='y', labelrotation=45)  # Replace 45 with your desired angle
     plt.tight_layout()
     plt.savefig(output_name, format="pdf")
 
@@ -453,9 +487,12 @@ telemetry = telemetry[telemetry["alt"] == "boxed"]
 
 tel_configs = [
     # The order here is reversed for reasons
-    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
-    ("KERN", "trap_short_circuiting magic_correctness_trap"),
-    ("SEQ", "instr_seq_emulation magic_correctness_trap"),
+    # ("SEQ KERN", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
+    # ("KERN", "trap_short_circuiting magic_correctness_trap"),
+    # ("SEQ", "instr_seq_emulation magic_correctness_trap"),
+    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting"),
+    ("KERN", "trap_short_circuiting"),
+    ("SEQ", "instr_seq_emulation"),
     ("NONE", "no_accel"),
 ]
 
@@ -472,15 +509,16 @@ fig_data = pd.concat(fig_data)
 fig_data.reset_index(inplace=True)
 
 bar_parts = [
-    ('hw',      '//',   '#72C2A6',  'Hardware'),
-    ('kern',    '//',   '#F68E67',  'Kernel'),
-    ('decache', '//',   '#8FA0CA',  'Decoder Cache'),
-    ('decode',  '//',   '#ABD85E',  'Decoder'),
-    ('bind',    '//',   '#FDD945',  'Instruction Binding'),
-    ('emul',    '//',   '#E3C497',  'Emulation'),
-    ('gc',      '//',   '#B3B3B3',  'Garbage Collection'),
+    ('hw',      None,   '#72C2A6',  'Hardware'),
+    ('kern',    None,   '#F68E67',  'Kernel'),
+    ('decache', None,   '#8FA0CA',  'Decoder Cache'),
+    ('decode',  None,   '#ABD85E',  'Decoder'),
+    ('bind',    None,   '#FDD945',  'Instruction Binding'),
+    ('emul',    None,   '#E3C497',  'Emulation Overhead'),
+    ('altmath', None,   '#dd97e3',  'Alternative Math'),
+    ('gc',      None,   '#B3B3B3',  'Garbage Collection'),
     ('fcall',   None,   '#ff5e7c',  'Foreign Calls'),
-    ('corr',    '//',    '#2E77B2',  'Correctness Handler'),
+    ('corr',    None,    '#2E77B2',  'Correctness Handler'),
 ]
 
 plot_grouped_stacked_bar(fig_data,
@@ -509,14 +547,13 @@ for result in results:
 amortcount = pd.concat(amortcount)
 amortcount.to_csv(f"sweep-results/amortcount.csv", index=False)
 amortcount = amortcount[amortcount["alt"] == "boxed"]
-print(amortcount)
 
 
 bar_configs = [
     # The order here is reversed for reasons
-    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
-    ("KERN", "trap_short_circuiting magic_correctness_trap"),
-    ("SEQ", "instr_seq_emulation magic_correctness_trap"),
+    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting"),
+    ("KERN", "trap_short_circuiting"),
+    ("SEQ", "instr_seq_emulation"),
     ("NONE", "no_accel"),
 ]
 
@@ -533,13 +570,13 @@ fig_data = pd.concat(fig_data)
 fig_data.reset_index(inplace=True)
 
 bar_parts = [
-    ('fptraps',                '//',   '#72C2A6',  'Floating Point Traps'),
-    ('promotions',             '//',   '#F68E67',  'Promotions'),
-    ('clobbers',               '//',   '#8FA0CA',  'Clobbers'),
-    ('demotions',              '//',   '#ABD85E',  'Demotions'),
-    ('correctnesstraps',       '//',   '#FDD945',  'Correctness Traps'),
-    ('correctnessdemotions',   '//',   '#B3B3B3',  'Correctness Demotions'),
-    ('foreigncalls',           '//',   '#ff5e7c',  'Foreign Calls'),
+    ('fptraps',                None,   '#72C2A6',  'Floating Point Traps'),
+    ('promotions',             None,   '#F68E67',  'Promotions'),
+    ('clobbers',               None,   '#8FA0CA',  'Clobbers'),
+    ('demotions',              None,   '#ABD85E',  'Demotions'),
+    ('correctnesstraps',       None,   '#FDD945',  'Correctness Traps'),
+    ('correctnessdemotions',   None,   '#B3B3B3',  'Correctness Demotions'),
+    ('foreigncalls',           None,   '#ff5e7c',  'Foreign Calls'),
 ]
 
 plot_grouped_stacked_bar(fig_data,
