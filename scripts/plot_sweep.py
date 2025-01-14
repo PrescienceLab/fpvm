@@ -393,7 +393,8 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
     group_width = 0.9
     bar_width = group_width / bar_count
     
-    fig, ax = plt.subplots(figsize=(6, 5))
+    fig, axs = plt.subplots(1, 1, figsize=(6, 5))
+    ax = axs
     ax.spines['right'].set_visible(False)
     # ax.xaxis.grid(True)
     ax.set_axisbelow(True)
@@ -406,12 +407,9 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
         show_improvement = False
     if show_improvement:
         base = fig_data[fig_data[hue] == 'NONE']
-        print(base)
         bases = {}
         for index, row in base.iterrows():
             bases[row[benchmark_column]] = row['total']
-            print(row)
-        print(bases)
         fig_data['total_frac'] = 1.0
 
         for index, row in fig_data.iterrows():
@@ -434,15 +432,14 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
                 ax.barh(tick, pt, label=label, height=bar_width, left=bottom, color=color, hatch=hatch, edgecolor='black', linewidth=0.8)
                 bottom += pt
             label = ' '  + name
-            if show_improvement and (not name is 'NONE'):
+            if show_improvement and name != 'NONE':
                 f = df['total_frac'].mean()
-                label += f' (-{100 - f * 100:.1f}%)'
-            print(label)
+                label += f' ({1/f:.1f}x)'
             ax.text(bottom, tick, label, horizontalalignment='left', verticalalignment='center', color='black', fontsize=8)
 
     # Create the legend
     handles = [mpatches.Patch(color=color, hatch=hatch, label=label) for _, hatch, color, label in bar_parts]
-    ax.legend(handles=handles,
+    plt.legend(handles=handles,
               loc='upper center',
               bbox_to_anchor=(0.5, 1.15),
               ncol=4,
@@ -454,7 +451,7 @@ def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_na
         rename_table = {
             'lorenz_attractor': 'Lorenz',
             'three_body_simulation': 'Three body',
-            'double_pendulum': 'Double Pend.'
+            'double_pendulum': 'Double\nPend.'
         }
         if tick in rename_table:
             return rename_table[tick]
@@ -491,8 +488,8 @@ tel_configs = [
     # ("KERN", "trap_short_circuiting magic_correctness_trap"),
     # ("SEQ", "instr_seq_emulation magic_correctness_trap"),
     ("SEQ KERN", "instr_seq_emulation trap_short_circuiting"),
-    ("KERN", "trap_short_circuiting"),
     ("SEQ", "instr_seq_emulation"),
+    ("KERN", "trap_short_circuiting"),
     ("NONE", "no_accel"),
 ]
 
