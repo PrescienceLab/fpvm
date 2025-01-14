@@ -1538,7 +1538,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
     DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
 
-    if (!ON_SAME_PAGE(rip+14,start_rip)) {
+    if (instindex>0 && !ON_SAME_PAGE(rip+14,start_rip)) {
       // note that we care about 15 bytes, so let's just see if we can get 16...
       if (!fpvm_memaddr_probe_readable_long(rip) || !fpvm_memaddr_probe_readable_long(rip+8)) {
 	DEBUG("Ending sequence as instruction %d (rip %p) involves a new, unreadable page\n", instindex,rip);
@@ -1567,10 +1567,6 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     }
 
     if (!fi || IS_UNDECODABLE(fi)) {
-      if (fi && IS_UNDECODABLE(fi)) {
-	DEBUG("encountered undecodable instruction at index %lu - THIS HAD BETTER HAVE BEEN IN THE DECODE CACHE\n", instindex);
-      }
-	
       // The first instruction of the sequence must be decodable...
       if (instindex==0) {
 	ERROR("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
@@ -1580,15 +1576,14 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	// BAD
 	goto fail_do_trap;
       } else {
-	DEBUG("Ending sequence as instruction %d (rip %p) is not decodable\n", instindex,rip);
+	DEBUG("Ending sequence as instruction %d (rip %p) is not decodable - marking instruction as undecodable if new\n", instindex,rip);
 	end_reason = TRACE_END_INSTR_UNDECODABLE;
 	DUMP_SEQUENCE_ENDING_INSTR();
-	if (!fi) {
+	if (!fi) {  // meaning the decoder failed
 	  // this means we have not placed the undecodable instruction in the cache previously
 	  // so let's do it now
 	  if (decode_cache_insert_undecodable(mc,rip)) {
-	    ERROR("failed to insert undecodable instruction into decode cache\n");
-	    // we can keep going
+	    ERROR("failed to insert undecodable instruction at index %lu into decode cache\n", instindex);
 	  } else {
 	    DEBUG("inserted undecodable instruction at index %lu into the decode cache\n", instindex);
 	  }
@@ -1627,11 +1622,18 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	ASSERT(0);
 	goto fail_do_trap;
       } else {
-	DEBUG("failed to bind operands of instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
+	ERROR("failed to bind operands of instruction %d (rip %p) of sequence - terminating sequence and marking instruction as undecodable\n",instindex,rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	DUMP_SEQUENCE_ENDING_INSTR();
 	// only free if we didn't find it in the decode cache...
 	if (do_insert) {
 	  fpvm_decoder_free_inst(fi);
+	  // but then insert it into the cache as undecodable
+	  if (decode_cache_insert_undecodable(mc,rip)) {
+	    ERROR("failed to insert unbindable instruction at index %lu into decode cache\n", instindex);
+	  } else {
+	    DEBUG("inserted unbindable instruction at index %lu into the decode cache\n", instindex);
+	  }
 	}
 	end_reason = TRACE_END_INSTR_UNBINDABLE;
 	break;
@@ -1646,7 +1648,10 @@ static void fp_trap_handler_emu(ucontext_t *uc)
       DUMP_SEQUENCE_ENDING_INSTR();
       // only free if we didn't find it in the decode cache...
       if (do_insert) {
-	fpvm_decoder_free_inst(fi);
+	// at this point we know we have a valid instruction and that it is
+	// bindable, but we currently don't want to emulate it due to the data in it
+	// so we will add it to the cache
+	decode_cache_insert(mc,fi);
       }
       end_reason = TRACE_END_INSTR_SHOULDNOT;
       break;
@@ -1675,11 +1680,26 @@ static void fp_trap_handler_emu(ucontext_t *uc)
         ASSERT(0);
         goto fail_do_trap;
       } else {
-	DEBUG("Failed to emulate instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
+	ERROR("Failed to emulate instruction %d (rip %p) of sequence - terminating sequence and marking instruction as undecodable\n",instindex,rip);
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	DUMP_SEQUENCE_ENDING_INSTR();
-	// only free if we didn't find it in the decode cache...
+	// we will consider this further - if it happens often, it's probably an emulator issue
+	// however, in either case, it's not clear why we would not add the instruction to the decode
+	// cache at this point
+	//
+	//  what happened in dp:  movq		rbx, xmm5 (5 bytes)
+	//
 	if (do_insert) {
+	  // only free if we didn't find it in the decode cache...
 	  fpvm_decoder_free_inst(fi);
+	  // since we have seen this instruction for the first time, and we
+	  // cannot emulate it, we will mark it as sequence-ending in the cache
+	  // so we stop immediately when we encounter it the next time
+	  if (decode_cache_insert_undecodable(mc,rip)) {
+	    ERROR("failed to insert unemulatable instruction at index %lu into decode cache\n", instindex);
+	  } else {
+	    DEBUG("inserted unemulatable instruction at index %lu into the decode cache\n", instindex);
+	  }
 	}
 	end_reason = TRACE_END_INSTR_UNEMULATABLE;
         break;
@@ -1765,7 +1785,7 @@ fail_do_trap:
   DEBUG("doing fail do trap for %p\n",rip);
 
   if (fi) {
-    DEBUG("have decoded failing instruction\n");
+    ERROR("have decoded failing instruction\n");
     // only free if we didn't find it in the decode cache...
     if (do_insert) {
       fpvm_decoder_free_inst(fi);
