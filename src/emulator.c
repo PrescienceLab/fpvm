@@ -195,7 +195,7 @@ static void extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
 }
 
 
-int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers) {
+int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf) {
   if (CONFIG_DEBUG) {
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: ");
   }
@@ -601,7 +601,15 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     //   fprintf(stderr, "\e[0m");
     // }
 
+#if CONFIG_PERF_STATS
+    perf_stat_start(altmath_perf);
+#endif
+    
     rc |= func(&special, dest, src1, src2, src3, src4);
+
+#if CONFIG_PERF_STATS
+    perf_stat_end(altmath_perf);
+#endif
 
     if (fi->common->op_type==FPVM_OP_MOVE && fi->is_simple_mov && fi->is_gpr_mov && src_step != dest_step) {
       uint64_t temp = *(uint64_t*)dest;

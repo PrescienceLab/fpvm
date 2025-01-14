@@ -250,6 +250,7 @@ typedef struct execution_context {
   perf_stat_t emulate_stat;
   perf_stat_t correctness_stat;
   perf_stat_t foreign_call_stat;
+  perf_stat_t altmath_stat;
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
@@ -261,7 +262,8 @@ typedef struct execution_context {
   PRINT_PERF(c, bind);         \
   PRINT_PERF(c, emulate);      \
   PRINT_PERF(c, correctness);  \
-  PRINT_PERF(c, foreign_call); 
+  PRINT_PERF(c, foreign_call); \
+  PRINT_PERF(c, altmath); 
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -453,6 +455,7 @@ static execution_context_t *alloc_execution_context(int tid) {
       perf_stat_init(&context[i].emulate_stat, "emulate");
       perf_stat_init(&context[i].correctness_stat, "correctness");
       perf_stat_init(&context[i].foreign_call_stat, "foreign call");
+      perf_stat_init(&context[i].altmath_stat, "altmath");
 #endif
       return &context[i];
     }
@@ -1562,9 +1565,12 @@ static void fp_trap_handler_emu(ucontext_t *uc)
       DEBUG("Instruction already found in the decode cache\n");
       do_insert = 0;
     }
-    
 
     if (!fi || IS_UNDECODABLE(fi)) {
+      if (fi && IS_UNDECODABLE(fi)) {
+	DEBUG("encountered undecodable instruction at index %lu - THIS HAD BETTER HAVE BEEN IN THE DECODE CACHE\n", instindex);
+      }
+	
       // The first instruction of the sequence must be decodable...
       if (instindex==0) {
 	ERROR("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
@@ -1583,6 +1589,8 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	  if (decode_cache_insert_undecodable(mc,rip)) {
 	    ERROR("failed to insert undecodable instruction into decode cache\n");
 	    // we can keep going
+	  } else {
+	    DEBUG("inserted undecodable instruction at index %lu into the decode cache\n", instindex);
 	  }
 	}
 	break; // done with the sequence
@@ -1658,7 +1666,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     // #endif
     
     START_PERF(mc, emulate);
-    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers)) {
+    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, &mc->altmath_stat)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
         ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);

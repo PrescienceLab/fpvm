@@ -3,14 +3,14 @@
 
 #include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
-
+#include <fpvm/perf.h>
 
 // takes a bound instruction and tells you if
 // it should be emulated (i.e., it has nanboxed inputs
 // or would cause an exception that FPVM can handle)
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi);
 // takes a bound instruction and emulates it
-int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers);
+int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf);
 // handle a problematic, bound instruction that has been
 // flagged by the static analysis and patcher
 typedef enum {
