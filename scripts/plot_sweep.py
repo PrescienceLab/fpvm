@@ -4,6 +4,8 @@ import pathlib
 from pathlib import Path
 import seaborn as sns
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 import numpy as np
 import re
 import math
@@ -113,6 +115,13 @@ class BenchmarkResult:
         )
         self.imbue_df(df)
         return df
+    def read_amortcount(self):
+        try:
+            df = pd.read_csv(self.path / f"{self.benchmark}.fpvm_magic_0.amortcount.txt", sep="\t")
+            self.imbue_df(df)
+            return df
+        except:
+            return None
 
     def read_telemetry(self):
         call_wrap_time = 0
@@ -136,7 +145,6 @@ class BenchmarkResult:
                     perf[metric["name"]] = metric
                 amor = {}
 
-                print(perf)
 
                 numfpe = t.get("fp_traps", 0)
                 numcor = t.get("correctness_traps", 0)
@@ -248,9 +256,7 @@ def plot_overhead(ru_name):
         .mean()
         .reset_index()
     )
-    print(r)
     oh = r.pivot(index=["benchmark", "config"], columns="type", values=ru_name)
-    print(oh)
     oh["overhead"] = (oh["fpvm"] - oh["baseline"]) / oh["baseline"]
     oh.reset_index(inplace=True)
     oh.to_csv(f"sweep-results/{ru_name}_overhead.csv", index=False)
@@ -367,6 +373,72 @@ plt.savefig(f"sweep-results/9_C.pdf", format="pdf")
 # exit()
 
 
+
+
+def plot_grouped_stacked_bar(fig_data, benchmark_column, hue, bar_parts, axis_name, output_name, configs):
+
+    benchmark_names = fig_data[benchmark_column].unique()
+    benchmark_count = len(benchmark_names)
+    bar_count = len(configs)
+    print(benchmark_count, bar_count)
+    bar_axis_ticks = np.arange(benchmark_count)
+
+    group_width = 0.9
+    bar_width = group_width / bar_count
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.spines['right'].set_visible(False)
+    ax.xaxis.grid(True)
+    ax.set_axisbelow(True)
+
+
+    ax.set_yticks(bar_axis_ticks)
+    ax.set_yticklabels(benchmark_names)
+
+    print(fig_data)
+
+    for i, (name, config) in enumerate(configs):
+        t = fig_data[fig_data[hue] == name]
+        print(t)
+        ticks = bar_axis_ticks - (group_width / 2) + (i * bar_width) + (bar_width / 2)
+        print(name, ticks)
+        for tick, benchmark in zip(ticks, benchmark_names):
+            df = t[t[benchmark_column] == benchmark]
+            if df.empty:
+                continue
+            bottom = 0
+            for col, hatch, color, label in bar_parts:
+                pt = df[col].mean()
+
+                ax.barh(tick, pt, label=label, height=bar_width, left=bottom, color=color, edgecolor='black', linewidth=0.8)
+                bottom += pt
+            ax.text(bottom, tick, ' ' + name, horizontalalignment='left', verticalalignment='center', color='black', fontsize=8)
+
+    # Create the legend
+    handles = [mpatches.Patch(color=color, hatch=hatch, label=label) for _, hatch, color, label in bar_parts]
+    ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.4, 1.15), ncol=4, frameon=False)
+
+    # rename the benchmark names on the ticks
+    def format_tick(tick):
+        rename_table = {
+            'lorenz_attractor': 'Lorenz',
+            'three_body_simulation': 'Three-body',
+            'double_pendulum': 'Double-Pendulum'
+        }
+        if tick in rename_table:
+            return rename_table[tick]
+        return tick
+    ax.set_yticklabels(map(format_tick, (item.get_text() for item in ax.get_yticklabels())))
+    ax.set_ylabel("Benchmark")
+    ax.set_xlabel(axis_name)
+    plt.tight_layout()
+    plt.savefig(output_name, format="pdf")
+
+
+
+########################################################################################################
+# Amortized Cost
+########################################################################################################
 telemetry = []
 
 for result in results:
@@ -375,48 +447,164 @@ for result in results:
         continue
     telemetry.append(t)
 
-
 telemetry = pd.concat(telemetry)
 telemetry.to_csv(f"sweep-results/telemetry.csv", index=False)
 telemetry = telemetry[telemetry["alt"] == "boxed"]
 
-
 tel_configs = [
-    ("short", "trap_short_circuiting"),
-    ("seq_emulation", "instr_seq_emulation"),
-    ("all_accels", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
-    ("no_accels", "no_accel"),
+    # The order here is reversed for reasons
+    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
+    ("KERN", "trap_short_circuiting magic_correctness_trap"),
+    ("SEQ", "instr_seq_emulation magic_correctness_trap"),
+    ("NONE", "no_accel"),
 ]
 
+fig_data = []
 for name, config in tel_configs:
     tel = telemetry[telemetry["config"] == config]
     tel.to_csv(f"sweep-results/telemetry_{name}.csv", index=False)
 
     tel = tel.drop(["benchmark", "alt", "config", "telem"], axis=1)
     t = tel.groupby(by="name", as_index=True, group_keys=False).mean()
-    t.to_csv(f"sweep-results/group_{name}.csv", index=False)
+    t['config'] = name
+    fig_data.append(t)
+fig_data = pd.concat(fig_data)
+fig_data.reset_index(inplace=True)
 
-    value_vars = "hw,kern,decache,decode,bind,emul,gc,fcall".split(",")
-    print(value_vars)
+bar_parts = [
+    ('hw',      '//',   '#72C2A6',  'Hardware'),
+    ('kern',    '//',   '#F68E67',  'Kernel'),
+    ('decache', '//',   '#8FA0CA',  'Decoder Cache'),
+    ('decode',  '//',   '#ABD85E',  'Decoder'),
+    ('bind',    '//',   '#FDD945',  'Instruction Binding'),
+    ('emul',    '//',   '#E3C497',  'Emulation'),
+    ('gc',      '//',   '#B3B3B3',  'Garbage Collection'),
+    ('fcall',   None,   '#ff5e7c',  'Foreign Calls'),
+    ('corr',    '//',    '#2E77B2',  'Correctness Handler'),
+]
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    x = np.arange(len(t.index))
+plot_grouped_stacked_bar(fig_data,
+                         benchmark_column='name',
+                         hue='config',
+                         bar_parts=bar_parts,
+                         axis_name='Amortized CPU Cycles',
+                         output_name='sweep-results/amort_costs.pdf',
+                         configs=tel_configs)
 
-    # Accumulate the bottom for stacking
-    bottom = np.zeros(len(t.index))
-    for column in value_vars:
-        ax.barh(x, t[column], label=column, left=bottom)
-        bottom += t[column]
 
-    # Customize the chart
-    ax.set_yticks(x)
-    ax.set_yticklabels(t.index)
-    ax.legend()
-    ax.set_xlabel("Benchmark")
-    ax.set_ylabel("Time")
-    ax.set_title("Overhead breakdown for " + name)
-    plt.tight_layout()
 
-    # plt.figure(figsize=(12, 8))
-    # ax = sns.histplot(t, x='benchmark', hue='variable', weights='value', multiple='stack')
-    plt.savefig(f"sweep-results/telem_{name}.pdf", format="pdf")
+
+
+########################################################################################################
+# Amortized Count
+########################################################################################################
+amortcount = []
+
+for result in results:
+    t = result.read_amortcount()
+    if t is None:
+        continue
+    amortcount.append(t)
+
+amortcount = pd.concat(amortcount)
+amortcount.to_csv(f"sweep-results/amortcount.csv", index=False)
+amortcount = amortcount[amortcount["alt"] == "boxed"]
+print(amortcount)
+
+
+bar_configs = [
+    # The order here is reversed for reasons
+    ("SEQ KERN", "instr_seq_emulation trap_short_circuiting magic_correctness_trap"),
+    ("KERN", "trap_short_circuiting magic_correctness_trap"),
+    ("SEQ", "instr_seq_emulation magic_correctness_trap"),
+    ("NONE", "no_accel"),
+]
+
+fig_data = []
+for name, config in bar_configs:
+    tel = amortcount[amortcount["config"] == config]
+    tel.to_csv(f"sweep-results/amortcount_{name}.csv", index=False)
+
+    tel = tel.drop(["factors", "alt", "config", "telem"], axis=1)
+    t = tel.groupby(by="benchmark", as_index=True, group_keys=False).mean()
+    t['config'] = name
+    fig_data.append(t)
+fig_data = pd.concat(fig_data)
+fig_data.reset_index(inplace=True)
+
+bar_parts = [
+    ('fptraps',                '//',   '#72C2A6',  'Floating Point Traps'),
+    ('promotions',             '//',   '#F68E67',  'Promotions'),
+    ('clobbers',               '//',   '#8FA0CA',  'Clobbers'),
+    ('demotions',              '//',   '#ABD85E',  'Demotions'),
+    ('correctnesstraps',       '//',   '#FDD945',  'Correctness Traps'),
+    ('correctnessdemotions',   '//',   '#B3B3B3',  'Correctness Demotions'),
+    ('foreigncalls',           '//',   '#ff5e7c',  'Foreign Calls'),
+]
+
+plot_grouped_stacked_bar(fig_data,
+                         benchmark_column='benchmark',
+                         hue='config',
+                         bar_parts=bar_parts,
+                         axis_name='Amortized Count Per Fault',
+                         output_name='sweep-results/amort_counts.pdf',
+                         configs=bar_configs)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################################################################################################
+# fig, ax = plt.subplots(figsize=(8, 6))
+# fig_data['perc_emul'] = 100.0 * (fig_data['emul'] / fig_data['total'])
+# sns.barplot(data=fig_data, x='name', y='perc_emul', hue='config', ax=ax)
+# ax.set_xlabel("Benchmark")
+# ax.set_ylabel("Percentage of overhead spent emulating")
+# plt.savefig(f"sweep-results/perc_emul.pdf", format="pdf")
+
+
+
+# for name, config in tel_configs:
+#     tel = telemetry[telemetry["config"] == config]
+#     tel.to_csv(f"sweep-results/telemetry_{name}.csv", index=False)
+# 
+#     tel = tel.drop(["benchmark", "alt", "config", "telem"], axis=1)
+#     t = tel.groupby(by="name", as_index=True, group_keys=False).mean()
+#     t.to_csv(f"sweep-results/group_{name}.csv", index=False)
+# 
+#     value_vars = "hw,kern,decache,decode,bind,emul,gc,fcall".split(",")
+# 
+#     print(config)
+#     print(t)
+# 
+#     fig, ax = plt.subplots(figsize=(8, 6))
+#     x = np.arange(len(t.index))
+# 
+#     # Accumulate the bottom for stacking
+#     bottom = np.zeros(len(t.index))
+#     for column in value_vars:
+#         ax.barh(x, t[column], label=column, left=bottom)
+#         bottom += t[column]
+# 
+#     # Customize the chart
+#     ax.set_yticks(x)
+#     ax.set_yticklabels(t.index)
+#     ax.legend()
+#     ax.set_ylabel("Benchmark")
+#     ax.set_xlabel("CPU Cycles")
+#     ax.set_title("Overhead breakdown for " + name)
+#     plt.tight_layout()
+# 
+#     # plt.figure(figsize=(12, 8))
+#     # ax = sns.histplot(t, x='benchmark', hue='variable', weights='value', multiple='stack')
+#     plt.savefig(f"sweep-results/telem_{name}.pdf", format="pdf")
