@@ -755,14 +755,14 @@ class Kconfig(object):
                 if val == "y":
                     add('    "{}=y",\n'.format(sym.name))
             elif sym.orig_type is STRING:
-                add('    "{}={}"\n'
+                add('    "{}={}",\n'
                     .format(sym.name, escape(val)))
             else:  # sym.orig_type in _INT_HEX:
                 if sym.orig_type is HEX and \
                    not val.startswith(("0x", "0X")):
                     val = "0x" + val
 
-                add('    "{}={}"\n'
+                add('    "{}={}",\n'
                     .format(sym.name, val))
 
         add("    0,\n")
