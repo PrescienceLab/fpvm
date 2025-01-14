@@ -1671,7 +1671,12 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     // #endif
     
     START_PERF(mc, emulate);
-    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, &mc->altmath_stat)) {
+    perf_stat_t *altmath_stat = 0;
+#if CONFIG_PERF_STATS
+    altmath_stat = &mc->altmath_stat;
+#endif
+    
+    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, altmath_stat)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
         ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
