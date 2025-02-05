@@ -34,6 +34,8 @@ struct result {
 };
 struct result results[N];
 
+volatile uint64_t time[N];
+
 static volatile uint64_t hit_handler_count = 0;
 static void our_handler(int signum, siginfo_t *si, void *priv) {
   hit_handler_time = arch_cycle_count();
@@ -78,6 +80,12 @@ int main() {
   feclearexcept(FE_ALL_EXCEPT);
   feenableexcept(FE_ALL_EXCEPT);
 
+  for (int i = 0; i < N; i++) {
+      time[i] = arch_cycle_count();
+  }
+  for (int i = 0; i < N; i++) {
+      printf("%lu\n", time[i]);
+  }
 
   volatile double in_a = 0.123;
   volatile double in_b = 0.456;
