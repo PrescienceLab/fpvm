@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <sys/ucontext.h>
 #include <fenv.h>
 #include <sched.h>
 #include <stdio.h>
@@ -14,24 +15,13 @@
 
 #define N 100000
 
-static inline uint64_t my_rdtsc(void) {
-  uint32_t lo, hi;
-  asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
-  return lo | ((uint64_t)(hi) << 32);
+static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
+{
+  uint64_t val;
+  asm volatile("rdcycle %0" : "=r"(val));
+  return val;
 }
 
-void our_handler(void *test) {
-  t_c = my_rdtsc();
-  /* end = my_rdtsc(); */
-  /* time[count++] = end; */
-  /* if (count == N) { */
-  /*   for (int i = 1; i < count; i++) { */
-  /*     printf("%d\t%ld\n", i, time[i] - time[i - 1]); */
-  /*   } */
-  /*   exit(0); */
-  /* } */
-  return;
-}
 static volatile uint64_t hit_inst_time = 0;
 static volatile uint64_t hit_handler_time = 0;
 static volatile uint64_t hit_next_inst_time = 0;
@@ -43,13 +33,35 @@ struct result {
 };
 struct result results[N];
 
+static void our_handler(int signum, siginfo_t *si, void *priv) {
+  hit_handler_time = arch_cycle_count();
+  /* uepc += 4; */
+  ucontext_t *uc = (ucontext_t*)priv;
+  uc->uc_mcontext.__gregs[REG_PC] += 4;
+  /* volatile uint64_t old_uepc = 0; */
+  /* asm volatile( */
+  /*     "csrr %0, 0x841\n\t" */
+  /*     "addi %0, %0, 4\n\t" */
+  /*     "csrw 0x841, %0\n\t" */
+  /*     : "=r"(old_uepc) */
+  /*     : */
+  /*     : "memory"); */
+  feclearexcept(FE_ALL_EXCEPT);
+  return;
+}
+
 int main() {
   int pid;
   int file_desc;
   // memset(time, 1, N*sizeof(uint64_t));
 
 #ifdef USE_SIGNALS
-  signal(SIGFPE, our_handler);
+    struct sigaction sa;
+    memset(&sa,0,sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_sigaction = our_handler;
+    sa.sa_flags |= SA_SIGINFO;
+    sigaction(SIGFPE, &sa, NULL);
 #else
   // Open
   file_desc = open("/dev/fpvm_dev", O_RDWR);
@@ -68,7 +80,7 @@ int main() {
   volatile double z;
 
   for (int i = 0; i < N; i++) {
-    t_a = my_rdtsc();
+    hit_inst_time = arch_cycle_count();
 
     asm volatile(
         "movsd %1, %%xmm0\n\t"      // load a into xmm0
