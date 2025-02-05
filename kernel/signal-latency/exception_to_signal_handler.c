@@ -14,8 +14,6 @@
 
 #define N 100000
 
-uint64_t t_a, t_b, t_c, t_d;
-
 static inline uint64_t my_rdtsc(void) {
   uint32_t lo, hi;
   asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
@@ -34,11 +32,14 @@ void our_handler(void *test) {
   /* } */
   return;
 }
+static volatile uint64_t hit_inst_time = 0;
+static volatile uint64_t hit_handler_time = 0;
+static volatile uint64_t hit_next_inst_time = 0;
 
 struct result {
-  uint64_t hw_to_kernel;
-  uint64_t kernel_to_user;
-  uint64_t total;
+  uint64_t inst_to_handler;
+  uint64_t handler_to_next_inst;
+  uint64_t round_trip;
 };
 struct result results[N];
 
@@ -79,18 +80,23 @@ int main() {
         : "=m"(t_b)
         : "m"(in_a), "m"(in_b)
         : "xmm0", "xmm1", "r15");
+    hit_next_inst_time = arch_cycle_count();
 
     struct result res;
-    res.hw_to_kernel = t_b - t_a;
-    res.kernel_to_user = t_c - t_b;
-    res.total = my_rdtsc() - t_a;
+    res.inst_to_handler = hit_handler_time - hit_inst_time;
+    res.handler_to_next_inst = hit_next_inst_time - hit_handler_time;
+    res.round_trip = arch_cycle_count() - hit_inst_time;
     results[i] = res;
   }
 
-  printf("trial,hw_to_kernel,kernel_to_user,total,slack\n");
+  printf("trial,inst_to_handler,handler_to_next_inst,round_trip,slack\n");
   for (int i = 0; i < N; i++) {
     struct result r = results[i];
-    printf("%d, %zu, %zu, %zu, %zu\n", i, r.hw_to_kernel, r.kernel_to_user, r.total, r.total - (r.kernel_to_user + r.hw_to_kernel));
+    printf("%d, %zu, %zu, %zu, %zu\n", i,
+           r.inst_to_handler,
+           r.handler_to_next_inst,
+           r.round_trip,
+           r.round_trip - (r.handler_to_next_inst + r.inst_to_handler));
   }
 
   return 0;
