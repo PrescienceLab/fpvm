@@ -14,16 +14,7 @@
 
 #define N 100000
 
-uint64_t start;
-uint64_t end;
-
-
 uint64_t t_a, t_b, t_c, t_d;
-
-uint64_t time[N];
-uint64_t count = 0;
-
-extern void *_user_fpvm_entry;
 
 static inline uint64_t my_rdtsc(void) {
   uint32_t lo, hi;
@@ -94,7 +85,6 @@ int main() {
     res.kernel_to_user = t_c - t_b;
     res.total = my_rdtsc() - t_a;
     results[i] = res;
-    // volatile double z = a / b;
   }
 
   printf("trial,hw_to_kernel,kernel_to_user,total,slack\n");
