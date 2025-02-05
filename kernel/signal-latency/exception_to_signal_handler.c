@@ -13,6 +13,7 @@
 #include <string.h>
 #include "fpvm_ioctl.h"
 
+#include <assert.h>
 #define N 100000
 
 static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
@@ -33,8 +34,11 @@ struct result {
 };
 struct result results[N];
 
+static volatile uint64_t hit_handler_count = 0;
 static void our_handler(int signum, siginfo_t *si, void *priv) {
   hit_handler_time = arch_cycle_count();
+  hit_handler_count += 1;
+
   /* uepc += 4; */
   ucontext_t *uc = (ucontext_t*)priv;
   uc->uc_mcontext.__gregs[REG_PC] += 4;
@@ -100,6 +104,10 @@ int main() {
     res.round_trip = arch_cycle_count() - hit_inst_time;
     results[i] = res;
   }
+
+  assert(hit_handler_count == N);
+
+  printf("Hit FP Handler %lu times\n", hit_handler_count);
 
   printf("trial,inst_to_handler,handler_to_next_inst,round_trip,slack\n");
   for (int i = 0; i < N; i++) {
