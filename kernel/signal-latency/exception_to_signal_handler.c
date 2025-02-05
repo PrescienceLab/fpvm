@@ -78,7 +78,7 @@ int main() {
   }
 #endif
   feclearexcept(FE_ALL_EXCEPT);
-  feenableexcept(FE_ALL_EXCEPT);
+  asm volatile("csrwi 0x880, 0x1F" : : :);
 
   for (int i = 0; i < N; i++) {
       time[i] = arch_cycle_count();
