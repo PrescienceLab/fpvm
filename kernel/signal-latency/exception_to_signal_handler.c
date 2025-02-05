@@ -94,16 +94,16 @@ int main() {
   for (int i = 0; i < N; i++) {
     hit_inst_time = arch_cycle_count();
 
+    // Generate a rounding event
+    // Generate some kind of FP event
     asm volatile(
-        "movsd %1, %%xmm0\n\t"      // load a into xmm0
-        "movsd %2, %%xmm1\n\t"      // load a into xmm1
-        "mov $0xffEEff, %%r15\n\t"  // put a marker in r15
-        "divsd %%xmm1, %%xmm0\n\t"  // the faulting instruction
-        // here, r15 should be the time we got in the kernel
-        "movq %%r15, %0\n\t"
-        : "=m"(t_b)
+        "fld f1, %0\n\t" // load a into f1
+        "fld f2, %1\n\t" // load b into f2
+        "fdiv.d f3, f1, f2\n\t" // the faulting instruction
+        "nop\n\tnop\n\tnop\n\tnop\n\t"
+        :
         : "m"(in_a), "m"(in_b)
-        : "xmm0", "xmm1", "r15");
+        : "f1", "f2", "f3", "memory");
     hit_next_inst_time = arch_cycle_count();
 
     struct result res;
