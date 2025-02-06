@@ -23,9 +23,9 @@ static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
   return val;
 }
 
-static volatile uint64_t hit_inst_time = 0;
-static volatile uint64_t hit_handler_time = 0;
-static volatile uint64_t hit_next_inst_time = 0;
+static volatile uint64_t hit_inst_time = 0xDEADBEEFFEEDBEAD;
+static volatile uint64_t hit_handler_time = 0xCAFEBEEFDEAD8080;
+static volatile uint64_t hit_next_inst_time = 0x9278DEAD2929FE;
 
 struct result {
   uint64_t inst_to_handler;
