@@ -123,9 +123,8 @@ int main() {
     results[i] = res;
   }
 
-  assert(hit_handler_count == N);
-
   printf("Hit FP Handler %lu times\n", hit_handler_count);
+  assert(hit_handler_count == N);
 
   printf("trial,inst_to_handler,handler_to_next_inst,round_trip,slack\n");
   for (int i = 0; i < N; i++) {
