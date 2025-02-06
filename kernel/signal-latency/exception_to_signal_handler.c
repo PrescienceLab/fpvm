@@ -56,6 +56,11 @@ static void our_handler(int signum, siginfo_t *si, void *priv) {
   return;
 }
 
+static void wrong_uepc_usage(void) {
+    printf("We took UEPC at the wrong time!\n");
+    exit(1);
+}
+
 int main() {
   int pid;
   int file_desc;
@@ -79,6 +84,11 @@ int main() {
 #endif
   feclearexcept(FE_ALL_EXCEPT);
   asm volatile("csrwi 0x880, 0x1F" : : :);
+  unsigned long uepc = (unsigned long) wrong_uepc_usage;
+  asm volatile("csrw 0x841, %0\n\t"
+               :
+               : "r"(uepc)
+               : "memory");
 
   for (int i = 0; i < N; i++) {
       time[i] = arch_cycle_count();
