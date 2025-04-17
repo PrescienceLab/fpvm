@@ -14,6 +14,11 @@ This will configure paths and whatnot to work with FPVM more efficiently.
 You can either run `source ENV` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
 
 
+Then, make sure you have the required python packages installed:
+```bash
+pip3 install --user -r requirements.txt
+```
+
 To get started, you must configure FPVM using `menuconfig`.
 ```bash
 make menuconfig
@@ -42,21 +47,6 @@ This will, most likely, take quite a while on the first run.
 **NOTE** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
 This is due to the need to patch non-virtualizable parts of the binary.
 Subsequent runs of the same (hash-identical) binary will be much faster, as the results are stored in `~/.cache/fpvm/`.
-
-If you wish to run the patched binary directly, you can get the exact hash identifier using the following command:
-```bash
-# Ask FPVM to patch lu
-$ fpvm patch nas/lu
---- snip ---
-/~.cache/fpvm/b63c5a2f481baaf3bed306a32edb1d6df8b43a24-patch-lu/lu.magic
-# ^ output of patching (potentially already cached)
-```
-
-This will patch the binary, then print the cache location of the resultant binary.
-You can then run that binary directly using:
-```bash
-fpvm run --nopatch ~/.cache/fpvm/b63c5a2f481baaf3bed306a32edb1d6df8b43a24-patch-lu/lu.magic
-```
 
 **NOTE:** It's important that you always run `FPVM` through the above tool.
 Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
