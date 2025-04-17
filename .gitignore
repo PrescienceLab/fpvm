@@ -21,6 +21,9 @@ __pycache__
 test/boost
 test/boost.tar.gz
 
+profiler/e9patch
+profiler/pin-tool
+
 
 # Static analysis temporary data
 *-storage-simp*
