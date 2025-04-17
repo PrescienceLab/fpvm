@@ -7,16 +7,18 @@ FPVM=$HERE/../
 PROFILER=$HERE/../profiler/run
 
 
-E9PATCH=$FPVM/e9patch
+E9PATCH=$FPVM/profiler/e9patch
 pushd $FPVM/ >/dev/null
-  if [ ! -d e9patch ]; then
-    git clone https://github.com/GJDuck/e9patch.git
-    pushd e9patch
-        git reset --hard 179d9e6a727ec0ad6009b00692c2fecf9324eaff
-        ./build.sh
-    popd
+  if [ ! -d $E9PATCH ]; then
+     pushd $FPVM/profiler
+        git clone https://github.com/GJDuck/e9patch.git
+        pushd e9patch
+            git reset --hard 179d9e6a727ec0ad6009b00692c2fecf9324eaff
+            ./build.sh
+        popd
+     popd
   fi
-  export PATH=$FPVM/e9patch:$PATH
+  export PATH=$E9PATCH:$PATH
 popd >/dev/null
 
 # A little challange here is that we have to run the profiler from the directory the
@@ -45,9 +47,6 @@ to_patch=$(which "$1")
 shift
 bin=$(which "$1")
 shift
-
-
-make -C $HERE/../profiler/
 
 
 # Run the profiler, which should dump mem_patches.csv into the current directory

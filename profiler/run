@@ -22,14 +22,6 @@ fi
 # make sure to compile the tooling.
 make -C $PFX --no-print-directory pin-tool
 make -C $PFX --no-print-directory intel64
-# make sure e9patch exists.
-pushd $PFX >/dev/null
-  if [ ! -d e9patch ]; then
-    git clone https://github.com/GJDuck/e9patch.git
-    cd e9patch && ./build.sh
-  fi
-  export PATH=$PFX/e9patch:$PATH
-popd >/dev/null
 
 # Disabling ASLR with setarch
 pin="setarch x86_64 -R $PFX/pin-tool/pin"
