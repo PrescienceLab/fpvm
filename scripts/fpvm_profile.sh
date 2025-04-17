@@ -47,6 +47,8 @@ bin=$(which "$1")
 shift
 
 
+make -C $HERE/../profiler/
+
 
 # Run the profiler, which should dump mem_patches.csv into the current directory
 step "profile" $PROFILER $bin $@ # > profile.out 2> profile.err

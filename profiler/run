@@ -4,11 +4,24 @@ options="--"
 
 PFX=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )/")
 
+
+
+
 export PIN_ROOT=$PFX/pin-tool
+
+# if PIN_ROOT is not found
+if [ ! -d $PIN_ROOT ]; then
+    pushd $PFX
+        wget https://software.intel.com/sites/landingpage/pintool/downloads/pin-external-3.31-98869-gfa6f126a8-gcc-linux.tar.gz
+        tar xf pin-external*.tar.gz
+        rm pin-external*.tar.gz
+        mv pin-external*/ $PIN_ROOT
+    popd
+fi
 
 # make sure to compile the tooling.
 make -C $PFX --no-print-directory pin-tool
-make -C $PFX --no-print-directory obj-intel64/profile.so
+make -C $PFX --no-print-directory intel64
 # make sure e9patch exists.
 pushd $PFX >/dev/null
   if [ ! -d e9patch ]; then

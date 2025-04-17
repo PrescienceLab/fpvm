@@ -1,6 +1,6 @@
 # The Floating Point Virtual Machine
 
-Copyright (c) 2021 Peter A. Dinda  Please see LICENSE file.
+Copyright (c) 2025 Prescience Lab. Please see LICENSE file.
 This is a tool for floating point trap and emulate processing on x64.
 This is a work in progress
 
@@ -9,49 +9,37 @@ This is a work in progress
 
 ## Configuring, Building and Testing
 
-To Configure:
+First, we require you source the `ENV` file to build.
+This will configure paths and whatnot to work with FPVM more efficiently.
+You can either run `source ENV` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
+
+
+To get started, you must configure FPVM using `menuconfig`.
 ```bash
 make menuconfig
 ```
 
-To build:
+or, the default config can be chosen using
 ```bash
-make
+make defconfig
 ```
 
-
-To test:
+Then, you can build FPVM with
 ```bash
-make test
+make -j $(nproc)
 ```
 
-To build kernel support:
-```bash
-cd kernel
-./kmod_build.sh
-```
+This will produce a `build/` folder with the results of FPVM.
 
-To insert kernel support:
-```bash
-cd kernel
-./kmod_setup.sh
-```
-   
----
+## Running FPVM
 
-# Running FPVM
-
-To run FPVM against a binary, you must first source the environment file to update your path:
-```bash
-source ./ENV
-```
-
-Then, you can use the `fpvm` tool to run your program:
+To run FPVM against a binary, you can use the `fpvm` tool to run your program:
 ```bash
 fpvm run ./a.out
 ```
 
 This will, most likely, take quite a while on the first run.
+**NOTE** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
 This is due to the need to patch non-virtualizable parts of the binary.
 Subsequent runs of the same (hash-identical) binary will be much faster, as the results are stored in `~/.cache/fpvm/`.
 
@@ -70,11 +58,24 @@ You can then run that binary directly using:
 fpvm run --nopatch ~/.cache/fpvm/b63c5a2f481baaf3bed306a32edb1d6df8b43a24-patch-lu/lu.magic
 ```
 
-
 **NOTE:** It's important that you always run `FPVM` through the above tool.
 Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
 
 --- 
+
+# Misc Information
+
+## Forcing SSE at Compilation Time
+
+To compile SSE only:
+```bash
+gcc ..... -mno-avx -mno-avx2 -mno-avx512f -mno-avx512pf -mno-avx512er -mno-avx512cd
+```
+
+To force libc to use SSE only:
+
+export GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX512_Usable
+
 ## Configuration
 
 The following environment variables configure FPVM:
@@ -99,28 +100,3 @@ FPVM_FORCE_ROUNDING=pos|neg|zer|nea;daz;ftz
     Force rounding mode and subnormal handling on the hardware
     You almost certainly do not want to set this variable
 ```
-
----
-
-## Forcing SSE
-
-To compile SSE only:
-```bash
-gcc ..... -mno-avx -mno-avx2 -mno-avx512f -mno-avx512pf -mno-avx512er -mno-avx512cd
-```
-
-To force libc to use SSE only:
-
-export GLIBC_TUNABLES=glibc.cpu.hwcaps=-AVX2_Usable,-AVX_Usable,-AVX512_Usable
-
-
-
-Adding a new alternative math implementation
---------------------------------------------
-
-If you want to add your own alternative math implementation, foo, edit
-Kconfig to add your alternative math to the choice option, calling it
-`ALT_MATH_FOO` in this example.  Then add your implementation to
-`src/alt/foo.cpp`. Wrap all your code except for `#include
-<fpvm/config.h>` in `#if CONFIG_ALT_MATH_FOO`, so the compiler doesn't
-compile your implementation unless you want it to.

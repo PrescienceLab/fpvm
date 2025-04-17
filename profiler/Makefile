@@ -21,14 +21,8 @@ $(OBJDIR)profile.so: $(OBJDIR)profile$(OBJ_SUFFIX)
 
 
 
-pin-tool:
-	wget https://software.intel.com/sites/landingpage/pintool/downloads/pin-external-3.31-98869-gfa6f126a8-gcc-linux.tar.gz
-	tar xf pin-external*.tar.gz
-	rm pin-external*.tar.gz
-	mv pin-external*/ pin-tool
-	
-
-intel64: | pin-tool
+intel64:
+	echo $(PIN_ROOT)
 	mkdir -p obj-intel64
 	$(MAKE) TARGET=intel64 obj-intel64/profile.so
 

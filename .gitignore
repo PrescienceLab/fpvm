@@ -24,6 +24,10 @@ test/boost.tar.gz
 profiler/e9patch
 profiler/pin-tool
 
+mem_patches.csv
+patched_magic
+patched_trap
+
 
 # Static analysis temporary data
 *-storage-simp*
