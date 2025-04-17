@@ -376,7 +376,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
         func = vanilla_op_map[fi->common->op_type][0];
       } else if (fi->common->op_size == 8) {
         // PAD: IS THIS RIGHT?
-        ERROR("Using vanilla op map for 8 bytes conversion instruction %d?!\n",fi->common->op_type);
+        // ERROR("Using vanilla op map for 8 bytes conversion instruction %d?!\n",fi->common->op_type);
         func = vanilla_op_map[fi->common->op_type][1];  // PAD: why is this vanilla?
       } else {
         ERROR("Cannot handle f2u or f2i instruction %d with op_size = %d\n", fi->common->op_type, fi->common->op_size);

@@ -16,6 +16,7 @@ import multiprocessing as mp
 import resource
 import re
 import math
+import random
 
 
 CACHE_DIR = os.path.expanduser('~/.cache/fpvm')
@@ -118,17 +119,27 @@ class ContentHashDir:
 
 
 
+def transform_binary(binary: Path, argv, patch_version: str='magic') -> Path:
+    wrapped_binary = get_wrapped_binary(binary)
+    patched_binary = get_patched_binary(wrapped_binary, binary, argv, patch_version)
+    return patched_binary
+    
+
 
 
 # Given a binary, return a full path to a patched version of it
 # @binary: A path to the binary we are interested in
+# @argv: the arguments to the program required for profile-based patching
 # @version: either 'magic' or 'trap'
-def get_patched_binary(binary: Path, version: str='magic') -> Path:
-  name = os.path.basename(binary)
-  binary = get_wrapped_binary(binary, version)
+def get_patched_binary(wrapped_binary: Path, original_binary: Path, argv, version: str='magic') -> Path:
+  name = os.path.basename(original_binary)
 
-  ch = ContentHashDir(f'patch-{name}')
-  ch.file_input(binary) # The key is simply the file itself.
+  # ch = ContentHashDir(f'patch-profiled-{random.random()}-{name}')
+  ch = ContentHashDir(f'patch-profiled-{name}')
+  ch.file_input(wrapped_binary) # The key is simply the file itself.
+  ch.file_input(original_binary) # The key is simply the file itself.
+  for arg in argv:
+      ch.string_input(arg)
 
   if version not in ['magic', 'trap']:
     raise ValueError(f'Invalid version, {version}')
@@ -137,12 +148,19 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
   trap = name + '.trap'
 
   if not ch.exists(trap) or not ch.exists(magic):
+    if os.system(f"fpvm_profile.sh {wrapped_binary} {original_binary} {' '.join(argv)}") != 0:
+        print('failed to profile. aborting!')
+        exit(-1)
+    shutil.copy('patched_magic', ch.get(magic))
+    shutil.copy('patched_trap', ch.get(trap))
     # Generate the patch in right place.
-    os.system(f'env FPVM_WRAP=disable fpvm_patch.sh -m -n -w {ch.get()} {binary} >&2')
-    shutil.copy(ch.get('input.patched_magic'), ch.get(magic))
-    shutil.copy(ch.get('input.patched_trap'), ch.get(trap))
+    # os.system(f'env FPVM_WRAP=disable fpvm_patch.sh -m -n -w {ch.get()} {wrapped_binary} >&2')
+    # shutil.copy(ch.get('input.patched_magic'), ch.get(magic))
+    # shutil.copy(ch.get('input.patched_trap'), ch.get(trap))
 
   return ch.get(f'{name}.{version}')
+
+
 
 
 
@@ -152,7 +170,6 @@ def get_patched_binary(binary: Path, version: str='magic') -> Path:
 def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
   ch = ContentHashDir(f'additional_wrappers_{mode}')
   ch.file_input(wrap_list)
-
 
   so = ch / 'wrappers.so'
 
@@ -215,6 +232,7 @@ def run_fpvm_binary(bin: Path,
     start = time.time()
 
     cmd = [bin, *args]
+
     # if perf_metrics:
     #     cmd = ['sudo', 'perf', 'record', '-g', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
     #     print(cmd)
@@ -223,6 +241,10 @@ def run_fpvm_binary(bin: Path,
     #     cmd = ['gdb', '-ix', f'{FPVM_HOME}/scripts/gdb-init'] + cmd
         
 
+    # print(env['LD_PRELOAD'])
+
+    # print(cmd)
+    # exit()
 
     proc = subprocess.Popen(
         cmd,
@@ -266,12 +288,10 @@ def run_fpvm_binary(bin: Path,
 def cmd_run(args):
   bin = path_expand(args.binary)
 
-  if args.onlywrap:
-    bin = get_wrapped_binary(bin)
-  elif not args.nopatch and not args.baseline:
-    # If we aren't running a baseline, wrap the binary
-    bin = get_patched_binary(bin)
+  if not args.baseline:
+    bin = transform_binary(bin, args.argv, 'magic')
 
+  # exit()
   # Run the binary...
   out = run_fpvm_binary(bin,
                         args.argv,
@@ -283,10 +303,6 @@ def cmd_run(args):
 
 
 
-# Patch a binary with FPVM and print out where it lives
-def cmd_patch(args):
-  bin = path_expand(args.binary)
-  print(get_patched_binary(bin))
 
 
 # Wrap a binary with FPVM and print out where it lives
@@ -386,7 +402,7 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
 
   if baseline:
       runs.append(('baseline', binary, os.environ.copy()))
-  runs.append(('fpvm_magic', get_patched_binary(binary, 'magic'), fpvm_env))
+  runs.append(('fpvm_magic', transform_binary(binary, argv, 'magic'), fpvm_env))
 
   for run_name, bin, env in runs:
     print(run_name)
@@ -512,20 +528,20 @@ def cmd_sweep(args):
     ]
 
     telemetry_configs = [
-        ('basic_timing', [
-            # 'CONFIG_TELEMETRY=y',
-            # "CONFIG_TELEMETRY_PROMOTIONS=y",
-            # "CONFIG_TELEMETRY_PERIOD=0",
-        ]),
-        ('telem_perf', [
-            "CONFIG_TELEMETRY=y",
-            "CONFIG_TELEMETRY_PROMOTIONS=y",
-            "CONFIG_TELEMETRY_PERIOD=0",
-            "CONFIG_PERF_STATS=y",
-            "CONFIG_PERF_STATS_PERIOD=0",
-            # "CONFIG_INSTR_TRACES=n",
-            # "CONFIG_INSTR_TRACES_PERIOD=0"
-        ]),
+        # ('basic_timing', [
+        #     # 'CONFIG_TELEMETRY=y',
+        #     # "CONFIG_TELEMETRY_PROMOTIONS=y",
+        #     # "CONFIG_TELEMETRY_PERIOD=0",
+        # ]),
+        # ('telem_perf', [
+        #     "CONFIG_TELEMETRY=y",
+        #     "CONFIG_TELEMETRY_PROMOTIONS=y",
+        #     "CONFIG_TELEMETRY_PERIOD=0",
+        #     "CONFIG_PERF_STATS=y",
+        #     "CONFIG_PERF_STATS_PERIOD=0",
+        #     # "CONFIG_INSTR_TRACES=n",
+        #     # "CONFIG_INSTR_TRACES_PERIOD=0"
+        # ]),
         ('instruction_traces', [
             # "CONFIG_TELEMETRY=n",
             # "CONFIG_TELEMETRY_PROMOTIONS=n",
@@ -538,8 +554,10 @@ def cmd_sweep(args):
     ]
 
     alt_math_configs = [
-        ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
+        # Run boxed first so we can see results quicker
         ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
+        # Then run vanilla for the information it provides
+        # ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
         # ('mpfr', [
         #     'CONFIG_ALT_MATH_MPFR=y',
         #     'CONFIG_MPFR_PRECISION=200'
@@ -555,7 +573,6 @@ def cmd_sweep(args):
 
     perm_configs = [] # (name, [config...])
 
-    perm_configs.append(('no_accel', []))
 
 
     for L in range(len(under_test) + 1):
@@ -565,6 +582,8 @@ def cmd_sweep(args):
             perm = list(perm)
             perm_name = '-'.join(map(lambda x: x.replace('CONFIG_', '').lower().split('=')[0], perm))
             perm_configs.append((perm_name, perm))
+
+    perm_configs.append(('no_accel', []))
 
     all_configs = [] # (name, [config...])
 
@@ -668,11 +687,11 @@ if __name__ == '__main__':
   p.set_defaults(func=cmd_benchmark)
 
 
-  # The patch subcommand
-  p = sub.add_parser('patch', help='patch a binary')
-  p.add_argument('-o', '--output', help='output binary', default='fpvm.out')
-  p.add_argument('binary', help='Binary to patch')
-  p.set_defaults(func=cmd_patch)
+  # # The patch subcommand
+  # p = sub.add_parser('patch', help='patch a binary')
+  # p.add_argument('-o', '--output', help='output binary', default='fpvm.out')
+  # p.add_argument('binary', help='Binary to patch')
+  # p.set_defaults(func=cmd_patch)
 
 
   # The wrap subcommand

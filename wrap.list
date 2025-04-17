@@ -1,6 +1,7 @@
 # Toy example
 foobar
 whizbang
+printf
 
 # From lorenz
 _ZNSt8ios_base4InitC1Ev	4	1

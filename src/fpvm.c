@@ -820,6 +820,7 @@ int sigaction(int sig, const struct sigaction *act, struct sigaction *oldact) {
   if ((sig == SIGFPE || sig == SIGTRAP) && !aborted) {
     if (!aggressive) {
       abort_operation("target is using sigaction with SIGFPE or SIGTRAP");
+      // return 0;
     } else {
       // do not override our signal handlers - we are not aborting
       DEBUG(
@@ -933,7 +934,7 @@ static int setup_shims() {
 #define SHIMIFY(x)                              \
   if (!(orig_##x = dlsym(RTLD_NEXT, #x))) {     \
     ERROR("Failed to setup SHIM for " #x "\n"); \
-    return -1;                                  \
+    return -1; \
   }
 
   if (disable_pthreads == 0) {
@@ -1027,6 +1028,12 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
 
   void *rip = (void *)uc->uc_mcontext.gregs[REG_RIP];
   void *rsp = (void *)uc->uc_mcontext.gregs[REG_RSP];
+
+  printf(" correctness: %16p ", rip);
+  for (int i = 0; i < 16; i++) {
+    printf("%02x ", ((uint8_t*)rip)[i]);
+  }
+  fpvm_decoder_decode_and_print_any_inst(rip,stdout,"");
   
   DEBUG("correctness handling for instruction at RIP=%p RSP=%p\n", rip, rsp);
 
@@ -1141,7 +1148,6 @@ out:
 static int correctness_trap_handler(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
-
   if (!mc || mc->state == ABORT) {
     // ABORT case
     DEBUG("Aborting: mc=%p, mc->state=%d\n",mc,mc?mc->state:-1);
@@ -1992,7 +1998,7 @@ void fpvm_short_circuit_handler(void *priv)
   // call the shared handler.  Copy in/out the FP and GP
   // state 
   
-  siginfo_t fake_siginfo = {0};     
+  siginfo_t fake_siginfo;
   struct _libc_fpstate fpvm_fpregs; 
   ucontext_t fake_ucontext;
   uint32_t old;
@@ -2271,6 +2277,19 @@ extern void * _user_fpvm_entry;
 extern int fpvm_setup_additional_wrappers();
 #endif
 
+int fpvm_demote_in_place(void *v) {
+  execution_context_t *mc = find_my_execution_context();
+
+  START_PERF(mc, correctness);
+  uint64_t *p = v;
+  uint64_t orig = *p;
+
+  restore_double_in_place(v);
+  
+  END_PERF(mc, correctness);
+  return *p != orig;
+}
+
 static int bringup() {
 
   // fpvm_gc_init();
@@ -2390,8 +2409,13 @@ static int bringup() {
       }
       magic_page = 0;
     } else {
-      *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
-      *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
+      struct fpvm_trap_magic *magic = magic_page;
+      magic->magic_cookie = FPVM_MAGIC_COOKIE;
+      magic->trap = fpvm_magic_trap_entry;
+      magic->demote = fpvm_demote_in_place;
+
+      // *(uint64_t*)magic_page = FPVM_MAGIC_COOKIE;
+      // *(fpvm_magic_trap_entry_t *)(magic_page+FPVM_TRAP_OFFSET) = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
       DEBUG("magic page initialized at %p\n",magic_page);
     }
   }
@@ -2473,6 +2497,8 @@ static void config_round_daz_ftz(char *buf) {
 
   DEBUG("Configuring rounding control to 0x%08x\n", our_mxcsr_round_daz_ftz_mask);
 }
+
+
 
 
 
