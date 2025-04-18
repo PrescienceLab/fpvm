@@ -109,7 +109,7 @@ config INSTR_SEQ_EMULATION
 
 config MAGIC_CORRECTNESS_TRAP
     bool "Correctness traps via calls (Magic trap)"
-    default n
+    default y
     help
        Add support to deliver correctness traps via
        calls.  The static binary analysis must also
