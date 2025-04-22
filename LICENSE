@@ -11,7 +11,7 @@ KIND FROM PETER A. DINDA, NORTHWESTERN UNIVERSITY, OR ANY OTHER PARTY.
 THIS SOURCE CODE IS NOT SUPPORTED BY PETER A. DINDA, NORTHWESTERN
 UNIVERSITY, OR ANY OTHER PARTY.
 
-To the best of my knowledge, this source code, "FPSpy", is correct and
+To the best of my knowledge, this source code, "FPVM", is correct and
 suitable.  However, no warranty or guarantee of any kind, either
 actual or implied, is provided for this software.  Additionally, no
 support is provided for this software.  It is used at your own risk.
@@ -44,8 +44,11 @@ non-commercial purposes.  If you are interested in commercial use of
    2) Peter A. Dinda (pdinda@northwestern.edu) must be notified of any
 derivatives of "FPVM".
 
+   3) This permission does not extend to use in a machine learning
+or AI context, for example to do training.  A separate license is needed
+for any such use of "FPVM" or its source code.
 
-In simple terms, "FPVM" may be freely used for any non-commercial,
+In simple terms, "FPVM" may be freely used for most non-commercial
 purposes.  Derivatives of "FPVM" must be similarly free and Peter
 A. Dinda (pdinda@northwestern.edu) must be notified of their
 existence.  Commercial use of "FPVM" and commercial derivatives of
