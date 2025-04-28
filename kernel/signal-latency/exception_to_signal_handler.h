@@ -2,6 +2,15 @@
 
 #include <stdint.h>
 
+#define PIPELINED_DELEGATE_HELLO_WORLD 0x4630
+#define PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
+#define PIPELINED_DELEGATE_DELEGATE_TRAPS 0x80084632
+#define PIPELINED_DELEGATE_CSR_STATUS 0x4633
+
+#define PIPELINED_DELEGATE_FILE "/dev/pipelined-delegate"
+#define EXC_FLOATING_POINT_FAULT 0x18 // 24
+#define EXC_INST_STEP 0x19 // 25
+
 static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
 {
   uint64_t val;
