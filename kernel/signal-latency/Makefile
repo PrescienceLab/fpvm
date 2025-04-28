@@ -16,3 +16,4 @@ hw_to_kernel:
 
 clean:
 	rm -f hw_to_kernel exception_to_signal_handler
+	rm -f exception_to_signal_handler-signal-sigfpe exception_to_signal_handler-pipelined-sigfpe estep-pipelined
