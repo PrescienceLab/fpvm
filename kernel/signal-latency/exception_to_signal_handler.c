@@ -15,12 +15,7 @@
 #include <assert.h>
 #define N 100000
 
-static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
-{
-  uint64_t val;
-  asm volatile("rdcycle %0" : "=r"(val));
-  return val;
-}
+#include "exception_to_signal_handler.h"
 
 static volatile uint64_t hit_inst_time = 0xDEADBEEFFEEDBEAD;
 static volatile uint64_t hit_handler_time = 0xCAFEBEEFDEAD8080;
