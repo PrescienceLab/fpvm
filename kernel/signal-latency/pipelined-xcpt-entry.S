@@ -8,7 +8,7 @@
 # define REGBYTES 4
 #endif
 
-#include "exception_to_signal_handler.h"
+#include "csr.h"
 
 /* Read from the cycle counter and stash it into USCRATCH. We must be careful
  * about which integer register we clobber here and the manner in which we do it
