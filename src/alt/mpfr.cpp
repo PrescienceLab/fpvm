@@ -32,8 +32,8 @@
 #define ROUNDING_MODE MPFR_RNDN
 
 #ifdef MPFR_DO_DEBUG
-#define MPFR_ERROR(...) mpfr_fprintf(stderr, "\e[0;31m[MPFR]\e[0m " __VA_ARGS__)
-#define MPFR_DEBUG(...) mpfr_fprintf(stderr, "\e[0;32m[MPFR]\e[0m " __VA_ARGS__)
+#define MPFR_ERROR(...) mpfr_fprintf(stderr, "[MPFR] " __VA_ARGS__)
+#define MPFR_DEBUG(...) mpfr_fprintf(stderr, "[MPFR] " __VA_ARGS__)
 #else
 #define MPFR_ERROR(...)
 #define MPFR_DEBUG(...)
@@ -94,9 +94,9 @@ static uint64_t decode_to_double_bits(void *ptr) {
 static double mpfr_box(mpfr_t *ptr) {
   int sign = mpfr_signbit(*ptr);
   double value = fpvm_gc_box((void *)ptr, sign);
-  // if (mpfr_signbit(*ptr)) {
-  //   *(uint64_t *)&value |= (1LLU << 63);
-  // }
+  if (mpfr_signbit(*ptr)) {
+    *(uint64_t *)&value |= (1LLU << 63);
+  }
   return value;
 }
 

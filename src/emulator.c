@@ -606,6 +606,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 #endif
     
     rc |= func(&special, dest, src1, src2, src3, src4);
+    if (fi->zero_top_half_of_dest_gpr_suffering) {
+      *(uint64_t *)dest &= 0x00000000FFFFFFFFULL;
+    }
 
 #if CONFIG_PERF_STATS
     perf_stat_end(altmath_perf);

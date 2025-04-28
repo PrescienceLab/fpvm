@@ -654,11 +654,57 @@ static int decode_to_common(fpvm_inst_t *fi) {
 
   return 0;
 }
+static int is_32bit_gpr(cs_x86_op *op) {
+    if (op->type == X86_OP_REG) {
+        x86_reg reg = op->reg;
+        // Explicitly check for 32-bit GPRs
+        switch (reg) {
+            case X86_REG_EAX:
+            case X86_REG_EBX:
+            case X86_REG_ECX:
+            case X86_REG_EDX:
+            case X86_REG_ESI:
+            case X86_REG_EDI:
+            case X86_REG_EBP:
+            case X86_REG_ESP:
+            case X86_REG_R8D:
+            case X86_REG_R9D:
+            case X86_REG_R10D:
+            case X86_REG_R11D:
+            case X86_REG_R12D:
+            case X86_REG_R13D:
+            case X86_REG_R14D:
+            case X86_REG_R15D:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+    return 0;
+}
+
+
 
 static int decode_move(fpvm_inst_t *fi) {
   cs_insn *inst = (cs_insn *)fi->internal;
   fi->is_simple_mov = 0;
   fi->is_gpr_mov = 0;
+  fi->zero_top_half_of_dest_gpr_suffering = 0;
+
+  if (inst->id == X86_INS_MOV) {
+    if (inst->detail->x86.operands[1].type == X86_OP_IMM) {
+      // ERROR("MOV instruction with immediate source\n");
+      fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"immediate move: ");
+      // return -1;
+    }
+    // fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"potential move: ");
+  }
+
+
+  // if the destination register is a GPR, and it is 32 bits, we need to zero the top half
+  if (is_32bit_gpr(&inst->detail->x86.operands[0])) {
+    fi->zero_top_half_of_dest_gpr_suffering = 1;
+  }
 
   // simple_mov means scalar, perhaps with sign extension
   switch (inst->id) {

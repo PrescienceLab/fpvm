@@ -150,6 +150,11 @@ typedef struct fpvm_inst {
 
   int is_simple_mov;
   int is_gpr_mov;
+  // this is a hack to get around the fact that
+  // if you store a 32 bit value to a 32 bit slice of a 64 bit register,
+  // the top half of the register should be zeroed.
+  // THIS IS NOT GOOD.
+  int zero_top_half_of_dest_gpr_suffering;
   
 
   // note that operands are in the *intel* order, not the at&t order
