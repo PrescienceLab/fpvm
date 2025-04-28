@@ -11,7 +11,6 @@
 #include <signal.h>
 #include <stdint.h>
 #include <string.h>
-#include "fpvm_ioctl.h"
 
 #include <assert.h>
 #define N 100000
