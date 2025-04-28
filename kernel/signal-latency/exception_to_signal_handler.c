@@ -20,6 +20,7 @@
 #ifdef USE_SIGNALS
 static void our_handler(int signum, siginfo_t *si, void *priv);
 #else
+extern void ppe_handler_entry(void);
 uintptr_t our_handler(uintptr_t cause, uintptr_t epc, uintptr_t gregs[31]);
 #endif
 
