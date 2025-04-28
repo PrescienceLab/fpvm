@@ -11,9 +11,21 @@
 #define EXC_FLOATING_POINT_FAULT 0x18 // 24
 #define EXC_INST_STEP 0x19 // 25
 
+#define REG_FMT "%016lX"
+
 static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void)
 {
   uint64_t val;
   asm volatile("rdcycle %0" : "=r"(val));
   return val;
+}
+
+static inline uint64_t __attribute__((always_inline)) read_uscratch(void)
+{
+  uint64_t uscratch = 0;
+  asm volatile("csrr %0, 0x840\n\t"
+               : "=r"(uscratch)
+               :
+               : );
+  return uscratch;
 }
