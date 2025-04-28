@@ -1,10 +1,12 @@
 all: exception_to_signal_handler hw_to_kernel
 PREFIX := riscv64-unknown-linux-gnu-
 GCC := $(PREFIX)gcc
+XLEN := 64
+CFLAGS := -Wall -Werror
 
 exception_to_signal_handler:
-	$(GCC) -o exception_to_signal_handler -DUSE_SIGNALS=1 exception_to_signal_handler.c user_fpvm_entry.s -lm
-	$(GCC) -o exception_to_kmod_handler exception_to_signal_handler.c user_fpvm_entry.s -lm
+	$(GCC) -static $(CFLAGS) -o exception_to_signal_handler-signal-sigfpe -DUSE_SIGNALS=1 exception_to_signal_handler.c -lm
+	$(GCC) -static $(CFLAGS) -o exception_to_signal_handler-pipelined-sigfpe -D__riscv_xlen=$(XLEN) exception_to_signal_handler.c pipelined-xcpt-entry.S -lm
 
 hw_to_kernel:
 	$(GCC) -o hw_to_kernel  hw_to_kernel.c -lm
