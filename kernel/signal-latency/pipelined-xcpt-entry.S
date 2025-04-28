@@ -8,10 +8,7 @@
 # define REGBYTES 4
 #endif
 
-#define CSR_USCRATCH 0x840
-#define CSR_UEPC 0x841
-#define CSR_UCAUSE 0x842
-#define CSR_FFLAGS_CARE 0x880
+#include "exception_to_signal_handler.h"
 
 /* Read from the cycle counter and stash it into USCRATCH. We must be careful
  * about which integer register we clobber here and the manner in which we do it
