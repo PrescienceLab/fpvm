@@ -52,7 +52,7 @@ shift
 # Run the profiler, which should dump mem_patches.csv into the current directory
 step "profile" $PROFILER $bin $@ # > profile.out 2> profile.err
 
-cp ${FPVM}/analysis/magictrap/fpvm_magic.[ch] .
+cp ${FPVM}/profiler/fpvm_magic.[ch] .
 
 # compile the fpvm_magic.c program from the analysis
 step "compile patch lib" e9compile.sh fpvm_magic.c
