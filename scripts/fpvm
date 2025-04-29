@@ -23,8 +23,6 @@ CACHE_DIR = os.path.expanduser('~/.cache/fpvm')
 SCRIPT_DIR = Path(os.path.realpath(os.path.dirname(__file__)))
 FPVM_HOME = SCRIPT_DIR / '../' # TODO: this FPVM_HOME thing makes distribution later really annoying
 
-WRAP_LIST = FPVM_HOME / 'wrap.list'
-
 # First, attempt to find where FPVM is.
 FPVM_LOCATION = None
 
@@ -661,7 +659,7 @@ if __name__ == '__main__':
 
   parser.add_argument('--cachedir', help='Where the cache should be located', required=False, default=CACHE_DIR)
   parser.add_argument('--fpvm', help='Path to FPVM', required=False, default=FPVM_LOCATION)
-  parser.add_argument('--wrap-list', help='The wrap list to use when generating wrappers', default=FPVM_HOME / 'wrap.list')
+  parser.add_argument('--wrap-list', help='The wrap list to use when generating wrappers', default=FPVM_HOME / 'src/wrap.list')
 
   sub = parser.add_subparsers(required=True, title='action')
 
