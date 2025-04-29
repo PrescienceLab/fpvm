@@ -34,7 +34,7 @@ BUILD?=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ $(ARCHINCDIR)/ # include/capstone/
+INC_DIRS := include/ $(ARCHINCDIR)/
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CC = $(PREFIX)gcc
@@ -76,7 +76,6 @@ $(BUILD)/%.cpp.o: %.cpp
 	@echo " CXX  $<"
 	@$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
-# $(CC) $(CFLAGS) -fPIC -shared $(OBJS) -lcapstone -lmpfr -lm -ldl -lstdc++ -o $@
 $(TARGET): $(BUILD) $(OBJS) 
 	@echo " LD   $(TARGET)"
 	@cp .config $(BUILD)/.config
