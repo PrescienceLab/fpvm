@@ -90,13 +90,12 @@
 #define ASSERT(E)
 #endif
 
-#if CONFIG_ARCH_X64
+#if __x86_64__
 // somehow this also causes stack alignment to be screwed up...
 #define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
 #define FXSAVE_ALIGN __attribute__((aligned (16)));
 #define XMM_ALIGN __attribute__((aligned (16)));
 #else
-#warning Ignoring directives on this architecture!  Beware!
 #define NO_TOUCH_FLOAT
 #define FXSAVE_ALIGN
 #define XMM_ALIGN
@@ -105,6 +104,52 @@
 
 // somehow incomplete... 
 //#define NO_TOUCH_FLOAT __attribute__((target ("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3,no-3dnow,no-3dnowa,no-abm,no-adx,no-aes,no-mmx,no")))
+
+
+// --------------- x86 -----------------
+#if defined(__x86_64__)
+
+typedef struct _libc_fpstate fpvm_fpstate_t;
+#define FPSTATE_FPRS(fpstate) (&(fpstate)->_xmm[0])
+
+// these functions take an fpvm_regs_t struct, and return the address of various
+// fields according to the given architecture
+// HACK: this is not a good way to do this, but it works just to get FPVM compiling
+//       on arm64
+#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->gregs)
+#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
+
+// Grab important registers from the mcontext struct (it's layout is different on different archs)
+#define MCTX_PC(mc) ((mc)->gregs[REG_RIP])
+#define MCTX_SP(mc) ((mc)->gregs[REG_RSP])
+// A pointer to the start of the floating point register state
+#define MCTX_FPRS(mc) ((mc)->fpregs->_xmm)
+
+
+#endif
+
+// -------------- RISCV ----------------
+#if defined(__riscv)
+#error "RISC-V not supported yet"
+
+#endif
+
+// -------------- ARM64 ----------------
+#if defined(__aarch64__)
+
+typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
+#define FPSTATE_FPRS(fpstate) (&(fpstate)->data)
+
+#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->regs)
+#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
+
+
+#define MCTX_PC(mc) ((mc)->pc)
+#define MCTX_SP(mc) ((mc)->sp)
+#define MCTX_FPRS(mc) ((void*)NULL) // TODO:
+
+#endif
+
 
 
 

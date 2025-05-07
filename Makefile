@@ -7,7 +7,8 @@ export FPVM_HOME:=$(shell pwd)
 export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
 
 # this should come from from config... 
-ARCH=x64
+ARCH:=x64
+# ARCH=arm64
 #ARCH=riscv64
 
 # hard coded assuming we are doing cross-compilation

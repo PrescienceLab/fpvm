@@ -186,7 +186,7 @@ int fpvm_vm_compile(fpvm_inst_t *fi) {
   extern int fpvm_vm_x86_compile(fpvm_inst_t *);
   return fpvm_vm_x86_compile(fi);
 #else
-#warning "FPVM's vm only works on x86_64 for now..."
+// #warning "FPVM's vm only works on x86_64 for now..."
   return -1;
 #endif  // __amd64__
 }
@@ -201,8 +201,8 @@ void vm_test_decode(fpvm_inst_t *fi) {
 
 void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs) {
   memset(vm, 0, sizeof(fpvm_vm_t));
-  vm->mcstate = (uint8_t*)regs->mcontext->gregs;
-  vm->fpstate = (uint8_t*)regs->fprs;
+  vm->mcstate = FPVM_REGS_GPRS(regs);
+  vm->fpstate = FPVM_REGS_FPRS(regs);
   vm->code = ((fpvm_builder_t*)inst->codegen)->code;
   vm->sp = vm->stack;
 }

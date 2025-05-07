@@ -51,6 +51,18 @@ Subsequent runs of the same (hash-identical) binary will be much faster, as the 
 **NOTE:** It's important that you always run `FPVM` through the above tool.
 Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
 
+
+---
+
+## Compiling FPVM for ARM64
+
+FPVM is mainly an x86 project, but we are working on getting other architectures to work.
+By default, x86 is the target arch.
+This can be changed by compiling with the following command (assuming it is being built from an arm machine and not cross compiled):
+```
+make ARCH=arm64
+```
+
 --- 
 
 # Misc Information

@@ -342,18 +342,27 @@ __thread execution_context_t *__fpvm_current_execution_context=0;
 
 static uint64_t NO_TOUCH_FLOAT get_xmm0() {
   uint64_t val = 0;
+  #ifdef __x86_64__
+  // TODO: move to a central "machine state save/restore" function
   __asm__ __volatile__("movq %%xmm0, %0" : "=r"(val) : : "memory");
+  #endif
   return val;
 }
 
 static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
   uint32_t val = 0;
+  #ifdef __x86_64__
+  // TODO: move to a central "machine state save/restore" function
   __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
+  #endif
   return val;
 }
 
 static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
+  #ifdef __x86_64__
+  // TODO: move to a central "machine state save/restore" function
   __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
+  #endif
 }
 
 
@@ -369,14 +378,18 @@ static void mxcsr_restore(uint32_t old) {
 }
 
 
-static inline void NO_TOUCH_FLOAT fxsave(struct _libc_fpstate *fpvm_fpregs)
+static inline void NO_TOUCH_FLOAT fxsave(fpvm_fpstate_t *fpvm_fpregs)
 {
+  #ifdef __x86_64__
   __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
+  #endif
 }
 
-static inline void NO_TOUCH_FLOAT fxrstor(const struct _libc_fpstate *fpvm_fpregs)
+static inline void NO_TOUCH_FLOAT fxrstor(const fpvm_fpstate_t *fpvm_fpregs)
 {
+  #ifdef __x86_64__
   __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
+  #endif
 }
 
 static void init_execution_contexts() {
@@ -527,8 +540,8 @@ static __attribute__((constructor )) void fpvm_init(void);
 #if DEBUG_OUTPUT
 
 static void dump_rflags(char *pre, ucontext_t *uc) {
+  #ifdef __x86_64__
   char buf[256];
-
   rflags_t *r = (rflags_t *)&(uc->uc_mcontext.gregs[REG_EFL]);
 
   sprintf(buf, "rflags = %016lx", r->val);
@@ -550,10 +563,12 @@ static void dump_rflags(char *pre, ucontext_t *uc) {
   EF(df, down);
 
   DEBUG("%s: %s\n", pre, buf);
+  #endif
 }
 
 static void dump_mxcsr(char *pre, ucontext_t *uc) {
   char buf[256];
+  #ifdef __x86_64__
 
   mxcsr_t *m = (mxcsr_t *)&uc->uc_mcontext.fpregs->mxcsr;
 
@@ -586,34 +601,51 @@ static void dump_mxcsr(char *pre, ucontext_t *uc) {
       : m->rounding == 2 ? "positive"
                          : "zero",
       m->daz ? "DAZ" : "", m->fz ? "FTZ" : "");
+  #endif
 }
 
 #endif
 
 // trap should never be enabled...   this can probably go
 static inline void set_trap_flag_context(ucontext_t *uc, int val) {
+  #ifdef __x86_64__
   if (val) {
     uc->uc_mcontext.gregs[REG_EFL] |= 0x100UL;
   } else {
     uc->uc_mcontext.gregs[REG_EFL] &= ~0x100UL;
   }
+  #else
+  // TODO: arm64 & riscv
+  #endif
 }
 
 static inline void clear_fp_exceptions_context(ucontext_t *uc) {
+  #ifdef __x86_64__
   uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_FLAG_MASK;
+  #else
+  // TODO: arm64 & riscv
+  #endif
 }
 
 static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
+  #ifdef __x86_64__
   if (mask) {
     uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK;
   } else {
     uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK;
   }
+  #else
+  // TODO: arm64 & riscv
+  #endif
 }
 
 static inline void zero_fp_xmm_context(ucontext_t *uc)
 {
+  #ifdef __x86_64__
   memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
+  #else
+  // TODO: arm64 & riscv
+  #endif
 }
 
 
@@ -995,14 +1027,20 @@ static int setup_shims() {
 #define MXCSR_ROUND_DAZ_FTZ_MASK (~(0xe040UL))
 
 static uint32_t get_mxcsr_round_daz_ftz(ucontext_t *uc) {
+  #ifdef __x86_64__
   uint32_t mxcsr = uc->uc_mcontext.fpregs->mxcsr;
   uint32_t mxcsr_round = mxcsr & MXCSR_ROUND_DAZ_FTZ_MASK;
   DEBUG("mxcsr (0x%08x) round faz dtz at 0x%08x\n", mxcsr, mxcsr_round);
   // dump_mxcsr("get_mxcsr_round_daz_ftz: ", uc);
   return mxcsr_round;
+  #else
+  // TODO: arm64 & riscv
+  return 0;
+  #endif
 }
 
 static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
+  #ifdef __x86_64__
   if (control_mxcsr_round_daz_ftz) {
     uc->uc_mcontext.fpregs->mxcsr &= MXCSR_ROUND_DAZ_FTZ_MASK;
     uc->uc_mcontext.fpregs->mxcsr |= mask;
@@ -1010,6 +1048,9 @@ static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
         uc->uc_mcontext.fpregs->mxcsr, mask);
     // dump_mxcsr("set_mxcsr_round_daz_ftz: ", uc);
   }
+  #else
+  // TODO: arm64 & riscv
+  #endif
 }
 
 inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c, void *rip);
@@ -1026,8 +1067,8 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
   
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
 
-  void *rip = (void *)uc->uc_mcontext.gregs[REG_RIP];
-  void *rsp = (void *)uc->uc_mcontext.gregs[REG_RSP];
+  void *rip = (void *)MCTX_PC(&uc->uc_mcontext);
+  void *rsp = (void *)MCTX_SP(&uc->uc_mcontext);
 
   printf(" correctness: %16p ", rip);
   for (int i = 0; i < 16; i++) {
@@ -1068,7 +1109,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
 
   // This stupidly just treats everything as SSE2
   // and must be fixed
-  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
   regs.fpr_size = 16;
 
   // bind operands
@@ -1107,7 +1148,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
     break;
   case FPVM_CORRECT_SKIP:
     DEBUG("handled correctness, skipping instruction\n");
-    uc->uc_mcontext.gregs[REG_RIP] += fi->length;
+    MCTX_PC(&uc->uc_mcontext) += fi->length;
     break;
   default:
     ERROR("unknown response from correctness handler: %d\n",r);
@@ -1235,34 +1276,40 @@ void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state 
-  struct _libc_fpstate fpvm_fpregs FXSAVE_ALIGN;
+  fpvm_fpstate_t fpvm_fpregs FXSAVE_ALIGN;
   ucontext_t fake_ucontext;
   
   // capture FP state (note that this eventually needs to do xsave)
   fxsave(&fpvm_fpregs);
+  #ifdef __x86_64__
+  // TODO: arm64 & riscv
   fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
-
   // capture greg state
   // consider memcpy
   for (int i = 0; i < 18; i++) {
     fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
   }
+  #endif
 
   ucontext_t *uc = (ucontext_t *)&fake_ucontext;
 
   // This is to handle e9patch's lea instruction
-  uc->uc_mcontext.gregs[REG_RIP] += 8;
+  MCTX_PC(&uc->uc_mcontext) += 8;
 
   if (correctness_trap_handler(uc)) {
     abort_operation("correctness trap handler failed\n");
     ASSERT(0);
   }
 
+  #ifdef __x86_64__
+  // TODO: arm64 & riscv
+
   // restore GP state
   // consider memcpy
   for (int i = 0; i < 18; i++) {
     *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
   }
+  #endif
 
   // restore FP state (note that this eventually needs to do xsave)
   // note that this is also doing the mxcsr restore for however
@@ -1297,7 +1344,7 @@ void __fpvm_foreign_debug(void)
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 {
-  struct _libc_fpstate fstate FXSAVE_ALIGN;
+  fpvm_fpstate_t fstate FXSAVE_ALIGN;
   uint32_t oldmxcsr;
 
   execution_context_t *mc = find_my_execution_context();
@@ -1332,7 +1379,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   
 
   regs.mcontext = 0;        // nothing should need this state
-  regs.fprs = &fstate._xmm[0];  // note xmm only
+  regs.fprs = FPSTATE_FPRS(&fstate);  // note xmm only
   regs.fpr_size = 16;       // note bogus
     
   demotions = fpvm_emulator_demote_registers(&regs);
@@ -1473,7 +1520,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 static void fp_trap_handler_emu(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
-  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *rip = (uint8_t *)MCTX_PC(&uc->uc_mcontext);
   uint8_t *start_rip = rip;
 
   int inst_promotions = 0, inst_demotions = 0, inst_clobbers = 0;
@@ -1612,7 +1659,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     
     // PAD: This stupidly just treats everything as SSE2
     // and must be fixed
-    regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+    regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
     regs.fpr_size = 16;
     
     
@@ -1736,7 +1783,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     // #endif
     
     // Skip those instructions we just emulated.
-    uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+    MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
     
     if (do_insert) {
       // put into the cache for next time
@@ -1781,11 +1828,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
-  DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
 
   clear_fp_exceptions_context(uc);        // exceptions cleared
 
-  DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
   
   return;
   
@@ -1832,7 +1879,7 @@ fail_do_trap:
 static void fp_trap_handler_nvm(ucontext_t *uc)
 {
   execution_context_t *mc = find_my_execution_context();
-  uint8_t *rip = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *rip = (uint8_t *)MCTX_PC(&uc->uc_mcontext);
 
   // Let the garbage collector run
   fpvm_gc_run();
@@ -1871,7 +1918,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // we get the registers early since
   // we will need to do a fake bind the first
   // time we see an instruction
-  regs.fprs = uc->uc_mcontext.fpregs->_xmm;
+  regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
   regs.fpr_size = 16;  
   
   DEBUG("Handling instruction (rip = %p)\n",rip);
@@ -1925,7 +1972,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // #endif
     
   // Skip those instructions we just emulated.
-  uc->uc_mcontext.gregs[REG_RIP] = (greg_t)rip;
+  MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
   
   if (do_insert) {
     // put into the cache for next time
@@ -1938,11 +1985,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   
   DEBUG("FPE succesfully done (emulated one instruction)\n");
   
-  DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
   
   clear_fp_exceptions_context(uc);        // exceptions cleared
   
-  DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
   
   return;
   
@@ -1999,7 +2046,7 @@ void fpvm_short_circuit_handler(void *priv)
   // state 
   
   siginfo_t fake_siginfo;
-  struct _libc_fpstate fpvm_fpregs; 
+  fpvm_fpstate_t fpvm_fpregs; 
   ucontext_t fake_ucontext;
   uint32_t old;
   
@@ -2025,23 +2072,26 @@ void fpvm_short_circuit_handler(void *priv)
   
   siginfo_t * si = (siginfo_t *)&fake_siginfo;
 
+  #ifdef __x86_64__
+  // TODO: arm64 & riscv
   fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
 
   // consider memcpy
   for (int i = 0; i < 18; i++) {
     fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
   }
+  #endif
 
   ucontext_t *uc = (ucontext_t *)&fake_ucontext;
  
-  uint8_t *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
   DEBUG(
 	"SCFPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
 	"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
 	si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
 	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
-  DEBUG("SCFPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
+  DEBUG("SCFPE RIP=%p RSP=%p\n", rip, MCTX_SP(&uc->uc_mcontext));
   
 #if DEBUG_OUTPUT
   char buf[80];
@@ -2069,11 +2119,16 @@ void fpvm_short_circuit_handler(void *priv)
   
   DEBUG("SCFPE  done\n");
 
+  #ifdef __x86_64__
+  // TODO: arm64 & riscv
+
   // restore GP state
   // consider memcpy
   for (int i = 0; i < 18; i++) {
     *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
   }
+  #endif
+
   // restore FP state (note that this eventually needs to do xsave)
   // note that this is also doing the mxcsr restore for however
   // fp_trap_handler modified it
@@ -2091,14 +2146,14 @@ void fpvm_short_circuit_handler(void *priv)
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
   
   ucontext_t *uc = (ucontext_t *)priv;
-  uint8_t *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
   DEBUG(
       "SIGFPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
       "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
       si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
       rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
-  DEBUG("FPE RIP=%p RSP=%p\n", rip, (void *)uc->uc_mcontext.gregs[REG_RSP]);
+  DEBUG("FPE PC=%p SP=%p\n", rip, (void *)MCTX_SP(&uc->uc_mcontext));
 
 #if DEBUG_OUTPUT
   char buf[80];
@@ -2143,7 +2198,7 @@ static void sigint_handler(int sig, siginfo_t *si, void *priv) {
 static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
 {
   ucontext_t *uc = (ucontext_t *)priv;
-  void *rip = (uint8_t*) uc->uc_mcontext.gregs[REG_RIP];
+  void *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
   void *addr = si->si_addr;
   int probe = rip==fpvm_memaddr_probe_readable_long;
   
@@ -2153,7 +2208,7 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
     // this means we faulted, in the probe address
     // and so it is unwritable, so return to retbad
     // if it did not fault, then it would continue to retgood
-    uc->uc_mcontext.gregs[REG_RIP] += 0xb;
+    MCTX_PC(&uc->uc_mcontext) += 0xb;
   } else {
     // this means it is a fault somewhere in FPVM (impossible!) or
     // in the program, so continue with original handling
@@ -2657,7 +2712,7 @@ int main(int argc, char *argv[])
   
   // PAD: This stupidly just treats everything as SSE2
   // and must be fixed
-  regs.fprs = uc.uc_mcontext.fpregs->_xmm;
+  regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   regs.fpr_size = 16;
   
   // Doing fake bind here to capture operand sizes

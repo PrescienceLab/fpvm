@@ -109,7 +109,23 @@ inline uint64_t time_us(void) {
 
 uint64_t getrsp() {
   uint64_t retVal;
+
+  #ifdef __x86_64__
+  // x86_64 assembly to get the stack pointer
   __asm__ __volatile__("movq %%rsp, %0" : "=a"(retVal) : : "memory");
+
+  #elif defined(__riscv)
+  // RISC-V assembly to get the stack pointer
+  __asm__ __volatile__("mv %0, sp" : "=r"(retVal) : : "memory");
+
+  #elif defined(__aarch64__)
+  // ARM64 assembly to get the stack pointer
+  __asm__ __volatile__("mov %0, sp" : "=r"(retVal) : : "memory");
+
+  #else
+  #error "Unsupported architecture"
+  #endif
+
   return retVal;
 }
 
