@@ -23,7 +23,7 @@ fpvm_test_instr:
 .global my_instruction
 my_instruction:
 //   PATCHHERE
-    addpd (%rsp), %xmm1
+//    addpd (%rsp), %xmm1
 //  addsd %xmm2, %xmm1	
 //  comisd %xmm2, %xmm1
 //  cmpltsd %xmm2, %xmm1
@@ -31,7 +31,7 @@ my_instruction:
 //   vfmadd132sd %xmm1, %xmm2, %xmm3
 //    sqrtpd %xmm2, %xmm3
 //    maxsd %xmm2, %xmm3
-    subpd %xmm2, %xmm3
+//    subpd %xmm2, %xmm3
 //    mulpd %xmm2, %xmm3
    movupd %xmm0, 0x00(%rdi)
    movupd %xmm1, 0x10(%rdi)
