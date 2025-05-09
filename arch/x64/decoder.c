@@ -451,10 +451,16 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
     [X86_INS_MOVNTDQA] = {FPVM_OP_MOVE, 0, 0, 16, 16},
     [X86_INS_MOVNTDQ] = {FPVM_OP_MOVE, 0, 0, 16, 16},
 
+
+
+    // cs446 Ethan + Ben attempting these new instructions
+    [X86_INS_MOVDQ2Q] = {}, //https://www.felixcloutier.com/x86/movq2dq
+    [X86_INS_MOVQ2DQ] = {}, //https://www.felixcloutier.com/x86/movdq2q
+
+
+
     /*
       Additional MOV ops we can look through - PAD
-	X86_INS_MOVDQ2Q,
-    	X86_INS_MOVQ2DQ,
 	X86_INS_MOVABS,
 	X86_INS_MOVBE,
 	X86_INS_MOVDDUP,
