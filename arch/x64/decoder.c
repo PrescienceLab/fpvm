@@ -454,8 +454,8 @@ fpvm_inst_common_t capstone_to_common[X86_INS_ENDING] = {
 
 
     // cs446 Ethan + Ben attempting these new instructions
-    [X86_INS_MOVDQ2Q] = {}, //https://www.felixcloutier.com/x86/movq2dq
-    [X86_INS_MOVQ2DQ] = {}, //https://www.felixcloutier.com/x86/movdq2q
+    // [X86_INS_MOVDQ2Q] = {FPVM_OP_MOVE, 0, 0, 8, 8}, //https://www.felixcloutier.com/x86/movq2dq
+    // [X86_INS_MOVQ2DQ] = {FPVM_OP_MOVE, 0, 0, 8, 16}, //https://www.felixcloutier.com/x86/movdq2q
 
 
 
@@ -752,6 +752,35 @@ static int decode_move(fpvm_inst_t *fi) {
     fi->is_gpr_mov = 0;
     fi->extend = FPVM_INST_ZERO_EXTEND;
     break;
+
+
+  //Ethan + Ben
+  // case X86_INS_MOVQ2DQ:      /* mm -> xmm  (zero-extend) */
+  //     common->op_type     = FPVM_OP_MOVE;
+  //     fi->extend          = FPVM_INST_ZERO_EXTEND;
+  //     fi->operand_count   = 2;
+  //     /* dst = XMM (16 B),  src = MMX (8 B) */
+  //     fi->operand_sizes[0]= 16;
+  //     fi->operand_sizes[1]= 8;
+  //     fi->common->op_size = 8;          /* width actually transferred     */
+  //     fi->dest_size       = 16;
+  //     fi->is_simple_mov   = 1;
+  //     break;
+
+  // case X86_INS_MOVDQ2Q:      /* xmm -> mm (truncate)    */
+  //     common->op_type     = FPVM_OP_MOVE;
+  //     fi->extend          = FPVM_INST_IGNORE_EXTEND; /* we DROP the high word */
+  //     fi->operand_count   = 2;
+  //     /* dst = MMX (8 B),   src = XMM (16 B) */
+  //     fi->operand_sizes[0]= 8;
+  //     fi->operand_sizes[1]= 16;
+  //     fi->common->op_size = 8;
+  //     fi->dest_size       = 8;
+  //     fi->is_simple_mov   = 1;
+  //     break;
+  //Ethan + Ben
+
+
   default:
     fi->is_simple_mov = 0;
     fi->is_gpr_mov = 0;

@@ -2698,6 +2698,10 @@ int main(int argc, char *argv[])
     abort();
   }
 
+  // Add print statement to show the instruction type
+  INFO("Decoded instruction type: %d (CMP=%d, UCMP=%d)\n", 
+       fi->common->op_type, FPVM_OP_CMP, FPVM_OP_UCMP);
+
   // acquire pointers to the GP and FP register state
   // from the mcontext.
   //
@@ -2714,6 +2718,8 @@ int main(int argc, char *argv[])
   // and must be fixed
   regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   regs.fpr_size = 16;
+
+  INFO("Initial EFLAGS value: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
   
   // Doing fake bind here to capture operand sizes
   // If we do it this way, we will only bind the first time we see the instruction
@@ -2721,6 +2727,19 @@ int main(int argc, char *argv[])
   if (fpvm_decoder_bind_operands(fi, &regs)) {
     ERROR("Cannot bind operands of instruction\n");
     abort();
+  }
+
+  // Check if side effect addresses are set for comparison instructions
+  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
+    INFO("Side effect address[0] (EFLAGS): %p\n", fi->side_effect_addrs[0]);
+    INFO("EFLAGS address from mcontext: %p\n", &regs.mcontext->gregs[REG_EFL]);
+    
+    // Verify they point to the same location
+    if (fi->side_effect_addrs[0] == &regs.mcontext->gregs[REG_EFL]) {
+      INFO("Side effect address correctly points to EFLAGS\n");
+    } else {
+      ERROR("Side effect address does NOT point to EFLAGS!\n");
+    }
   }
 
   if (fpvm_vm_compile(fi)) {
@@ -2766,6 +2785,10 @@ int main(int argc, char *argv[])
 
   fpvm_vm_run(&vm);
 
+  getcontext(&uc);
+  INFO("EFLAGS after VM run: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
+
+
   INFO("Register final state\n");
   // print_fpregs_decimal(fpregs);
   fpvm_dump_xmms_double(stderr, fpregs);
@@ -2782,11 +2805,19 @@ int main(int argc, char *argv[])
     fpregs[i].low = (double)i;
     fpregs[i].high = (double)i + 0.5;
   }
+  // Get EFLAGS before ground truth test
+  getcontext(&uc);
+  INFO("EFLAGS before ground truth: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
+
   INFO("Register initial state\n");
   // print_fpregs_decimal(fpregs);
   fpvm_dump_xmms_double(stderr, fpregs);
 
   fpvm_test_instr(fpregs);
+  
+  // Get EFLAGS after ground truth test
+  getcontext(&uc);
+  INFO("EFLAGS after ground truth: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
 
   printf("\n");
   
