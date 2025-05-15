@@ -26,25 +26,48 @@ static csh handle;
 // TODO:
 //    Size of 1 for now, but expand to ARM64_INS_ENDING
 //    once we are ready...
-fpvm_inst_common_t capstone_to_common[ARM64_INS_ENDING] = {
-  [ARM64_INS_FADD] = {FPVM_OP_ADD, 1, 0, 8, 0}
+fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
+  [ARM64_INS_FADD] = FPVM_OP_ADD
 };
 
-// TODO:
-// - For testing, just do fadd
 static int decode_to_common(fpvm_inst_t *fi) {
-  cs_insn *inst = (cs_insn*)fi->internal;
+  cs_insn *inst = (cs_insn *)fi->internal;
 
-  fi->addr = (void*)inst->address;
+  fi->addr = (void *)inst->address;
   fi->length = inst->size;
-  // Only fadd is being set up for now
-  fi->common = &capstone_to_common[inst->id];
+
+  fpvm_inst_common_t* common = (fpvm_inst_common_t*)malloc(sizeof(fpvm_inst_common_t));
+  fi->common = common; 
+  memset(fi->common, 0, sizeof(*fi->common));
+  fi->common->op_type = capstone_to_common[inst->id];
+
+  cs_detail *detail = inst->detail;
+  cs_arm64 *arm64 = &detail->arm64;
+
+  // determine whether it's vector or scalar
+  cs_arm64_op *op = &arm64->operands[0];
+  if (op->reg >= ARM64_REG_S0 && op->reg <= ARM64_REG_S31) {
+      DEBUG("Operand is scalar float (32-bit)\n");
+  } else if (op->reg >= ARM64_REG_D0 && op->reg <= ARM64_REG_D31) {
+      DEBUG("Operand is scalar double (64-bit)\n");
+  } else if (op->reg >= ARM64_REG_V0 && op->reg <= ARM64_REG_V31) {
+      fi->common->is_vector = 1;
+      DEBUG("Operand is vector\n");
+  }
+
+  // check 32 or 64 bit
+  if (strstr(inst->op_str, ".4s")) fi->common->op_size = 4;
+  if (strstr(inst->op_str, ".2d")) fi->common->op_size = 8;
+  if (strstr(inst->op_str, " s")) fi->common->op_size = 4;
+  if (strstr(inst->op_str, " d")) fi->common->op_size = 8;
+
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
+    // not an error, since this could be a sequence-ending instruction
     DEBUG("instruction decodes to unknown common op type\n");
     return -1;
   }
-  
+
   return 0;
 }
 
@@ -97,48 +120,6 @@ void fpvm_decoder_deinit(void) {
   cs_close(&handle);
 }
 
-static int decode_to_common(fpvm_inst_t *fi) {
-  cs_insn *inst = (cs_insn *)fi->internal;
-
-  fi->addr = (void *)inst->address;
-  fi->length = inst->size;
-
-  //fi->common = &capstone_to_common[inst->id];
-
-  // testing out only fadd instruction
-  memset(&fi->common, 0, sizeof(fi->common));
-  fi->common.op_type = FPVM_OP_ADD;
-
-  cs_detail *detail = inst->detail;
-  cs_arm64 *arm64 = &detail->arm64;
-
-  // determine whether it's vector or scalar
-  cs_arm64_op *op = &arm64->operands[0];
-  if (op->reg >= ARM64_REG_S0 && op->reg <= ARM64_REG_S31) {
-      DEBUG("Operand is scalar float (32-bit)\n");
-  } else if (op->reg >= ARM64_REG_D0 && op->reg <= ARM64_REG_D31) {
-      DEBUG("Operand is scalar double (64-bit)\n");
-  } else if (op->reg >= ARM64_REG_V0 && op->reg <= ARM64_REG_V31) {
-      fi->common.is_vector = 1;
-      DEBUG("Operand is vector\n");
-  }
-
-  // check 32 or 64 bit
-  if (strstr(inst->op_str, ".4s")) fi->common.op_size = 4;
-  if (strstr(inst->op_str, ".2d")) fi->common.op_size = 8;
-  if (strstr(inst->op_str, " s")) fi->common.op_size = 4;
-  if (strstr(inst->op_str, " d")) fi->common.op_size = 8;
-
-
-  if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    // not an error, since this could be a sequence-ending instruction
-    DEBUG("instruction decodes to unknown common op type\n");
-    return -1;
-  }
-
-  return 0;
-  cs_close(&handle);
-}
 
 fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
 
@@ -161,10 +142,6 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   memset(fi, 0, sizeof(*fi));
   fi->addr = addr;
   fi->internal = inst;
-
-  // print out instruction decoded
-  DEBUG("instr: %s\nop_str: %s\n", inst->mnemonic, inst->op_str);
-  DEBUG("opid: %d\n", inst->id);
 
   if (decode_to_common(fi)) {
     DEBUG("Can't decode to common representation\n");
