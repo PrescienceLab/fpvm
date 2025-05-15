@@ -8,6 +8,7 @@ fpvm_test_instr:
 .global my_instruction
 my_instruction:
    // TODO:
+   fadd d1, d2, d3
 
    ret
 
