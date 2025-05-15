@@ -25,6 +25,14 @@ int fpvm_memaddr_probe_readable_long(void *addr) {
 
 int fpvm_decoder_init(void)
 {
+  if (cs_open(CS_ARCH_X86, CS_MODE_64, &handle) != CS_ERR_OK) {
+    ERROR("Failed to open decoder\n");
+    return -1;
+  }
+  if (cs_option(handle, CS_OPT_DETAIL, CS_OPT_ON) != CS_ERR_OK) {
+    ERROR("Cannot enable detailed decode\n");
+    return -1;
+  }
   DEBUG("decoder initialized\n");
   return 0;
 }
@@ -32,6 +40,7 @@ int fpvm_decoder_init(void)
 void fpvm_decoder_deinit(void)
 {
   DEBUG("decoder deinit\n");
+  cs_close(&handle);
 }
 
 static int decode_to_common(fpvm_inst_t *fi) {
