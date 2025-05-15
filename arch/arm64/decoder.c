@@ -38,7 +38,7 @@ static int decode_to_common(fpvm_inst_t *fi) {
 
   // testing out only fadd instruction
   memset(&fi->common, 0, sizeof(fi->common));
-  fi->common.op_type = FPVM_OP_ADD;
+  fi->common->op_type = FPVM_OP_ADD;
 
   cs_detail *detail = inst->detail;
   cs_arm64 *arm64 = &detail->arm64;
@@ -50,15 +50,15 @@ static int decode_to_common(fpvm_inst_t *fi) {
   } else if (op->reg >= ARM64_REG_D0 && op->reg <= ARM64_REG_D31) {
       DEBUG("Operand is scalar double (64-bit)\n");
   } else if (op->reg >= ARM64_REG_V0 && op->reg <= ARM64_REG_V31) {
-      fi->common.is_vector = 1;
+      fi->common->is_vector = 1;
       DEBUG("Operand is vector\n");
   }
 
   // check 32 or 64 bit
-  if (strstr(inst->op_str, ".4s")) fi->common.op_size = 4;
-  if (strstr(inst->op_str, ".2d")) fi->common.op_size = 8;
-  if (strstr(inst->op_str, " s")) fi->common.op_size = 4;
-  if (strstr(inst->op_str, " d")) fi->common.op_size = 8;
+  if (strstr(inst->op_str, ".4s")) fi->common->op_size = 4;
+  if (strstr(inst->op_str, ".2d")) fi->common->op_size = 8;
+  if (strstr(inst->op_str, " s")) fi->common->op_size = 4;
+  if (strstr(inst->op_str, " d")) fi->common->op_size = 8;
 
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
