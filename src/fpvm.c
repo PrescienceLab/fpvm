@@ -2703,7 +2703,8 @@ int main(int argc, char *argv[])
   DEBUG("op_type: %d\n", fi->common->op_type);
   DEBUG("is_simple_mov: %d\n", fi->is_simple_mov);
   DEBUG("is_gpr_mov: %d\n", fi->is_gpr_mov);
-  DEBUG("Operand count: %d\n", fi->operand_count);
+  // DEBUG("Operand Size: (1) %d (2) %d (3) %d\n", fi->operand_sizes[0], fi->operand_sizes[1], fi->operand_sizes[2]);
+  // DEBUG("Operand Size: (1)  (2) (3) \n");
 
   // acquire pointers to the GP and FP register state
   // from the mcontext.

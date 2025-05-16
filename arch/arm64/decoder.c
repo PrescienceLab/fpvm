@@ -27,7 +27,12 @@ static csh handle;
 //    Size of 1 for now, but expand to ARM64_INS_ENDING
 //    once we are ready...
 fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
-  [ARM64_INS_FADD] = FPVM_OP_ADD
+  [ARM64_INS_FADD] = FPVM_OP_ADD,
+  [ARM64_INS_FSUB] = FPVM_OP_SUB,
+  [ARM64_INS_FMUL] = FPVM_OP_MUL,
+  [ARM64_INS_FDIV] = FPVM_OP_DIV,
+  [ARM64_INS_FSQRT] = FPVM_OP_SQRT,
+  [ARM64_INS_FMOV] = FPVM_OP_MOVE,
 };
 
 static int decode_to_common(fpvm_inst_t *fi) {
