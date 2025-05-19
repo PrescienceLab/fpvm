@@ -321,6 +321,13 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       memset(&vm->special, 0, sizeof(op_special_t));
       break;
 
+    case fpvm_opcode_setrflags:
+      {
+        void *p = POP(void *);
+        vm->special.rflags = (uint64_t *)p;
+      }
+      break;
+
     case fpvm_opcode_setcti:
       vm->special.compare_type = O(uint32_t);
       break;

@@ -28,6 +28,7 @@ my_instruction:
    comisd %xmm2, %xmm1
 //  comisd %xmm2, %xmm1
 //  cmpltsd %xmm2, %xmm1
+// vaddsd %xmm3, %xmm2, %xmm1
 //   vfmaddsd %xmm1, %xmm2, %xmm3, %xmm4
 //   vfmadd132sd %xmm1, %xmm2, %xmm3
 //    sqrtpd %xmm2, %xmm3

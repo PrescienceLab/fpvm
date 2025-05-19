@@ -401,6 +401,8 @@ int vanilla_cmp_double(
   double a = *(double *)src1;
   double b = *(double *)src2;
   uint64_t *rflags = special->rflags;
+  if (!rflags)             /* ← NEW */
+    ERROR("RFLAGS null\n");
   int which = 0;
 
   *rflags &= ~(RFLAGS_OF | RFLAGS_AF | RFLAGS_SF | RFLAGS_ZF | RFLAGS_PF | RFLAGS_CF);

@@ -14,8 +14,6 @@
 
 #include <capstone/capstone.h>
 
-#include <math.h>
-
 // original FP
 #define IS_X87(r) ((r) >= X86_REG_ST0 && (r) <= X86_REG_ST7)
 // internal 80 bit x87 register access
@@ -130,66 +128,6 @@ static reg_map_entry_t capstone_to_mcontext[X86_REG_ENDING] = {
 #define MCOFF(m) ((*m)[1])
 #define MCSIZE(m) ((*m)[2])
 
-// Implementation of ordered comparison (comisd)
-int fp_ordered_compare_set_flags(op_special_t *special, void *eflags, void *src1, void *src2, void *src3, void *src4) {
-  double a = *(double*)src1;
-  double b = *(double*)src2;
-  uint64_t *flags = (uint64_t*)eflags;
-  
-  DEBUG("Setting flags for ordered comparison: %f vs %f\n", a, b);
-  
-  // Clear ZF (bit 6), PF (bit 2), CF (bit 0)
-  *flags &= ~0x45UL;
-  
-  if (isnan(a) || isnan(b)) {
-      // If either operand is NaN, set ZF, PF, CF = 1
-      *flags |= 0x45UL;
-      DEBUG("NaN comparison: setting ZF, PF, CF\n");
-  } else if (a == b) {
-      // Equal: set ZF = 1, PF = CF = 0
-      *flags |= 0x40UL;
-      DEBUG("Equal comparison: setting ZF\n");
-  } else if (a < b) {
-      // Less than: set CF = 1, ZF = PF = 0
-      *flags |= 0x01UL;
-      DEBUG("Less than comparison: setting CF\n");
-  } else {
-      DEBUG("Greater than comparison: clearing flags\n");
-  }
-  
-  return 0;
-}
-
-// Implementation of unordered comparison (ucomisd)
-int fp_unordered_compare_set_flags(op_special_t *special, void *eflags, void *src1, void *src2, void *src3, void *src4) {
-  // ucomisd behaves the same as comisd for setting EFLAGS
-  return fp_ordered_compare_set_flags(special, eflags, src1, src2, src3, src4);
-}
-
-// Float versions - these can just call the double versions by casting
-int fp_ordered_compare_set_flags_float(op_special_t *special, void *eflags, void *src1, void *src2, void *src3, void *src4) {
-  float a = *(float*)src1;
-  float b = *(float*)src2;
-  double da = (double)a;
-  double db = (double)b;
-  return fp_ordered_compare_set_flags(special, eflags, &da, &db, src3, src4);
-}
-
-static int fp_unordered_compare_set_flags_float(op_special_t *special, void *eflags, void *src1, void *src2, void *src3, void *src4) {
-  return fp_ordered_compare_set_flags_float(special, eflags, src1, src2, src3, src4);
-}
-
-static void init_op_map() {
-  static int initialized = 0;
-  if (!initialized) {
-      // Replace the CMP and UCMP entries with our flag-setting functions
-      op_map[FPVM_OP_CMP][0] = fp_ordered_compare_set_flags_float;
-      op_map[FPVM_OP_CMP][1] = fp_ordered_compare_set_flags;
-      op_map[FPVM_OP_UCMP][0] = fp_unordered_compare_set_flags_float;
-      op_map[FPVM_OP_UCMP][1] = fp_unordered_compare_set_flags;
-      initialized = 1;
-  }
-}
 
 // Consider fp_ptr_offset instruction
 static void compile_fp_ptr(fpvm_builder_t *b, cs_x86_op *o, unsigned vector_offset) {
@@ -316,7 +254,6 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   DEBUG("x86 vm test: %p\n", fi);
   fpvm_decoder_decode_and_print_any_inst(fi->addr, stderr, "vm: ");
 
-  init_op_map();
 
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
@@ -343,6 +280,8 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   } else if (fi->common->op_size == 8) {
     // TODO: this is for testing. Use op_map to enable NAN boxing
     //func = vanilla_op_map[fi->common->op_type][1];
+
+    // op_map[FPVM_OP_CMP][1] → fp_ordered_compare_set_flags
     func = op_map[fi->common->op_type][1];
   } else {
     ERROR("Cannot handle binary instruction with op_size = %d for float binop %d\n", fi->common->op_size,fi->common->op_type);
@@ -405,6 +344,17 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
         fpvm_build_dup(bp);                              // dest
         fpvm_build_call2s1d(bp, func);
         break;
+      case FPVM_OP_CMP:
+      case FPVM_OP_UCMP:
+        fpvm_build_clspecial(bp);                    // clear vm.special
+
+        compile_operand(bp, fi, &x86->operands[1], 0);   // src2  (bottom)
+        compile_operand(bp, fi, &x86->operands[0], 0);   // src1
+        fpvm_build_mcptr(bp, REG_EFL * 8);               // dest = &EFLAGS
+        fpvm_build_dup(bp);                              // duplicate dest
+        fpvm_build_setrflags(bp);                        // pop copy -> special.rflags
+
+        fpvm_build_call2s1d(bp, func);                  // cmp_double / cmp_float
       default:
         break;
     }
@@ -416,25 +366,22 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
   /* } */
   /* fpvm_build_dup(bp); */
 
-  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
-    DEBUG("Handling comparison instruction\n");
-    
-    // Get pointer to EFLAGS in mcontext
-    fpvm_build_mcptr(bp, REG_EFL * 8);
-    
-    // Load operands for comparison
-    compile_operand(bp, fi, &x86->operands[1], 0); // src2
-    fpvm_build_ld64(bp); // Load value from source operand
-    
-    compile_operand(bp, fi, &x86->operands[0], 0); // src1 
-    fpvm_build_ld64(bp); // Load value from destination operand
-    
-    // Use the op_map to get the appropriate function
-    op_t func = op_map[fi->common->op_type][1]; // Use the double version (index 1)
-    
-    // Call the function
-    fpvm_build_call2s1d(bp, func);
-  } 
+  // if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
+  //   DEBUG("Handling comparison instruction\n");
+
+
+  //   fpvm_build_mcptr(bp, REG_EFL * 8);        // push &EFLAGS
+
+  //   // (riscv) cmp - type of comparison (eg <, >, ==) - writes result in int register
+  //   // (x86/arm) generic cmp - set rflag bits - also compare type of comparison (cmpxx) - writes float register
+  //   compile_operand(bp, fi, &x86->operands[1], 0); // src2 pointer
+  //   compile_operand(bp, fi, &x86->operands[0], 0); // src1 pointer
+
+  //   // TODO: Use cmp_double instead of helper functions
+  //   // op_map and call2s1d should be sitting in vm->special
+  //   op_t func = op_map[fi->common->op_type][1];     // double version
+  //   fpvm_build_call2s1d(bp, func);
+  // } 
 
   fpvm_build_done(bp);  // Insert the 'done' instruction
 
