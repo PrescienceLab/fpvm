@@ -2681,6 +2681,40 @@ void print_fpregs_hex(struct xmm *fpregs) {
   printf("\n");
 }
 
+
+static void
+print_eflags(uint64_t now, uint64_t before)
+{
+    struct { const char *name; int bit; } fld[] = {
+        {"CF", 0},      // Carry
+        {"PF", 2},      // Parity
+        {"AF", 4},      // Auxiliary carry
+        {"ZF", 6},      // Zero
+        {"SF", 7},      // Sign
+        {"OF", 11},     // Overflow
+        {NULL, -1}
+    };
+
+    printf("EFLAGS = 0x%016lx  [", now);
+    for (int i = 0; fld[i].name; ++i) {
+        uint64_t mask = 1ULL << fld[i].bit;
+        int set     = (now     & mask) != 0;
+        int changed = ((now ^ before) & mask) != 0;
+
+        // highlight changed bits
+        if (changed)   printf("\033[1m");
+        else           printf("\033[2m");
+
+        printf("%s=%d", fld[i].name, set);
+        printf("\033[0m"); // reset
+
+        if (fld[i + 1].name) printf(" ");
+    }
+    puts("]");
+}
+
+
+
 int main(int argc, char *argv[])
 {
   
@@ -2719,7 +2753,11 @@ int main(int argc, char *argv[])
   regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   regs.fpr_size = 16;
 
+
   INFO("Initial EFLAGS value: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
+  uint64_t eflags0 = uc.uc_mcontext.gregs[REG_EFL];
+  print_eflags(eflags0, eflags0);   // no “before” yet, so pass the same value
+
   
   // Doing fake bind here to capture operand sizes
   // If we do it this way, we will only bind the first time we see the instruction
@@ -2729,6 +2767,8 @@ int main(int argc, char *argv[])
     abort();
   }
 
+
+  // Ethan + Ben
   // Check if side effect addresses are set for comparison instructions
   if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
     INFO("Side effect address[0] (EFLAGS): %p\n", fi->side_effect_addrs[0]);
@@ -2783,11 +2823,18 @@ int main(int argc, char *argv[])
 
   fpvm_vm_init(&vm, fi, &regs);
 
+
+  // uint64_t rflags = 0;
+  // vm.special.rflags = &rflags;
   fpvm_vm_run(&vm);
 
-  getcontext(&uc);
-  INFO("EFLAGS after VM run: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
+  // printf("RFLAGS = %016lx\n", rflags);
 
+  getcontext(&uc);
+
+  INFO("EFLAGS after VM run: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
+  uint64_t eflags1 = uc.uc_mcontext.gregs[REG_EFL];
+  print_eflags(eflags1, eflags0);
 
   INFO("Register final state\n");
   // print_fpregs_decimal(fpregs);
