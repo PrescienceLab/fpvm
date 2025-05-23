@@ -86,6 +86,10 @@
 #include "fpvm/fpvm_ioctl.h"
 #endif
 
+int fpvm_setup_additional_wrappers() {
+ return 0;
+}
+
 
 volatile static int inited = 0;
 volatile static int aborted = 0;  // set if the target is doing its own FPE processing
@@ -2403,6 +2407,7 @@ static int bringup() {
 
 #endif
     
+  DEBUG("Setting up FPE handler\n");
   memset(&sa,0,sizeof(sa));
   sa.sa_sigaction = sigfpe_handler;
   sa.sa_flags |= SA_SIGINFO;
