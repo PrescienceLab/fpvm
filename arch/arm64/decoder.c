@@ -49,7 +49,7 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   [ARM64_INS_FCMLE] = FPVM_OP_CMPXX,
   [ARM64_INS_CMLT] = FPVM_OP_CMPXX,
   [ARM64_INS_FCMLT] = FPVM_OP_CMPXX,
-  [ARM64_INS_FCMNE] = FPVM_OP_CMPXX,
+  //[ARM64_INS_FCMNE] = FPVM_OP_CMPXX,
   //[ARM64_INS_FACGE] = FPVM_OP_CMPXX,
   //[ARM64_INS_FACGT] = FPVM_OP_CMPXX,
 };
@@ -138,9 +138,9 @@ static int decode_comparison(fpvm_inst_t* fi) {
     case ARM64_INS_FCMLT:
       fi->compare = FPVM_INST_COMPARE_LT;
       break;
-    case ARM64_INS_FCMNE:
-      fi->compare = FPVM_INST_COMPARE_NEQ;
-      break;
+    // case ARM64_INS_FCMNE:
+    //   fi->compare = FPVM_INST_COMPARE_NEQ;
+    //   break;
     // case ARM64_INS_FACGE:
     // case ARM64_INS_FACGT:
     // since x86 doesn't have absolute comparisons, will leave these
