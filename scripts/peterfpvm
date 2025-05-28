@@ -1,0 +1,5 @@
+#!/bin/bash
+
+FPVM_DIR=/home/pdinda/fpvm-arm
+
+LD_PRELOAD=$FPVM_DIR/build/fpvm.so $*
