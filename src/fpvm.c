@@ -95,12 +95,15 @@ volatile static int inited = 0;
 volatile static int aborted = 0;  // set if the target is doing its own FPE processing
 
 volatile static int exceptmask = FE_ALL_EXCEPT;  // which C99 exceptions to handle, default all
+
 volatile static int mxcsrmask_base =
     0x3f;  // which sse exceptions to handle, default all (using base zero)
 
 #define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
 #define MXCSR_MASK_MASK (mxcsrmask_base << 7)
 
+
+// x64-isms
 // MXCSR used when *we* are executing floating point code
 // All masked, flags zeroed, round nearest, special features off
 #define MXCSR_OURS 0x1f80
@@ -109,6 +112,83 @@ static int control_mxcsr_round_daz_ftz = 0;     // control the rounding bits
 static uint32_t orig_mxcsr_round_daz_ftz_mask;  // captured at start
 static uint32_t our_mxcsr_round_daz_ftz_mask =
     0;  // as we want to run 0 = round to nearest, no FAZ, no DAZ (IEEE default)
+
+
+// arm64-isms
+
+// register layouts
+// fpsr holds status, while fpcr hold control
+// (i.e., separate registers
+typedef union  {
+  uint64_t val;
+  struct {
+//  PAD: bits 0..7 are detected exceptions
+//  with 2 bits padded out
+    uint8_t ioc:1;  // detected nan
+    uint8_t dzc:1;  // detected divide by zero
+    uint8_t ofc:1;  // detected overflow (infinity)
+    uint8_t ufc:1;  // detected underflow (zero)
+    uint8_t ixc:1;  // detected precision (rounding)
+    uint8_t res1:2; // reserved, zero
+    uint8_t idc:1;  // detected input denormals
+    uint32_t res2:19; // reserved, zero
+    uint8_t qc:1;   // cumulative saturation (ASIMD sticky cc for integer saturating arithmetic)
+                    // the following comparison outputs would be put into
+                    // rflags on x64 - note that you can use ioc to detect unordered
+
+// PAD: NOTE comparison conditions here, not on "rflags"
+    uint8_t v:1;    // overflow condition on comparison
+    uint8_t c:1;    // carry condition on comparsion
+    uint8_t z:1;    // zero condition on comparison
+    uint8_t n:1;    // negative condition on comparison
+    uint32_t res3:32; // reserved, zero
+  } __attribute__((packed));
+} __attribute__((packed)) fpsr_t;
+
+
+typedef union  {
+  uint64_t val;
+  struct {
+    uint8_t fiz:1;  // flush inputs to zero (denormal inputs are zeros) (DAZ)
+    uint8_t ah:1;   // alternative handling (enable input/output denorm flushing)
+    uint8_t nep:1;  // output vector determination (0=>no effect, 1=> looks like specials?)
+    uint8_t res1:5; // reserved, zero
+
+//  PAD: bits 8..15 are trap enables for bits 0..7 on the FPSR
+//  with 2 bits padded out
+    uint8_t ioe:1;  // enable nan exceptions
+    uint8_t dze:1;  // enable divide by zero traps
+    uint8_t ofe:1;  // enable overflow traps
+    uint8_t ufe:1;  // enable underflow traps
+    uint8_t ixe:1;  // enable precision (rounding) traps
+    uint8_t res2:2; // reserved, zero
+    uint8_t ide:1;  // enable input denormal traps
+
+    uint8_t len:3;  // length (ignored by ASIMD+)
+    uint8_t fz16:1; // flush denorms to zero for half-precision (16 bit)
+    uint8_t stride:2; // stride (ignored by ASIMD+)
+    uint8_t rmode:2; // ** rounding (toward 00=>nearest,01=>positive,10=>negative,11=>zero)
+                     // note RP/RN reversed compared to intel, because why not
+    uint8_t fz:1;   // flush to zero (denormals are zeros) (ignored by ASIMD+)
+                    // ah==0 , fz==0 => no input/output denorm flushes to zero (no DAZ, no FTZ)
+                    // ah==0 , fz==1 => input and output denorms flush to zero (DAZ, FTZ)
+                    // ah==1 , fz==0 => output denorms are not flushed to zero (DAZ, no FTZ)
+                    // ah==1 , fz==1 => output denorms are flushed to zero (no DAZ, FTZ)
+    uint8_t dn:1;   // nan propagation mode 0=>normal, 1=>produce default nan if fed nans
+                    // (ignored by ASIMD+)
+    uint8_t ahp:1;  // alt half precision 0=>use IEEE F16, 1=>use whatever we tossed in
+    uint8_t res3:5; // reserved, zero
+    uint32_t res4:32; // reserved, zero
+  } __attribute__((packed));
+} __attribute__((packed)) fpcr_t;
+
+
+volatile static int fpsrmask_base = 0x9f;  // which exceptions 1001 1111
+
+#define FPSR_FLAG_MASK   (fpsrmask_base << 0)
+#define FPCR_ENABLE_MASK (fpsrmask_base << 7)
+
+
 
 volatile static int kernel = 0;
 volatile static int aggressive = 0;
@@ -213,15 +293,15 @@ typedef struct execution_context {
   int aborting_in_trap;
   int tid;
 
-  uint32_t foreign_return_mxcsr;
+  uint32_t foreign_return_mxcsr;  // PAD: x86-ism, but we are ignoring foreign calls for now
   void    *foreign_return_addr;
-  
+
   uint64_t fp_traps;
   uint64_t promotions;
   uint64_t demotions;
   uint64_t clobbers;           // overwriting one of our nans
-  uint64_t correctness_traps;  
-  uint64_t correctness_foreign_calls; 
+  uint64_t correctness_traps;
+  uint64_t correctness_foreign_calls;
   uint64_t correctness_demotions;
   uint64_t emulated_inst;
 
@@ -232,7 +312,7 @@ typedef struct execution_context {
 
   fpvm_vm_t *vm;     // vm associated with this execution context, if any
 
-  
+
 #if CONFIG_INSTR_TRACES
   fpvm_instr_trace_context_t *trace_context;
 #define INIT_TRACER(c) (c)->trace_context = fpvm_instr_tracer_create()
@@ -245,7 +325,7 @@ typedef struct execution_context {
 #define RECORD_TRACE(c,ec,sa,ic)
 #define PRINT_TRACES(c)
 #endif
-  
+
 #if CONFIG_PERF_STATS
   perf_stat_t gc_stat;
   perf_stat_t decode_cache_stat;
@@ -267,7 +347,7 @@ typedef struct execution_context {
   PRINT_PERF(c, emulate);      \
   PRINT_PERF(c, correctness);  \
   PRINT_PERF(c, foreign_call); \
-  PRINT_PERF(c, altmath); 
+  PRINT_PERF(c, altmath);
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -275,13 +355,13 @@ typedef struct execution_context {
 #define PRINT_PERFS(c)
 #endif
 
-  
+
 #if CONFIG_TELEMETRY_PROMOTIONS
 #define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #else
 #define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
 #endif
-  
+
 } execution_context_t;
 
 typedef union {
@@ -620,27 +700,35 @@ static inline void set_trap_flag_context(ucontext_t *uc, int val) {
   }
   #else
   // TODO: arm64 & riscv
+#warning not handling trap_flag_context in this architecture
   #endif
 }
 
 static inline void clear_fp_exceptions_context(ucontext_t *uc) {
-  #ifdef __x86_64__
+#ifdef __x86_64__
   uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_FLAG_MASK;
-  #else
-  // TODO: arm64 & riscv
-  #endif
+#endif
+#ifdef __aarch64__
+  MCTX_FPSR(uc->uc_mcontext) &= ~FPSR_FLAG_MASK;
+#endif
+
 }
 
 static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
-  #ifdef __x86_64__
+#ifdef __x86_64__
   if (mask) {
     uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK;
   } else {
     uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK;
   }
-  #else
-  // TODO: arm64 & riscv
-  #endif
+#endif
+#ifdef __aarch64__
+  if (mask) {  // arm has enables, so need to invert sense
+    MCTX_FPCR(uc->uc_mcontext) &= ~FPCR_ENABLE_MASK;
+  } else {
+    MCTX_FPCR(uc->uc_mcontext) |= FPCR_ENABLE_MASK;
+  }
+#endif
 }
 
 static inline void zero_fp_xmm_context(ucontext_t *uc)
@@ -1053,7 +1141,7 @@ static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
     // dump_mxcsr("set_mxcsr_round_daz_ftz: ", uc);
   }
   #else
-  // TODO: arm64 & riscv
+#warning ignoring round_daz_ftz for this architecture - FIX
   #endif
 }
 
@@ -1068,7 +1156,7 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
 {
   int rc = 0;
-  
+
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
 
   void *rip = (void *)MCTX_PC(&uc->uc_mcontext);
@@ -1079,14 +1167,14 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
     printf("%02x ", ((uint8_t*)rip)[i]);
   }
   fpvm_decoder_decode_and_print_any_inst(rip,stdout,"");
-  
+
   DEBUG("correctness handling for instruction at RIP=%p RSP=%p\n", rip, rsp);
 
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
 
   mc->correctness_traps++;
-  
+
   fi = decode_cache_lookup(mc, rip);
 
   if (!fi) {
@@ -1126,7 +1214,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
   }
 
 #if 0 && DEBUG_OUTPUT
-  DEBUG("about to invoke correctness handler, register contents follow:\n"); 
+  DEBUG("about to invoke correctness handler, register contents follow:\n");
   fpvm_dump_xmms_double(stderr, regs.fprs);
   fpvm_dump_xmms_float(stderr, regs.fprs);
   fpvm_dump_float_control(stderr, uc);
@@ -1142,7 +1230,7 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
   mc->correctness_demotions+=demotions;
   DEBUG("handling resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
 #endif
-  
+
   switch (r) {
   case FPVM_CORRECT_ERROR:
     ERROR("failed to handle correctness for instruction...\n");
@@ -1213,7 +1301,7 @@ static int correctness_trap_handler(ucontext_t *uc)
   // if we got here, we have an mc, and are in INIT, AWAIT_TRAP, or AWAIT_FPE
 
   int rc = 0;
-  
+
   switch (mc->state) {
   case INIT:
     DEBUG("initialization trap received\n");
@@ -1239,14 +1327,14 @@ static int correctness_trap_handler(ucontext_t *uc)
     rc = -1;
     break;
   }
-    
+
   // reconfigure state to reflect waiting for the next FP trap in all cases
   orig_mxcsr_round_daz_ftz_mask = get_mxcsr_round_daz_ftz(uc);
   clear_fp_exceptions_context(uc);        // exceptions cleared
   set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
   set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
   set_trap_flag_context(uc,0);         // traps disabled
-  
+
   mc->state = AWAIT_FPE;
 
   //DEBUG("correctness handling done for thread %lu context %p state %d rc %d\n",gettid(),mc,mc->state,rc);
@@ -1267,7 +1355,7 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
     abort_operation("correctness trap handler failed\n");
     ASSERT(0);
   }
-  
+
   DEBUG("SIGTRAP done (mc->state=%d)\n",find_my_execution_context()->state);
 }
 
@@ -1279,10 +1367,10 @@ void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
 {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
-  // state 
+  // state
   fpvm_fpstate_t fpvm_fpregs FXSAVE_ALIGN;
   ucontext_t fake_ucontext;
-  
+
   // capture FP state (note that this eventually needs to do xsave)
   fxsave(&fpvm_fpregs);
   #ifdef __x86_64__
@@ -1318,7 +1406,7 @@ void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
   // restore FP state (note that this eventually needs to do xsave)
   // note that this is also doing the mxcsr restore for however
   // fp_trap_handler modified it
-  fxrstor(&fpvm_fpregs); 
+  fxrstor(&fpvm_fpregs);
   return;
 }
 #endif
@@ -1352,13 +1440,13 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   uint32_t oldmxcsr;
 
   execution_context_t *mc = find_my_execution_context();
-  
+
   fpvm_regs_t regs;
   int demotions=0;
 
 
   SAFE_DEBUG("foreign entry\n");
-  
+
   if (!inited) {
     hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - function ", func);
     return ;
@@ -1380,12 +1468,12 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
   //SAFE_DEBUG_QUAD("handling correctness for foreign call - function",func);
 
   mc->correctness_foreign_calls++;
-  
+
 
   regs.mcontext = 0;        // nothing should need this state
   regs.fprs = FPSTATE_FPRS(&fstate);  // note xmm only
   regs.fpr_size = 16;       // note bogus
-    
+
   demotions = fpvm_emulator_demote_registers(&regs);
 
   if (demotions<0) {
@@ -1412,7 +1500,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 
   // disable our traps
   uint32_t newmxcsr = oldmxcsr | MXCSR_MASK_MASK;
-  
+
   // NOT SAFE TO DO HERE WILL POLLUTE FPRS
   //DEBUG("setting mxcsr to %08x (previously %08x)\n", mxcsr, oldmxcsr);
   SAFE_DEBUG("setting fp regs and mxcsr\n");
@@ -1433,7 +1521,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   START_PERF(mc, foreign_call);
 
   SAFE_DEBUG("foreign call ends\n");
-  
+
   // do mxcsr restore
   set_mxcsr(mc->foreign_return_mxcsr);
 
@@ -1488,7 +1576,7 @@ inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst
 
 inline static int decode_cache_insert_undecodable(execution_context_t *c, void *rip) {
   fpvm_inst_t *inst = malloc(sizeof(fpvm_inst_t));
-  
+
   if (!inst) {
     ERROR("cannot allocate marker for undecodable instruction\n");
     return -1;
@@ -1511,7 +1599,7 @@ inline static int decode_cache_insert_undecodable(execution_context_t *c, void *
 // Shared, common FP trap handling, regardless of how the
 // trap is delivered
 //
-// Note that if a faulting instruction cannot be emulated, the 
+// Note that if a faulting instruction cannot be emulated, the
 // system will switch to single-step mode (x86 trap mode) in order
 // to allow the instruction to execute, and then get control back
 // to renable FP traps:
@@ -1531,18 +1619,18 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 #if CONFIG_TELEMETRY_PROMOTIONS
   int seq_promotions = 0, seq_demotions = 0, seq_clobbers = 0;
 #endif
-  
+
   START_PERF(mc, gc);
   fpvm_gc_run();
   END_PERF(mc, gc);
 
-  
+
   if (!mc || mc->state != AWAIT_FPE) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
     set_trap_flag_context(uc, 0);  // traps disabled
-    if (mc) { 
+    if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
       abort_operation("Cannot find execution context during sigfpvm_handler exec");
@@ -1554,7 +1642,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   mc->fp_traps++;
 
 #define ON_SAME_PAGE(x,y) ((((uint64_t)(x))&(~0xfffUL))==(((uint64_t)(y))&(~0xfffUL)))
-  
+
 #if 0 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
 #define DUMP_SEQUENCE_ENDING_INSTR()					\
   if (instindex>0) {							\
@@ -1578,19 +1666,19 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 #else
 #define DUMP_CUR_INSTR()
 #endif
-    
+
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
   char instbuf[256];
   int instindex = 0;
-  
+
   int end_reason = TRACE_END_INSTR_SEQUENCE_MAX;
-  
+
   // repeat until we run out of instructions that
   // need to be emulated or we run off the page
   // instindex = index of current instruction in sequence
   // rip = address of current instruction
-  
+
   for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) {
 
     DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
@@ -1606,7 +1694,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	break; // done with the sequence
       }
     }
-      
+
 
     START_PERF(mc, decode_cache);
     fi = decode_cache_lookup(mc, rip);
@@ -1626,7 +1714,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     if (!fi || IS_UNDECODABLE(fi)) {
       // The first instruction of the sequence must be decodable...
       if (instindex==0) {
-	ERROR("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
+	ERROR("Cannot decode instruction %d (rip %p) of sequence:",instindex,rip);
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	ASSERT(0);
 	end_reason = TRACE_END_INSTR_UNDECODABLE;
@@ -1648,9 +1736,9 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	break; // done with the sequence
       }
     }
-    
+
     DUMP_CUR_INSTR();
-    
+
     // acquire pointers to the GP and FP register state
     // from the mcontext.
     //
@@ -1658,22 +1746,22 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     // complete an instruction in the current sequence
     // so this always reflects the current
     fpvm_regs_t regs;
-    
+
     regs.mcontext = &uc->uc_mcontext;
-    
+
     // PAD: This stupidly just treats everything as SSE2
     // and must be fixed
     regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
     regs.fpr_size = 16;
-    
-    
+
+
     // bind operands
     START_PERF(mc, bind);
     if (fpvm_decoder_bind_operands(fi, &regs)) {
       if (instindex == 0) ERROR("Could not bind operands. instindex=%d\n", instindex);
       END_PERF(mc, bind);
-      if (instindex==0) { 
-	ERROR("Cannot bind operands of first (rip %p) of sequence:",rip);
+      if (instindex==0) {
+	ERROR("Cannot bind operands of first (rip %p) of sequence: ",rip);
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	end_reason = TRACE_END_INSTR_UNBINDABLE;
 	ASSERT(0);
@@ -1699,7 +1787,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     END_PERF(mc, bind);
 
 
-    
+
     if (instindex>0 && !fpvm_emulator_should_emulate_inst(fi)) {
       DEBUG("Should not emulate instruction %d (rip %p) of sequence - terminating sequence\n",instindex,rip);
       DUMP_SEQUENCE_ENDING_INSTR();
@@ -1713,12 +1801,12 @@ static void fp_trap_handler_emu(ucontext_t *uc)
       end_reason = TRACE_END_INSTR_SHOULDNOT;
       break;
     }
-    
+
     // #if DEBUG_OUTPUT
     //   DEBUG("Detailed instruction dump:\n");
     //   fpvm_decoder_print_inst(fi, stderr);
     // #endif
-    
+
     //   DEBUG("About to emulate:\n");
     // #if DEBUG_OUTPUT
     //   fpvm_dump_xmms_double(stderr, regs.fprs);
@@ -1726,13 +1814,13 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     //   fpvm_dump_float_control(stderr, uc);
     //   fpvm_dump_gprs(stderr, uc);
     // #endif
-    
+
     START_PERF(mc, emulate);
     perf_stat_t *altmath_stat = 0;
 #if CONFIG_PERF_STATS
     altmath_stat = &mc->altmath_stat;
 #endif
-    
+
     if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, altmath_stat)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
@@ -1768,16 +1856,16 @@ static void fp_trap_handler_emu(ucontext_t *uc)
       }
     }
     END_PERF(mc, emulate);
-    
+
 #if CONFIG_TELEMETRY_PROMOTIONS
     seq_promotions += inst_promotions;
     seq_demotions += inst_demotions;
     seq_clobbers += inst_clobbers;
     DEBUG("instruction emulation created %d promotions, %d demotions, and %d clobbers; sequence so far has %d promotions, %d demotions, and %d clobbers\n", inst_promotions, inst_demotions, inst_clobbers, seq_promotions, seq_demotions, seq_clobbers);
 #endif
-    
+
     rip += fi->length;
-    
+
     // DEBUG("Emulation done:\n");
     // #if DEBUG_OUTPUT
     //   fpvm_dump_xmms_double(stderr, regs.fprs);
@@ -1785,27 +1873,27 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     //   fpvm_dump_float_control(stderr, uc);
     //   fpvm_dump_gprs(stderr, uc);
     // #endif
-    
+
     // Skip those instructions we just emulated.
     MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
-    
+
     if (do_insert) {
       // put into the cache for next time
       decode_cache_insert(mc, fi);
     }
-    
+
     // stay in state AWAIT_FPE
-    
+
     mc->emulated_inst++;
 
-    
+
   }
 
   // At this point, we have successfully finished at least one instruction
   RECORD_TRACE(mc,end_reason,(uint64_t)start_rip,instindex);
 
   (void)end_reason;
-  
+
 
 #if CONFIG_TELEMETRY
   if (CONFIG_TELEMETRY_PERIOD && !(mc->fp_traps % CONFIG_TELEMETRY_PERIOD)) {
@@ -1837,9 +1925,9 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   clear_fp_exceptions_context(uc);        // exceptions cleared
 
   // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
-  
+
   return;
-  
+
   // we should only get here if the first instruction
   // of a sequence could not be decoded, bound, or emulated
 fail_do_trap:
@@ -1869,7 +1957,7 @@ fail_do_trap:
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
   set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
   set_trap_flag_context(uc, 1);  // traps disabled
-  
+
   mc->state = AWAIT_TRAP;
 
   // our next stop should be the instruction, and then, immediately afterwards,
@@ -1894,7 +1982,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
     set_trap_flag_context(uc, 0);  // traps disabled
-    if (mc) { 
+    if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
       abort_operation("Cannot find execution context during sigfpvm_handler exec");
@@ -1910,21 +1998,21 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 #else
 #define DUMP_CUR_INSTR()
 #endif
-    
+
   fpvm_inst_t *fi = 0;
   int do_insert = 0;
   fpvm_regs_t regs;
-  
+
   regs.mcontext = &uc->uc_mcontext;
-    
+
   // PAD: This stupidly just treats everything as SSE2
   // and must be fixed
   // we get the registers early since
   // we will need to do a fake bind the first
   // time we see an instruction
   regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
-  regs.fpr_size = 16;  
-  
+  regs.fpr_size = 16;
+
   DEBUG("Handling instruction (rip = %p)\n",rip);
 
   fi = decode_cache_lookup(mc, rip);
@@ -1956,7 +2044,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   DEBUG("vm init\n");
   fpvm_vm_init(mc->vm, fi, &regs);
-  
+
   DEBUG("vm run\n");
   if (fpvm_vm_run(mc->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n");
@@ -1964,9 +2052,9 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     goto fail_do_trap;
   }
 
-  
+
   rip += fi->length;
-    
+
   // DEBUG("Emulation done:\n");
   // #if DEBUG_OUTPUT
   //   fpvm_dump_xmms_double(stderr, regs.fprs);
@@ -1974,29 +2062,29 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   //   fpvm_dump_float_control(stderr, uc);
   //   fpvm_dump_gprs(stderr, uc);
   // #endif
-    
+
   // Skip those instructions we just emulated.
   MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
-  
+
   if (do_insert) {
     // put into the cache for next time
     decode_cache_insert(mc, fi);
   }
-    
+
   // stay in state AWAIT_FPE
-    
+
   mc->emulated_inst++;
-  
+
   DEBUG("FPE succesfully done (emulated one instruction)\n");
-  
+
   // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
-  
+
   clear_fp_exceptions_context(uc);        // exceptions cleared
-  
+
   // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
-  
+
   return;
-  
+
   // we should only get here if the instruction
   // could not be handled
 fail_do_trap:
@@ -2019,7 +2107,7 @@ fail_do_trap:
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
   set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
   set_trap_flag_context(uc, 1);  // traps disabled
-  
+
   mc->state = AWAIT_TRAP;
 
   // our next stop should be the instruction, and then, immediately afterwards,
@@ -2047,20 +2135,20 @@ void fpvm_short_circuit_handler(void *priv)
 {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
-  // state 
-  
+  // state
+
   siginfo_t fake_siginfo;
-  fpvm_fpstate_t fpvm_fpregs; 
+  fpvm_fpstate_t fpvm_fpregs;
   ucontext_t fake_ucontext;
   uint32_t old;
-  
+
   // capture FP state (note that this eventually needs to do xsave)
   fxsave(&fpvm_fpregs);
 
   // disable FP traps during our handler execution
   mxcsr_disable_save(&old);
 
-  
+
   uint32_t err = ~(old >> 7) & old;
   if (err & 0x001) {	/* Invalid op*/
     fake_siginfo.si_code = FPE_FLTINV;
@@ -2073,7 +2161,7 @@ void fpvm_short_circuit_handler(void *priv)
   } else if (err & 0x020) { /* Precision */
     fake_siginfo.si_code = FPE_FLTRES;
   }
-  
+
   siginfo_t * si = (siginfo_t *)&fake_siginfo;
 
   #ifdef __x86_64__
@@ -2087,7 +2175,7 @@ void fpvm_short_circuit_handler(void *priv)
   #endif
 
   ucontext_t *uc = (ucontext_t *)&fake_ucontext;
- 
+
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
   DEBUG(
@@ -2096,7 +2184,7 @@ void fpvm_short_circuit_handler(void *priv)
 	si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
 	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
   DEBUG("SCFPE RIP=%p RSP=%p\n", rip, MCTX_SP(&uc->uc_mcontext));
-  
+
 #if DEBUG_OUTPUT
   char buf[80];
 #define CASE(X)      \
@@ -2118,9 +2206,9 @@ void fpvm_short_circuit_handler(void *priv)
   }
   DEBUG("FPE exceptions: %s\n", buf);
 #endif
-  
+
   fp_trap_handler(uc);
-  
+
   DEBUG("SCFPE  done\n");
 
   #ifdef __x86_64__
@@ -2137,18 +2225,18 @@ void fpvm_short_circuit_handler(void *priv)
   // note that this is also doing the mxcsr restore for however
   // fp_trap_handler modified it
   fxrstor(&fpvm_fpregs);
-  
+
   return;
 }
 #endif
-  
+
 
 //
 // Entry point for FP Trap when the SIGFPE (normal kernel delivery)
 // mechanism is used
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-  
+
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
@@ -2205,7 +2293,7 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
   void *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
   void *addr = si->si_addr;
   int probe = rip==fpvm_memaddr_probe_readable_long;
-  
+
   DEBUG("SIGSEGV rip=%p (%s) addr=%p reason: %d (%s)\n",rip,probe ? "probe" : "NOT PROBE",addr,
 	si->si_code, si->si_code==SEGV_MAPERR ? "MAPERR" : si->si_code==SEGV_ACCERR ? "PERM" : "UNKNOWN");
   if (probe) {
@@ -2240,8 +2328,8 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
 	    DUMP(rip,rip+12),
 	    DUMP(rip,rip+13),
 	    DUMP(rip,rip+14),
-	    DUMP(rip,rip+15));	    
-      
+	    DUMP(rip,rip+15));
+
       //exit(-1);
       abort();
     }
@@ -2288,7 +2376,7 @@ static int bringup_execution_context(int tid) {
   __fpvm_current_execution_context = c;
 
   DEBUG("brought up execution context for thread %lu at %p (state %d)\n",gettid(),c,c->state);
-  
+
   return 0;
 }
 
@@ -2344,7 +2432,7 @@ int fpvm_demote_in_place(void *v) {
   uint64_t orig = *p;
 
   restore_double_in_place(v);
-  
+
   END_PERF(mc, correctness);
   return *p != orig;
 }
@@ -2369,7 +2457,7 @@ static int bringup() {
     ERROR("Some additional wrapper setup failed - ignoring\n");
   }
 #endif
-  
+
   ORIG_IF_CAN(feclearexcept, exceptmask);
 
   init_execution_contexts();
@@ -2383,9 +2471,9 @@ static int bringup() {
   struct sigaction sa;
 
 #if CONFIG_TRAP_SHORT_CIRCUITING
-  if (kernel) { 
+  if (kernel) {
     int file_desc = open("/dev/fpvm_dev", O_RDWR);
-    
+
     if (file_desc < 0) {
       ERROR("SC failed to open FPVM kernel support (/dev/fpvm_dev), falling back to signal handler\n");
       goto setup_sigfpe;
@@ -2396,7 +2484,7 @@ static int bringup() {
 	} else {
 	  DEBUG(":) FPVM kernel support setup successful\n");
 	  goto skip_setup_sigfpe;
-	} 
+	}
       }
   }else {
     DEBUG("skipping FPVM kernel support, even though it is enabled\n");
@@ -2406,7 +2494,7 @@ static int bringup() {
  setup_sigfpe:
 
 #endif
-    
+
   DEBUG("Setting up FPE handler\n");
   memset(&sa,0,sizeof(sa));
   sa.sa_sigaction = sigfpe_handler;
@@ -2480,7 +2568,7 @@ static int bringup() {
     }
   }
 #endif
-  
+
   // now kick ourselves to set the sse bits; we are currently in state INIT
 
   kill(getpid(), SIGTRAP);
@@ -2639,7 +2727,7 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 }
 
 
- 
+
 
 #if CONFIG_HAVE_MAIN
 
@@ -2655,7 +2743,7 @@ asm (
 );
 */
 
- 
+
 extern uint8_t my_instruction[];
 struct xmm {
   double low;
@@ -2688,14 +2776,14 @@ void print_fpregs_hex(struct xmm *fpregs) {
 
 int main(int argc, char *argv[])
 {
-  
+
   INFO("hello world\n");
 
   if (fpvm_decoder_init()) {
     ERROR("cannot initialize decoder\n");
     abort();
   }
-  
+
   fpvm_inst_t *fi = fpvm_decoder_decode_inst(my_instruction);
 
   if (!fi) {
@@ -2718,16 +2806,16 @@ int main(int argc, char *argv[])
   // complete an instruction in the current sequence
   // so this always reflects the current
   fpvm_regs_t regs;
-    
+
   ucontext_t uc;
   getcontext(&uc);
   regs.mcontext = &uc.uc_mcontext;
-  
+
   // PAD: This stupidly just treats everything as SSE2
   // and must be fixed
   regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   regs.fpr_size = 16;
-  
+
   // Doing fake bind here to capture operand sizes
   // If we do it this way, we will only bind the first time we see the instruction
   // and otherwise keep it in the decode cache
@@ -2742,7 +2830,7 @@ int main(int argc, char *argv[])
   }
 
   INFO("successfully decoded and compiled instruction\n");
-  
+
   INFO("Now displaying generated code\n");
   fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
 
@@ -2750,7 +2838,7 @@ int main(int argc, char *argv[])
   INFO("Now trying to execute generated code\n");
 
   INFO("Now testing with VM\n");
-  
+
 
   fpvm_vm_t vm;
 
@@ -2802,7 +2890,7 @@ int main(int argc, char *argv[])
   fpvm_test_instr(fpregs);
 
   printf("\n");
-  
+
   INFO("Register final state\n");
   // print_fpregs_decimal(fpregs);
   fpvm_dump_xmms_double(stderr, fpregs);
