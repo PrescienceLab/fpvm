@@ -308,10 +308,26 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   return -1;
 }
 
-// TODO:
 int fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix) {
-  DEBUG("decoder decode and print any inst at %p\n", addr);
-  return -1;
+  cs_insn *inst;
+  int len;
+
+  //  DEBUG("Decoding instruction for print at %p\n", addr);
+
+  size_t count = cs_disasm(handle, addr, 4, (uint64_t)addr, 1, &inst);
+
+  if (count != 1) {
+    ERROR("Failed to decode instruction for print (return=%lu, errno=%d)\n", count, cs_errno(handle));
+    return -1;
+  }
+
+  fprintf(out, "%s%s\t\t%s (%u bytes)\n", prefix, inst->mnemonic, inst->op_str, inst->size);
+
+  len = inst->size;
+
+  cs_free(inst, 1);
+
+  return len;
 }
 
 // TODO:
