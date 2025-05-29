@@ -17,9 +17,6 @@
 
 static csh handle;
 
-#include <capstone/capstone.h>
-static csh handle;
-
 //
 // This contains the mapping to our high-level interface
 //
@@ -52,7 +49,84 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   //[ARM64_INS_FCMNE] = FPVM_OP_CMPXX,
   //[ARM64_INS_FACGE] = FPVM_OP_CMPXX,
   //[ARM64_INS_FACGT] = FPVM_OP_CMPXX,
+
+  // conversion instructions
+  // side note: may be need more instruction specific 
+  // conversion operations (e.g. rounding, saturation)?
+
+  // float to float conversion
+  [ARM64_INS_FCVT] = FPVM_OP_F2F,
+  [ARM64_INS_FCVTL] = FPVM_OP_F2F, // lower half
+  [ARM64_INS_FCVTL2] = FPVM_OP_F2F, // upper half
+  [ARM64_INS_FCVTN] = FPVM_OP_F2F,
+  [ARM64_INS_FCVTN2] = FPVM_OP_F2F,
+  [ARM64_INS_FCVTXN] = FPVM_OP_F2F,
+  [ARM64_INS_FCVTXN2] = FPVM_OP_F2F,
+  [ARM64_INS_FCVTX] = FPVM_OP_F2F,
+
+  // float to integer conversion
+  [ARM64_INS_FCVTAS] = FPVM_OP_F2I,
+  [ARM64_INS_FCVTAU] = FPVM_OP_F2U,
+  [ARM64_INS_FCVTMS] = FPVM_OP_F2I,
+  [ARM64_INS_FCVTMU] = FPVM_OP_F2U,
+  [ARM64_INS_FCVTNS] = FPVM_OP_F2I,
+  [ARM64_INS_FCVTNU] = FPVM_OP_F2U,
+  [ARM64_INS_FCVTPS] = FPVM_OP_F2I,
+  [ARM64_INS_FCVTPU] = FPVM_OP_F2U,
+  [ARM64_INS_FCVTZS] = FPVM_OP_F2I,
+  [ARM64_INS_FCVTZU] = FPVM_OP_F2U,
+
+  // integer to float conversion
+  [ARM64_INS_SCVTF] = FPVM_OP_I2F,
+  [ARM64_INS_UCVTF] = FPVM_OP_U2F,
+
 };
+
+// Checks the sizes of dest and op sizes, uses the string
+// to check each operand, don't know a better way of doing it
+static int check_dest_and_op_sizes(fpvm_inst_t *fi, cs_insn *inst) {
+  char delimiter[] = ", ";
+  char* token;
+
+  token = strtok(insn->op_str, delimiter);
+  bool dest = true;
+
+  // iterate through each operand
+  while(token != NULL){
+    if (strstr(token, ".16b")){
+      if(dest) fi->common->dest_size = 1;
+      else fi->common->op_size = 1;
+    } 
+    else if (strstr(token, ".8h")){
+      if(dest) fi->common->dest_size = 2;
+      else fi->common->op_size = 2;
+    } 
+    else if (strstr(token, ".4s")){
+      if(dest) fi->common->dest_size = 4;
+      else fi->common->op_size = 4;
+    } 
+    else if (strstr(token, ".2d")){
+      if(dest) fi->common->dest_size = 8;
+      else fi->common->op_size = 8;
+    }
+    else if (strstr(token, " s")) {
+      if(dest) fi->common->dest_size = 4;
+      else fi->common->op_size = 4;
+    }
+    else if (strstr(token, " d")){
+      if(dest) fi->common->dest_size = 8;
+      else fi->common->op_size = 8;
+    }
+    else {
+      ERROR("invalid operand\n");
+      return -1;
+    }
+    token = strtok(NULL, delimiter);
+    dest = false;
+  }
+
+  return 0;
+}
 
 static int decode_to_common(fpvm_inst_t *fi) {
   cs_insn *inst = (cs_insn *)fi->internal;
@@ -69,26 +143,23 @@ static int decode_to_common(fpvm_inst_t *fi) {
   cs_arm64 *arm64 = &detail->arm64;
 
   // determine whether it's vector or scalar
-  cs_arm64_op *op = &arm64->operands[0];
+  cs_arm64_op *op = &arm64->operands[1];
   if (op->reg >= ARM64_REG_S0 && op->reg <= ARM64_REG_S31) {
-      DEBUG("Operand is scalar float (32-bit)\n");
+      INFO("Operand is scalar float (32-bit)\n");
   } else if (op->reg >= ARM64_REG_D0 && op->reg <= ARM64_REG_D31) {
-      DEBUG("Operand is scalar double (64-bit)\n");
+      INFO("Operand is scalar double (64-bit)\n");
   } else if (op->reg >= ARM64_REG_V0 && op->reg <= ARM64_REG_V31) {
       fi->common->is_vector = 1;
-      DEBUG("Operand is vector\n");
+      INFO("Operand is vector\n");
   }
 
-  // check 32 or 64 bit
-  if (strstr(inst->op_str, ".4s")) fi->common->op_size = 4;
-  if (strstr(inst->op_str, ".2d")) fi->common->op_size = 8;
-  if (strstr(inst->op_str, " s")) fi->common->op_size = 4;
-  if (strstr(inst->op_str, " d")) fi->common->op_size = 8;
-
+  if(check_dest_and_op_sizes(fi, inst)){
+    return -1;
+  }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
-    DEBUG("instruction decodes to unknown common op type\n");
+    INFO("instruction decodes to unknown common op type\n");
     return -1;
   }
 
@@ -203,19 +274,19 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
   fi->internal = inst;
 
   if (decode_to_common(fi)) {
-    DEBUG("Can't decode to common representation\n");
+    INFO("Can't decode to common representation\n");
     fpvm_decoder_free_inst(fi);
     return 0;
   }
 
   if (decode_move(fi)) {
-    DEBUG("Can't decode move info\n");
+    INFO("Can't decode move info\n");
     fpvm_decoder_free_inst(fi);
     return 0;
   }
 
   if (decode_comparison(fi)) {
-    DEBUG("Can't decode comparison info\n");
+    INFO("Can't decode comparison info\n");
     fpvm_decoder_free_inst(fi);
     return 0;
   }
