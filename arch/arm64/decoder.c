@@ -175,12 +175,12 @@ static int decode_to_common(fpvm_inst_t *fi) {
   // determine whether it's vector or scalar
   cs_arm64_op *op = &arm64->operands[1];
   if (op->reg >= ARM64_REG_S0 && op->reg <= ARM64_REG_S31) {
-      INFO("Operand is scalar float (32-bit)\n");
+      DEBUG("Operand is scalar float (32-bit)\n");
   } else if (op->reg >= ARM64_REG_D0 && op->reg <= ARM64_REG_D31) {
-      INFO("Operand is scalar double (64-bit)\n");
+      DEBUG("Operand is scalar double (64-bit)\n");
   } else if (op->reg >= ARM64_REG_V0 && op->reg <= ARM64_REG_V31) {
       fi->common->is_vector = 1;
-      INFO("Operand is vector\n");
+      DEBUG("Operand is vector\n");
   }
 
   if(check_dest_and_op_sizes(fi, inst)){
@@ -191,7 +191,7 @@ static int decode_to_common(fpvm_inst_t *fi) {
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
-    INFO("instruction decodes to unknown common op type\n");
+    DEBUG("instruction decodes to unknown common op type\n");
     return -1;
   }
 

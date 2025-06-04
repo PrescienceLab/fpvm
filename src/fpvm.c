@@ -2793,9 +2793,9 @@ int main(int argc, char *argv[])
 
   // TESTING - Check for fi contents
   // op type should be 0 for fadd
-  INFO("op_type: %d\n", fi->common->op_type);
-  INFO("is_simple_mov: %d\n", fi->is_simple_mov);
-  INFO("is_gpr_mov: %d\n", fi->is_gpr_mov);
+  DEBUG("op_type: %d\n", fi->common->op_type);
+  DEBUG("is_simple_mov: %d\n", fi->is_simple_mov);
+  DEBUG("is_gpr_mov: %d\n", fi->is_gpr_mov);
   // INFO("Operand Size: (1) %d (2) %d (3) %d\n", fi->operand_sizes[0], fi->operand_sizes[1], fi->operand_sizes[2]);
   // DEBUG("Operand Size: (1)  (2) (3) \n");
 
