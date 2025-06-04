@@ -2,6 +2,7 @@
 #define _FPVM_ARB_PREC_
 #include <stdint.h>
 #include "config.h"
+#include "decoder.h"
 
 #include <fpvm/decoder.h>
 
@@ -23,6 +24,7 @@ typedef struct {
   int truncate;
   int unordered;
   fpvm_inst_compare_t compare_type;    // for cmpxx
+  fpvm_round_mode_t round_mode;
   uint64_t *rflags;
 } op_special_t;
 

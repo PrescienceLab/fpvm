@@ -62,7 +62,7 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   [ARM64_INS_FCVTN2] = FPVM_OP_F2F,
   [ARM64_INS_FCVTXN] = FPVM_OP_F2F,
   [ARM64_INS_FCVTXN2] = FPVM_OP_F2F,
-  [ARM64_INS_FCVTX] = FPVM_OP_F2F,
+  //[ARM64_INS_FCVTX] = FPVM_OP_F2F,
 
   // float to integer conversion
   [ARM64_INS_FCVTAS] = FPVM_OP_F2I,
@@ -88,7 +88,7 @@ static int check_dest_and_op_sizes(fpvm_inst_t *fi, cs_insn *inst) {
   char delimiter[] = ", ";
   char* token;
 
-  token = strtok(insn->op_str, delimiter);
+  token = strtok(inst->op_str, delimiter);
   bool dest = true;
 
   // iterate through each operand
@@ -128,6 +128,36 @@ static int check_dest_and_op_sizes(fpvm_inst_t *fi, cs_insn *inst) {
   return 0;
 }
 
+// Set rounding mode for f2i conversion 
+static int check_round_mode(fpvm_inst_t *fi ,cs_insn *inst) {
+  switch(inst->id){
+    case ARM64_INS_FCVTAS:
+    case ARM64_INS_FCVTAU:
+      fi->round_mode = FPVM_ROUND_NEAREST;
+      break;
+    case ARM64_INS_FCVTMS:
+    case ARM64_INS_FCVTMU:
+      fi->round_mode = FPVM_ROUND_NEGATIVE;
+      break;
+    case ARM64_INS_FCVTNS:
+    case ARM64_INS_FCVTNU:
+      // ??? not sure what mode this would be
+      break;
+    case ARM64_INS_FCVTPS:
+    case ARM64_INS_FCVTPU:
+      fi->round_mode = FPVM_ROUND_POSITIVE;
+      break;
+    case ARM64_INS_FCVTZS:
+    case ARM64_INS_FCVTZU:
+      fi->round_mode = FPVM_ROUND_ZERO;
+      break;
+    default:
+      return 0;
+  }
+
+  return 0;
+}
+
 static int decode_to_common(fpvm_inst_t *fi) {
   cs_insn *inst = (cs_insn *)fi->internal;
 
@@ -156,6 +186,8 @@ static int decode_to_common(fpvm_inst_t *fi) {
   if(check_dest_and_op_sizes(fi, inst)){
     return -1;
   }
+
+  check_dest_and_op_sizes(fi, inst);
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
