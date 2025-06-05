@@ -109,11 +109,11 @@ static int check_dest_and_op_sizes(fpvm_inst_t *fi, cs_insn *inst) {
       if(dest) fi->common->dest_size = 8;
       else fi->common->op_size = 8;
     }
-    else if (strstr(token, " s")) {
+    else if (strstr(token, "s")) {
       if(dest) fi->common->dest_size = 4;
       else fi->common->op_size = 4;
     }
-    else if (strstr(token, " d")){
+    else if (strstr(token, "d")){
       if(dest) fi->common->dest_size = 8;
       else fi->common->op_size = 8;
     }
@@ -334,10 +334,35 @@ void fpvm_decoder_free_inst(fpvm_inst_t *fi)
   free(fi);
 }
 
-// TODO:
 int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
-  DEBUG("decoder bind operands at %p\n", fi);
-  return -1;
+  cs_insn *inst = (cs_insn *)fi->internal;
+  cs_detail *det = inst->detail;
+  cs_arm64 *arm64 = &det->arm64;
+
+  uint8_t max_operand_size=0;
+#define UPDATE_MAX_OPERAND_SIZE(s) max_operand_size = ((s)>max_operand_size) ? (s) : max_operand_size;
+
+  int i;
+
+  DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n", fr->mcontext, fr->fprs,
+    fr->fpr_size);
+  
+  // If operation is comparison, save side effects
+  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
+    // save fpsr
+    fi->side_effect_addrs[0] = MCTX_FPSRP(fr->mcontext);
+    // DOES THIS WORK CORRECTLY IN LATER PARTS OF THE CODE? NEED TO CHECK BECAUSE
+    // BITS ARE NOT IN THE SAME ORDER
+  }
+
+  fi->operand_count = 0;
+
+  for (i = 0; i < arm64->op_count; i++) {
+    cs_arm64_op *o = &arm64->operands[i];
+    switch (o->type) {
+
+    }
+  }
 }
 
 int fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix) {
