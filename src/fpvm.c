@@ -735,8 +735,11 @@ static inline void zero_fp_xmm_context(ucontext_t *uc)
 {
   #ifdef __x86_64__
   memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
-  #else
+  #endif
   // TODO: arm64 & riscv
+  #ifdef __aarch64__
+  // CAN"T DO THIS, THIS IS NOT A POINTER
+  // memset(MCTX_FPRS(uc->uc_mcontext), 0, 32 * 16); // 32 registers, each 16 bytes long
   #endif
 }
 

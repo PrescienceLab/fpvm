@@ -150,6 +150,10 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 #define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
 #define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
 #define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
+
+#define MCTX_FPSRP(mc) (&(((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr))
+#define MCTX_FPCRP(mc) (&(((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr))
+
 #endif
 
 

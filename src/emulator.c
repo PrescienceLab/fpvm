@@ -89,6 +89,7 @@ static int fpvm_movq(op_special_t *special, void *dest, void *src1, void *src2, 
   return 0;
 }
 
+static void rflags_x86_to_arm(uint64_t* side_effect_addrs, uint64_t rflags) {};
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
@@ -196,6 +197,8 @@ static void extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
 
 
 int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf) {
+  uint64_t rflagstemp = 0;
+  
   if (CONFIG_DEBUG) {
     fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"emulating: ");
   }
@@ -421,7 +424,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	// a QNAN can cause a fault, so really can be treated identically
 	// from FPVM's perspective
         special.unordered = fi->common->op_type == FPVM_OP_UCMP;
-        special.rflags = fi->side_effect_addrs[0];
+        // special.rflags = fi->side_effect_addrs[0];
+        special.rflags = &rflagstemp;
       } else {
         ERROR("Cannot handle binary compare instruction %d with %d operands\n", fi->common->op_type, fi->operand_count);
         ASSERT(0);
@@ -628,6 +632,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       } else if (fi->common->op_size==4) {
 	*(uint32_t*)dest = !*(uint32_t*)dest - 1U;
       }
+    }
+
+    if (fi->common->op_type==FPVM_OP_CMP || fi->common->op_type==FPVM_OP_UCMP) {
+      rflags_x86_to_arm(fi->side_effect_addrs[0], rflagstemp);
     }
 
     DEBUG(

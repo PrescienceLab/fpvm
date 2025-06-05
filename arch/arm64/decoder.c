@@ -62,7 +62,7 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   [ARM64_INS_FCVTN2] = FPVM_OP_F2F,
   [ARM64_INS_FCVTXN] = FPVM_OP_F2F,
   [ARM64_INS_FCVTXN2] = FPVM_OP_F2F,
-  //[ARM64_INS_FCVTX] = FPVM_OP_F2F,
+  // [ARM64_INS_FCVTX] = FPVM_OP_F2F,
 
   // float to integer conversion
   [ARM64_INS_FCVTAS] = FPVM_OP_F2I,
@@ -203,7 +203,7 @@ static int decode_move(fpvm_inst_t* fi) {
   fi->is_simple_mov = 1;
   fi->is_gpr_mov = 1;
   // on ARM, we always clear the top half
-  fi->zero_top_half_of_dest_gpr_suffering = 1;
+  fi->zero_top_half_of_dest_gpr_suffering = 0;
 
   if (inst->id == ARM64_INS_MOV) {
     // TODO:
@@ -260,6 +260,38 @@ static int decode_comparison(fpvm_inst_t* fi) {
 // TODO:
 int fpvm_memaddr_probe_readable_long(void *addr) {
   return 0;
+}
+
+
+int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
+  cs_insn *inst = (cs_insn *)fi->internal;
+  cs_detail *det = inst->detail;
+  cs_arm64 *arm64 = &det->arm64;
+
+  uint8_t max_operand_size=0;
+#define UPDATE_MAX_OPERAND_SIZE(s) max_operand_size = ((s)>max_operand_size) ? (s) : max_operand_size;
+
+  int i;
+
+  DEBUG("binding instruction to mcontext=%p fprs=%p fpr_size=%u\n", fr->mcontext, fr->fprs,
+    fr->fpr_size);
+  
+  // If operation is comparison, save side effects
+  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
+    // save fpsr
+    fi->side_effect_addrs[0] = MCTX_FPSRP(fr->mcontext);
+    // DOES THIS WORK CORRECTLY IN LATER PARTS OF THE CODE? NEED TO CHECK BECAUSE
+    // BITS ARE NOT IN THE SAME ORDER
+  }
+
+  fi->operand_count = 0;
+
+  for (i = 0; i < arm64->op_count; i++) {
+    cs_arm64_op *o = &arm64->operands[i];
+    switch (o->type) {
+
+    }
+  }
 }
 
 
@@ -332,12 +364,6 @@ void fpvm_decoder_free_inst(fpvm_inst_t *fi)
   DEBUG("decoder free inst at %p\n", fi);
   cs_free(fi->internal, 1);
   free(fi);
-}
-
-// TODO:
-int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
-  DEBUG("decoder bind operands at %p\n", fi);
-  return -1;
 }
 
 int fpvm_decoder_decode_and_print_any_inst(void *addr, FILE *out, char *prefix) {
