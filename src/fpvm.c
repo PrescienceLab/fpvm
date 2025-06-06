@@ -78,6 +78,8 @@
 #include <fpvm/number_system.h>
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
+#include <fpvm/translate_fir_to_asm.h>
+
 
 
 // support for kernel module
@@ -2792,6 +2794,16 @@ int main(int argc, char *argv[])
   INFO("Now displaying generated code\n");
   fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
 
+
+  // Print assembly
+  {
+    fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
+    translate_fir_to_asm(
+      stdout,
+      builder->code,
+      (size_t)builder->offset
+    );
+  }
 
   INFO("Now trying to execute generated code\n");
 
