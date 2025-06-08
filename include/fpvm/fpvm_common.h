@@ -147,12 +147,16 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 #define MCTX_PC(mc) ((mc)->pc)
 #define MCTX_SP(mc) ((mc)->sp)
 #define MCTX_PSTATE(mc) ((mc)->pstate)
-#define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
-#define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
-#define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
+// #define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
+// #define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
+// #define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
+#define MCTX_FPSR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpsr)
+#define MCTX_FPCR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpcr)
+#define MCTX_FPRS(mc) (((struct fpsimd_context *)(mc.__reserved))->vregs)
 
-#define MCTX_FPSRP(mc) (&(((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr))
-#define MCTX_FPCRP(mc) (&(((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr))
+// Why were we using uc->uc_mcontext?? Shouldn't it be mc->__reserved
+#define MCTX_FPSRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpsr)) // cast to void for 64bit pointer
+#define MCTX_FPCRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpcr))
 
 #endif
 
