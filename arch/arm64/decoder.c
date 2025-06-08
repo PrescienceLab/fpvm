@@ -587,6 +587,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 
         if (IS_FPR(o->reg)) {
           fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * GET_FPR_INDEX(o->reg);
+          // Operand size needs to come from register (for the whole instruction)
           fi->operand_sizes[fi->operand_count] = GET_FPR_SIZE(o->reg);
           UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
           DEBUG("Mapped FPR %s to %p (size: %d bytes)\n", reg_name(o->reg),
@@ -628,9 +629,8 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
 
         fi->operand_addrs[fi->operand_count] = (void *)addr;
         
-        // For the size of the operand, we are not sure if we can rely on Capstone to
-        // populate o->size correctly. Consider implementing it with a second pass like in x86.
-        // fi->operand_sizes[fi->operand_count] = o->size;
+        // Capstone doesn't expose size in ARM, set to 0 for now and it will be updateed
+        // to max_operand_size
         fi->operand_sizes[fi->operand_count] = 0;
 
         UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
@@ -659,7 +659,9 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   
   // update memory operand sizes
   for (i = 0; i < fi->operand_count; i++) {
-    
+    if (!fi->operand_sizes[i]) {
+      fi->operand_sizes[i] = max_operand_size;
+    }
   }
 
   return 0;
