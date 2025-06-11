@@ -316,6 +316,29 @@ void demonstrate_translation() {
     free(gen.code);
 }
 
+// TODO:
+// fpvm_opcode_clspecial (opcode 22) - clears the special struct
+// fpvm_opcode_setrflags (opcode 21) - sets special.rflags from stack
+// These are needed for comparison instructions like comisd that set EFLAGS as a side effect.
+// case fpvm_opcode_clspecial:
+//     asm_emit(gen,
+//         "    # clspecial - clear special struct\n"
+//         "    xor rax, rax\n"
+//         "    mov rcx, 8           # 64 bytes / 8 = 8 qwords\n"
+//         "    mov rdi, r15         # special struct address\n"
+//         "    rep stosq            # zero special struct\n\n"
+//     );
+//     break;
+
+// case fpvm_opcode_setrflags:
+//     asm_emit(gen,
+//         "    # setrflags - set special.rflags from stack\n"
+//         "    mov rax, [r14]       # pop rflags pointer from stack\n"
+//         "    add r14, 8\n"
+//         "    mov [r15], rax       # special.rflags = rflags pointer\n\n"
+//     );
+//     break;
+
 // Next steps for implementation:
 // 1. Modify fpvm_vm_x86_compile() to also generate assembly (or add new function)
 // 2. Add assembly compilation and linking 
