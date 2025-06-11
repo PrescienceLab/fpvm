@@ -284,9 +284,6 @@ int fpvm_jit_compile_from_fir(fpvm_inst_t *fi) {
     return 0;
 }
 
-// Example of what the FIR→Assembly translation looks like
-void demonstrate_translation();
-
 void demonstrate_translation() {
     printf("FIR Bytecode → Assembly Translation Example\n");
     printf("==========================================\n\n");
@@ -325,8 +322,3 @@ void demonstrate_translation() {
 // 3. Add executable memory management
 // 4. Benchmark against interpreter
 // 5. Add optimizations (register allocation, instruction combining)
-
-// int main() {
-//     demonstrate_translation();
-//     return 0;
-// }
