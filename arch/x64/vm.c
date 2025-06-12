@@ -355,6 +355,7 @@ int fpvm_vm_x86_compile(fpvm_inst_t *fi) {
         fpvm_build_setrflags(bp);                        // pop copy -> special.rflags
 
         fpvm_build_call2s1d(bp, func);                  // cmp_double / cmp_float
+        break;
       default:
         break;
     }
