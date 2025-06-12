@@ -535,6 +535,48 @@ static void dump_execution_contexts_info(void)
   unlock_contexts();
 }
 
+static uint64_t get_fpcr_machine(void)
+{
+  uint64_t fpcr;
+  __asm__ __volatile__ ("mrs %0, fpcr" : "=r"(fpcr) : :);
+  return fpcr;
+}
+
+static void set_fpcr_machine(uint64_t fpcr)
+{
+  __asm__ __volatile__ ("msr fpcr, %0" : : "r"(fpcr));
+}
+
+static uint64_t get_fpsr_machine(void)
+{
+  uint64_t fpsr;
+  __asm__ __volatile__ ("mrs %0, fpsr" : "=r"(fpsr) : :);
+  return fpsr;
+}
+
+static void set_fpsr_machine(uint64_t fpsr)
+{
+  __asm__ __volatile__ ("msr fpsr, %0" : : "r"(fpsr));
+}
+
+static void sync_fp(void)
+{
+  __asm__ __volatile__ ("dsb ish" : : : "memory");
+}
+
+uint64_t config_no_trap()
+{
+  uint64_t old = get_fpcr_machine();
+  set_fpcr_machine(old & ~(0xBF00UL));
+  sync_fp();
+  return old;
+}
+
+void config_prev_trap(uint64_t x)
+{
+  set_fpcr_machine(x);
+  sync_fp();
+}
 
 static execution_context_t *alloc_execution_context(int tid) {
   int i;
@@ -2240,6 +2282,8 @@ void fpvm_short_circuit_handler(void *priv)
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
+  uint64_t oldcr = config_no_trap();
+
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
@@ -2273,6 +2317,8 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #endif
 
   fp_trap_handler(uc);
+
+  config_prev_trap(oldcr);
 }
 
 static __attribute__((destructor)) void fpvm_deinit(void);
@@ -2825,10 +2871,10 @@ int main(int argc, char *argv[])
     abort();
   }
 
-  if (fpvm_vm_compile(fi)) {
-    ERROR("cannot compile instruction\n");
-    abort();
-  }
+  // if (fpvm_vm_compile(fi)) {
+  //   ERROR("cannot compile instruction\n");
+  //   abort();
+  // }
 
   INFO("successfully decoded and compiled instruction\n");
 
