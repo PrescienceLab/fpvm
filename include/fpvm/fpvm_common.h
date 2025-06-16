@@ -162,7 +162,7 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 
 static inline uint64_t NO_TOUCH_FLOAT __attribute__((always_inline)) rdtsc(void) {
   uint32_t lo, hi;
-  asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+  __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
   return lo | ((uint64_t)(hi) << 32);
 }
 

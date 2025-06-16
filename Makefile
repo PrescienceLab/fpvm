@@ -69,7 +69,7 @@ $(BUILD)/%.S.o: %.S
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
 	@echo " CC   $<"
-	@$(CC) $(CFLAGS) -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
+	@$(CC) $(CFLAGS) -std=gnu11 -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
 
 # c++ source
 $(BUILD)/%.cpp.o: %.cpp

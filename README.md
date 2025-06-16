@@ -14,10 +14,19 @@ This will configure paths and whatnot to work with FPVM more efficiently.
 You can either run `source ENV` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
 
 
+
+While FPVM doesn't depend on much, you must make sure you have them installed first.
+
+We've tested on Ubuntu 22.04 systems with the following packages:
+```bash
+sudo apt install build-essential libcapstone-dev libmpfr-dev libhdf5-dev python3 python3-pip git
+```
+
 Then, make sure you have the required python packages installed:
 ```bash
 pip3 install --user -r requirements.txt
 ```
+
 
 To get started, you must configure FPVM using `menuconfig`.
 ```bash

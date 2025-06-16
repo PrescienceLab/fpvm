@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 export FPVM_HOME=$(realpath "$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )")
-# forward wrappers => wrap foo() (for all foo in wrap.list)
-# reverse wrappers => wrap foo$fpvm(), modify program to use foo$fpvm()
-#export FPVM_WRAP=forward
 export FPVM_WRAP=reverse
 export PATH=$FPVM_HOME/analysis:$FPVM_HOME/scripts:$FPVM_HOME/analysis/dep/e9patch:$PATH
-echo "You must have docker access in order to run analyses"
 
