@@ -38,13 +38,15 @@ This will produce a `build/` folder with the results of FPVM.
 
 ## Running FPVM
 
-To run FPVM against a binary, you can use the `fpvm` tool to run your program:
+To run FPVM against a binary, you can use the `fpvm` tool to run your program.
+This program is located in `scripts/`, but you should make sure to source the `ENV` file before using it.
+`ENV` will add `scripts/` to your path.
 ```bash
 fpvm run ./a.out
 ```
 
 This will, most likely, take quite a while on the first run.
-**NOTE** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
+**NOTE:** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
 This is due to the need to patch non-virtualizable parts of the binary.
 Subsequent runs of the same (hash-identical) binary will be much faster, as the results are stored in `~/.cache/fpvm/`.
 
