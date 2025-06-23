@@ -39,6 +39,16 @@ static csh handle;
    ((r) >= ARM64_REG_D0 && (r) <= ARM64_REG_D31) ? 8 : \
    16) // 16 bytes for Vector
 
+#define GET_GPR_SIZE(r) \
+  (((r) >= ARM64_REG_W0 && (r) <= ARM64_REG_W30) ? 4 : \
+   ((r) >= ARM64_REG_X0 && (r) <= ARM64_REG_X30) ? 8 : \
+   16) // 16 bytes for Vector
+
+#define GET_GPR_INDEX(r) \
+  (((r) >= ARM64_REG_W0 && (r) <= ARM64_REG_W30) ? ((r) - ARM64_REG_W0) : \
+   ((r) >= ARM64_REG_X0 && (r) <= ARM64_REG_X30) ? ((r) - ARM64_REG_X0) : \
+   ((r) - ARM64_REG_X0))
+
 //
 // This contains the mapping to our high-level interface
 //
@@ -49,6 +59,10 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   [ARM64_INS_FDIV] = FPVM_OP_DIV,
   [ARM64_INS_FSQRT] = FPVM_OP_SQRT,
   [ARM64_INS_FMOV] = FPVM_OP_MOVE,
+
+  // fused
+  [ARM64_INS_FMADD] = FPVM_OP_MADD,
+  [ARM64_INS_FNMSUB] = FPVM_OP_NMSUB,
 
   // comparison instructions
   [ARM64_INS_FCMP] = FPVM_OP_CMP,
@@ -399,14 +413,27 @@ static int check_dest_and_op_sizes(fpvm_inst_t *fi, cs_insn *inst) {
       if(dest) fi->common->dest_size = 8;
       else fi->common->op_size = 8;
     }
+    // Floating Point 64 bit registers
+    else if (strstr(token, "d")) {
+      if(dest) fi->common->dest_size = 8;
+      else fi->common->op_size = 8;
+    }
+    // Floating Point 32 bit registers
     else if (strstr(token, "s")) {
       if(dest) fi->common->dest_size = 4;
       else fi->common->op_size = 4;
     }
-    else if (strstr(token, "d")){
+    // Scalar 64 bit registers
+    else if (strstr(token, "x")) {
       if(dest) fi->common->dest_size = 8;
       else fi->common->op_size = 8;
     }
+    // Scalar 32 bit registers
+    else if (strstr(token, "w")) {
+      if(dest) fi->common->dest_size = 4;
+      else fi->common->op_size = 4;
+    }
+    // Immediate value?
     else if (strstr(token, "#")) {
       // skip if immediate
     }
@@ -479,8 +506,6 @@ static int decode_to_common(fpvm_inst_t *fi) {
   if(check_dest_and_op_sizes(fi, inst)){
     return -1;
   }
-
-  check_dest_and_op_sizes(fi, inst);
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
@@ -594,12 +619,11 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
               fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
         }
         else {
-          // This is a GPR
-          //
-          // You can not use a GPR directly for fops, but they CAN be used as an
-          // intermediate register (I think)
-          DEBUG("Not handling GPR registers for now");
-          return -1;
+          fi->operand_addrs[fi->operand_count] = fr->mcontext->regs + (64 * GET_GPR_INDEX(o->reg));
+          fi->operand_sizes[fi->operand_count] = GET_GPR_SIZE(o->reg);
+          UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+          DEBUG("Mapped GPR %s to %p (size: %d bytes)\n", reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
         }
         fi->operand_count++;
         break;
