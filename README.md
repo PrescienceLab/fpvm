@@ -14,10 +14,19 @@ This will configure paths and whatnot to work with FPVM more efficiently.
 You can either run `source ENV` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
 
 
+
+While FPVM doesn't depend on much, you must make sure you have them installed first.
+
+We've tested on Ubuntu 22.04 systems with the following packages:
+```bash
+sudo apt install build-essential libcapstone-dev libmpfr-dev libhdf5-dev python3 python3-pip git
+```
+
 Then, make sure you have the required python packages installed:
 ```bash
 pip3 install --user -r requirements.txt
 ```
+
 
 To get started, you must configure FPVM using `menuconfig`.
 ```bash
@@ -38,13 +47,15 @@ This will produce a `build/` folder with the results of FPVM.
 
 ## Running FPVM
 
-To run FPVM against a binary, you can use the `fpvm` tool to run your program:
+To run FPVM against a binary, you can use the `fpvm` tool to run your program.
+This program is located in `scripts/`, but you should make sure to source the `ENV` file before using it.
+`ENV` will add `scripts/` to your path.
 ```bash
 fpvm run ./a.out
 ```
 
 This will, most likely, take quite a while on the first run.
-**NOTE** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
+**NOTE:** FPVM will run the program once in a profiling step, so expect the program to execute at least once before running with FPVM.
 This is due to the need to patch non-virtualizable parts of the binary.
 Subsequent runs of the same (hash-identical) binary will be much faster, as the results are stored in `~/.cache/fpvm/`.
 
