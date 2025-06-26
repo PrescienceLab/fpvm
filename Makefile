@@ -3,10 +3,12 @@
 #  Copyright (c) 2021 Peter Dinda - see LICENSE
 #
 
+
 -include config.mk
 
 export FPVM_HOME:=$(shell pwd)
 export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
+
 
 
 ifeq ($(CONFIG_TOOLCHAIN_PREFIX),"")
@@ -22,7 +24,6 @@ else ifeq ($(CONFIG_ARCH_ARM64),1)
 else ifeq ($(CONFIG_ARCH_RISCV64),1)
    ARCH=riscv64
 endif
-
 
 
 ARCHSRCDIR = arch/$(ARCH)
@@ -41,7 +42,7 @@ BUILD?=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ $(ARCHINCDIR)/
+INC_DIRS := $(ARCHINCDIR)/ include/ 
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CC = $(PREFIX)gcc
@@ -87,11 +88,11 @@ $(TARGET): $(BUILD) $(OBJS)
 	@echo " LD   $(TARGET)"
 	@cp .config $(BUILD)/.config
 	@cp include/fpvm/config.h $(BUILD)/config.h
-	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LIB)
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS)
 	@echo " LD   $(BUILD)/fpvm_main"
-	@$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
+	@$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LIB)
 
 main:$(BUILD)/fpvm_main
 
