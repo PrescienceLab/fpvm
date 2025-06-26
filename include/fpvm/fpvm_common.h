@@ -130,7 +130,26 @@ typedef struct _libc_fpstate fpvm_fpstate_t;
 
 // -------------- RISCV ----------------
 #if defined(__riscv)
-#error "RISC-V not supported yet"
+
+typedef union __riscv_mc_fp_state fpvm_fpstate_t;
+#define FPSTATE_FPRS(fpstate) (&(fpstate)->__d.__f);
+
+// Registers
+#ifndef REG_PC
+#define REG_PC 32
+#endif
+
+#ifndef REG_SP
+#define REG_SP 2
+#endif
+
+#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->__gregs)
+#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
+
+#define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
+#define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
+
+#define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
 
 #endif
 
