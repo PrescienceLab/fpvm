@@ -535,6 +535,7 @@ static void dump_execution_contexts_info(void)
   unlock_contexts();
 }
 
+#ifdef __aarch64__
 static uint64_t get_fpcr_machine(void)
 {
   uint64_t fpcr;
@@ -577,6 +578,7 @@ void config_prev_trap(uint64_t x)
   set_fpcr_machine(x);
   sync_fp();
 }
+#endif
 
 static execution_context_t *alloc_execution_context(int tid) {
   int i;
@@ -2282,8 +2284,9 @@ void fpvm_short_circuit_handler(void *priv)
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
+  #ifdef __aarch64__
   uint64_t oldcr = config_no_trap();
-
+  #endif
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
@@ -2318,7 +2321,9 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
   fp_trap_handler(uc);
 
+  #ifdef __aarch64__
   config_prev_trap(oldcr);
+  #endif
 }
 
 static __attribute__((destructor)) void fpvm_deinit(void);
@@ -2852,97 +2857,97 @@ int main(int argc, char *argv[])
   // Note that we update the mcontext each time we
   // complete an instruction in the current sequence
   // so this always reflects the current
-  fpvm_regs_t regs;
+  // fpvm_regs_t regs;
 
-  ucontext_t uc;
-  getcontext(&uc);
-  regs.mcontext = &uc.uc_mcontext;
+  // ucontext_t uc;
+  // getcontext(&uc);
+  // regs.mcontext = &uc.uc_mcontext;
 
-  // PAD: This stupidly just treats everything as SSE2
-  // and must be fixed
-  regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
-  regs.fpr_size = 16;
+  // // PAD: This stupidly just treats everything as SSE2
+  // // and must be fixed
+  // regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
+  // regs.fpr_size = 16;
 
-  // Doing fake bind here to capture operand sizes
-  // If we do it this way, we will only bind the first time we see the instruction
-  // and otherwise keep it in the decode cache
-  if (fpvm_decoder_bind_operands(fi, &regs)) {
-    ERROR("Cannot bind operands of instruction\n");
-    abort();
-  }
-
-  // if (fpvm_vm_compile(fi)) {
-  //   ERROR("cannot compile instruction\n");
+  // // Doing fake bind here to capture operand sizes
+  // // If we do it this way, we will only bind the first time we see the instruction
+  // // and otherwise keep it in the decode cache
+  // if (fpvm_decoder_bind_operands(fi, &regs)) {
+  //   ERROR("Cannot bind operands of instruction\n");
   //   abort();
   // }
 
-  INFO("successfully decoded and compiled instruction\n");
+  // // if (fpvm_vm_compile(fi)) {
+  // //   ERROR("cannot compile instruction\n");
+  // //   abort();
+  // // }
 
-  INFO("Now displaying generated code\n");
-  fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
+  // INFO("successfully decoded and compiled instruction\n");
+
+  // INFO("Now displaying generated code\n");
+  // fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
 
 
-  INFO("Now trying to execute generated code\n");
+  // INFO("Now trying to execute generated code\n");
 
-  INFO("Now testing with VM\n");
+  // INFO("Now testing with VM\n");
 
 
-  fpvm_vm_t vm;
+  // fpvm_vm_t vm;
 
-  struct xmm fpregs[16];
+  // struct xmm fpregs[16];
 
-  for (int i = 0; i < 16; i++) {
-    fpregs[i].low = (double)i;
-    fpregs[i].high = (double)i + 0.5;
-  }
+  // for (int i = 0; i < 16; i++) {
+  //   fpregs[i].low = (double)i;
+  //   fpregs[i].high = (double)i + 0.5;
+  // }
 
-  regs.fprs = fpregs;
-  regs.fpr_size = 16;
+  // regs.fprs = fpregs;
+  // regs.fpr_size = 16;
 
-  INFO("Register initial state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
+  // INFO("Register initial state\n");
+  // // print_fpregs_decimal(fpregs);
+  // fpvm_dump_xmms_double(stderr, fpregs);
 
-  printf("\n");
+  // printf("\n");
 
-  // INFO("Register initial state (in hex)\n");
-  // print_fpregs_hex(fpregs);
+  // // INFO("Register initial state (in hex)\n");
+  // // print_fpregs_hex(fpregs);
 
-  printf("\n\n");
+  // printf("\n\n");
 
-  fpvm_vm_init(&vm, fi, &regs);
+  // fpvm_vm_init(&vm, fi, &regs);
 
-  fpvm_vm_run(&vm);
+  // fpvm_vm_run(&vm);
 
-  INFO("Register final state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
+  // INFO("Register final state\n");
+  // // print_fpregs_decimal(fpregs);
+  // fpvm_dump_xmms_double(stderr, fpregs);
 
-  printf("\n");
+  // printf("\n");
 
-  // INFO("Register final state (in hex)\n");
-  // print_fpregs_hex(fpregs);
+  // // INFO("Register final state (in hex)\n");
+  // // print_fpregs_hex(fpregs);
 
-  printf("\n\n");
+  // printf("\n\n");
 
-  INFO("Testing ground truth\n");
-  for (int i = 0; i < 16; i++) {
-    fpregs[i].low = (double)i;
-    fpregs[i].high = (double)i + 0.5;
-  }
-  INFO("Register initial state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
+  // INFO("Testing ground truth\n");
+  // for (int i = 0; i < 16; i++) {
+  //   fpregs[i].low = (double)i;
+  //   fpregs[i].high = (double)i + 0.5;
+  // }
+  // INFO("Register initial state\n");
+  // // print_fpregs_decimal(fpregs);
+  // fpvm_dump_xmms_double(stderr, fpregs);
 
-  fpvm_test_instr(fpregs);
+  // fpvm_test_instr(fpregs);
 
-  printf("\n");
+  // printf("\n");
 
-  INFO("Register final state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
+  // INFO("Register final state\n");
+  // // print_fpregs_decimal(fpregs);
+  // fpvm_dump_xmms_double(stderr, fpregs);
 
-  printf("\n");
+  // printf("\n");
 
   // INFO("Register final state (in hex)\n");
   // print_fpregs_hex(fpregs);
