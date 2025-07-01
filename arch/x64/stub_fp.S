@@ -22,10 +22,11 @@ fpvm_test_instr:
    movupd 0xf0(%rdi), %xmm15
 .global my_instruction
 my_instruction:
+//   comisd %xmm2, %xmm1
 //   PATCHHERE
 //    addpd (%rsp), %xmm1
-//  addpd %xmm2, %xmm1
-   comisd %xmm2, %xmm1
+  addsd %xmm2, %xmm1
+//   comisd %xmm2, %xmm1
 //  comisd %xmm2, %xmm1
 //  cmpltsd %xmm2, %xmm1
 // vaddsd %xmm3, %xmm2, %xmm1
