@@ -6,15 +6,53 @@ choice
 
     config ARCH_X64
         bool "x64"
-	help 
+	help
             Intel 64 bit with at least SSE
 
-    
     config ARCH_RISCV64
         bool "RISC-V (64)"
 	help
 	    RISC-V 64 bit architecture with at least F and D
-endchoice    
+	    This will only work on a "RAFT-V"
+
+
+endchoice
+
+config TOOLCHAIN_PREFIX
+   string "Toolchain Prefix"
+   default ""
+   help
+      Prefix for all compilation tools (for cross-compilation use)
+      "riscv64-unknown-linux-gnu-" is used for cross-compiling
+      for riscv64, which is necessary for the RAFT-V setup
+
+config RISCV_HAVE_FP_TRAPS
+   bool "RISC-V Supports Floating Point Traps (RAFT-V)"
+   default n
+   depends on ARCH_RISCV64
+   help
+       Hardware support for floating point traps
+       Not available in standard RISC-V, only RAFT-V
+
+config RISCV_TRAP_PIPELINED_EXCEPTIONS
+   bool "Do Trap Delivery Via PPEs (RAFT-V)"
+   depends on RISCV_HAVE_FP_TRAPS
+   default n
+   help
+       Use hardware support for Precise Pipeline Exceptions (PPEs)
+       to deliver floating point traps
+       Not available in standard RISC-V, only RAFT-V
+       The kernel module also needs to be inserted
+
+config RISCV_USE_ESTEP
+   bool "Do Breakpoint Delivery vie PPEs (RAFT-V)"
+   depends on RISCV_HAVE_FP_TRAPS
+   default n
+   help
+       Use hardware support for Precise Pipeline Exections (PPEs)
+       to deliver breakpoint exceptions via the ESTEP instruction.
+       Not available on standard RISC-V, only RAFT-V
+       The kernel module also needs to be inserted
 
 config HAVE_MAIN
     bool "Add a main function"
@@ -26,15 +64,17 @@ config HAVE_MAIN
 
 config USE_NVM
     bool "Use NVM"
+    depends on ARCH_X64
     default n
     help
        Use the NVM virtual machine for ordinary processing
        This is for hacking around on NVM
+
 config ENABLE_NVM_LOGGING
     bool "Enable NVM Logging"
     depends on USE_NVM
     default n
-      
+
 config NO_OUTPUT
     bool "Disable output"
     default n
@@ -61,7 +101,7 @@ config TELEMETRY_PROMOTIONS
        This will include demotion/promotion and
        correctness demotions, which currently are more
        expensive to track than they should be
-       
+
 config TELEMETRY_PERIOD
     depends on TELEMETRY
     int "Reporting period"
@@ -69,7 +109,7 @@ config TELEMETRY_PERIOD
     help
         Number of FP traps between telemetry reports
 	0 means that reports are generated only at thread end / process end
-	
+
 config PERF_STATS
     bool "Performance measurement"
     default n
@@ -129,17 +169,17 @@ choice
 
     config ALT_MATH_VANILLA
         bool "Vanilla"
-	help 
+	help
             Simply emulate using a normal instruction
             Vanilla is always included as a fallback
 
-    
+
     config ALT_MATH_BOXED_IEEE
         bool "Boxed IEEE"
-    
+
     config ALT_MATH_POSIT
         bool "POSIT"
-    
+
     config ALT_MATH_MPFR
         bool "GNU MPFR"
 
