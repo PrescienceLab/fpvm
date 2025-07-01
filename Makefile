@@ -3,24 +3,30 @@
 #  Copyright (c) 2021 Peter Dinda - see LICENSE
 #
 
+-include config.mk
+
 export FPVM_HOME:=$(shell pwd)
 export PATH:=$(FPVM_HOME)/analysis:$(FPVM_HOME)/scripts:$(FPVM_HOME)/analysis/deps/e9patch:$(PATH)
 
-# this should come from from config... 
-#ARCH:=x64
-ARCH=arm64
-#ARCH=riscv64
 
-# hard coded assuming we are doing cross-compilation
-ifeq ($(ARCH),riscv64)
-  PREFIX=riscv64-unknown-linux-gnu-
-else
-  PREFIX=
+ifeq ($(CONFIG_TOOLCHAIN_PREFIX),"")
+  CONFIG_TOOLCHAIN_PREFIX=
+endif
+PREFIX=$(CONFIG_TOOLCHAIN_PREFIX)
+
+
+ifeq ($(CONFIG_ARCH_X64),1)
+   ARCH=x64
+else ifeq ($(CONFIG_ARCH_ARM64),1)
+   ARCH=arm64
+else ifeq ($(CONFIG_ARCH_RISCV64),1)
+   ARCH=riscv64
 endif
 
 
+
 ARCHSRCDIR = arch/$(ARCH)
-ARCHINCDIR = $(ARCHSRCDIR)
+ARCHINCDIR = include/arch/$(ARCH)
 
 ARCHSRCS := $(shell find $(ARCHSRCDIR) -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
 GENERICSRCS := $(shell find src -name '*.cpp' -or -name '*.c' -or -name '*.s' -or -name "*.S")
@@ -77,13 +83,13 @@ $(BUILD)/%.cpp.o: %.cpp
 	@echo " CXX  $<"
 	@$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
-$(TARGET): $(BUILD) $(OBJS) 
+$(TARGET): $(BUILD) $(OBJS)
 	@echo " LD   $(TARGET)"
 	@cp .config $(BUILD)/.config
 	@cp include/fpvm/config.h $(BUILD)/config.h
 	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
-$(BUILD)/fpvm_main: $(BUILD) $(OBJS) 
+$(BUILD)/fpvm_main: $(BUILD) $(OBJS)
 	@echo " LD   $(BUILD)/fpvm_main"
 	@$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone
 
