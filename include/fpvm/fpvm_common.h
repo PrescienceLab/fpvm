@@ -73,7 +73,7 @@
 #define ERROR(S, ...)
 #else
 #if TRY_RESTRICT_TO_SAFE
-#define INFO(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) } 
+#define INFO(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) }
 #define ERROR(S, ...) { char __buf[512]; snprintf(__buf,512, "fpvm ERROR(%8ld): " S, gettid(), ##__VA_ARGS__); DSTR(2,__buf) }
 #else
 #define INFO(S, ...) fprintf(stderr, "fpvm info(%8ld): " S, gettid(), ##__VA_ARGS__)
@@ -102,7 +102,7 @@
 #endif
 
 
-// somehow incomplete... 
+// somehow incomplete...
 //#define NO_TOUCH_FLOAT __attribute__((target ("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3,no-3dnow,no-3dnowa,no-abm,no-adx,no-aes,no-mmx,no")))
 
 
@@ -130,7 +130,26 @@ typedef struct _libc_fpstate fpvm_fpstate_t;
 
 // -------------- RISCV ----------------
 #if defined(__riscv)
-#error "RISC-V not supported yet"
+
+typedef union __riscv_mc_fp_state fpvm_fpstate_t;
+#define FPSTATE_FPRS(fpstate) (&(fpstate)->__d.__f);
+
+// Registers
+#ifndef REG_PC
+#define REG_PC 32
+#endif
+
+#ifndef REG_SP
+#define REG_SP 2
+#endif
+
+#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->__gregs)
+#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
+
+#define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
+#define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
+
+#define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
 
 #endif
 
@@ -146,7 +165,17 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 
 #define MCTX_PC(mc) ((mc)->pc)
 #define MCTX_SP(mc) ((mc)->sp)
-#define MCTX_FPRS(mc) ((void*)NULL) // TODO:
+#define MCTX_PSTATE(mc) ((mc)->pstate)
+// #define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
+// #define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
+// #define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
+#define MCTX_FPSR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpsr)
+#define MCTX_FPCR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpcr)
+#define MCTX_FPRS(mc) (((struct fpsimd_context *)(mc.__reserved))->vregs)
+
+// Why were we using uc->uc_mcontext?? Shouldn't it be mc->__reserved
+#define MCTX_FPSRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpsr)) // cast to void for 64bit pointer
+#define MCTX_FPCRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpcr))
 
 #endif
 
