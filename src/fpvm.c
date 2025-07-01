@@ -78,7 +78,7 @@
 #include <fpvm/number_system.h>
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
-#include <fpvm/translate_fir_to_asm.h>
+#include <fpvm/fir_jit.h>
 
 
 
@@ -2795,15 +2795,42 @@ int main(int argc, char *argv[])
   fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
 
 
-  // Print assembly
-  {
-    fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
-    translate_fir_to_asm(
-      stdout,
-      builder->code,
-      (size_t)builder->offset
-    );
+  // --- BEGIN JIT TEST INSERTION ---
+  INFO("\n--- Testing JIT Compilation and Execution ---\n");
+
+  // Translate the FIR that was just generated into an assembly string
+  asm_gen_t gen;
+  asm_init(&gen);
+  fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
+  translate_fir_to_assembly(builder->code, (size_t)builder->offset, &gen);
+
+  // JIT Compile the assembly into a callable function
+  void* (*jit_function)(void*, void*) = compile_and_load_assembly(gen.code);
+  if (!jit_function) {
+      ERROR("JIT compilation failed. Skipping JIT test.\n");
+      free(gen.code);
+  } else {
+      INFO("JIT compilation successful.\n");
+      free(gen.code);
+
+      // Prepare a separate set of registers for the JIT test
+      struct xmm fpregs_jit[16];
+      for (int i = 0; i < 16; i++) {
+        fpregs_jit[i].low = (double)i;
+        fpregs_jit[i].high = (double)i + 0.5;
+      }
+
+      // Execute the JIT-compiled function
+      ucontext_t jit_uc;
+      getcontext(&jit_uc);
+      jit_function(fpregs_jit, &jit_uc.uc_mcontext);
+
+      // Print the result from the JIT execution
+      INFO("\n--- JIT Final State ---\n");
+      fpvm_dump_xmms_double(stdout, fpregs_jit);
+      printf("=========================================================\n");
   }
+  // --- END JIT TEST INSERTION ---
 
   INFO("Now trying to execute generated code\n");
 
