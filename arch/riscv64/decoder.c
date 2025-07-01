@@ -17,6 +17,22 @@
 
 static csh handle;
 
+// SHOULD MOVE THIS SOMEWHERE BETTER
+//
+#define IS_FPR(r) \
+  (((r) >= RISCV_REG_F0_32 && (r) <= RISCV_REG_F31_64))
+
+#define GET_FPR_INDEX(r) \
+  (((r) - RISCV_REG_F0_32) / 2)
+
+#define GET_FPR_SIZE(r) \
+  (((r) - RISCV_REG_F0_32) % 2 == 0 ? 4 : 8)
+
+#define GPR_SIZE 8
+
+#define GET_GPR_INDEX(r) \
+  ((r) - RISCV_REG_X0)
+
 //
 // This contains the mapping to our high-level
 // interface
@@ -36,6 +52,11 @@ fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     ///Computational instructions
     [RISCV_INS_FADD_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
     [RISCV_INS_FSUB_D] = {FPVM_OP_SUB, 0, 0, 8, 0},
+    [RISCV_INS_FMUL_D] = {FPVM_OP_MUL, 0, 0, 8, 0},
+    [RISCV_INS_FDIV_D] = {FPVM_OP_DIV, 0, 0, 8, 0},
+    [RISCV_INS_FSQRT_D] = {FPVM_OP_SQRT, 0, 0, 8, 0},
+    [RISCV_INS_FMIN_D] = {FPVM_OP_MIN, 0, 0, 8, 0},
+    [RISCV_INS_FMAX_D] = {FPVM_OP_MAX, 0, 0, 8, 0},
 
     //Compare instructions
     [RISCV_INS_FEQ_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
@@ -43,6 +64,114 @@ fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     [RISCV_INS_FLT_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
 
 };
+
+static char* reg_name(riscv_reg reg) {
+#define DO_REG(x) \
+  case x:         \
+    return #x;    \
+    break;
+  switch (reg) {
+    DO_REG(RISCV_REG_X0);
+    DO_REG(RISCV_REG_X1);
+    DO_REG(RISCV_REG_X2);
+    DO_REG(RISCV_REG_X3);
+    DO_REG(RISCV_REG_X4);
+    DO_REG(RISCV_REG_X5);
+    DO_REG(RISCV_REG_X6);
+    DO_REG(RISCV_REG_X7);
+    DO_REG(RISCV_REG_X8);
+    DO_REG(RISCV_REG_X9);
+    DO_REG(RISCV_REG_X10);
+    DO_REG(RISCV_REG_X11);
+    DO_REG(RISCV_REG_X12);
+    DO_REG(RISCV_REG_X13);
+    DO_REG(RISCV_REG_X14);
+    DO_REG(RISCV_REG_X15);
+    DO_REG(RISCV_REG_X16);
+    DO_REG(RISCV_REG_X17);
+    DO_REG(RISCV_REG_X18);
+    DO_REG(RISCV_REG_X19);
+    DO_REG(RISCV_REG_X20);
+    DO_REG(RISCV_REG_X21);
+    DO_REG(RISCV_REG_X22);
+    DO_REG(RISCV_REG_X23);
+    DO_REG(RISCV_REG_X24);
+    DO_REG(RISCV_REG_X25);
+    DO_REG(RISCV_REG_X26);
+    DO_REG(RISCV_REG_X27);
+    DO_REG(RISCV_REG_X28);
+    DO_REG(RISCV_REG_X29);
+    DO_REG(RISCV_REG_X30);
+    DO_REG(RISCV_REG_X31);
+    DO_REG(RISCV_REG_F0_32);
+    DO_REG(RISCV_REG_F0_64);
+    DO_REG(RISCV_REG_F1_32);
+    DO_REG(RISCV_REG_F1_64);
+    DO_REG(RISCV_REG_F2_32);
+    DO_REG(RISCV_REG_F2_64);
+    DO_REG(RISCV_REG_F3_32);
+    DO_REG(RISCV_REG_F3_64);
+    DO_REG(RISCV_REG_F4_32);
+    DO_REG(RISCV_REG_F4_64);
+    DO_REG(RISCV_REG_F5_32);
+    DO_REG(RISCV_REG_F5_64);
+    DO_REG(RISCV_REG_F6_32);
+    DO_REG(RISCV_REG_F6_64);
+    DO_REG(RISCV_REG_F7_32);
+    DO_REG(RISCV_REG_F7_64);
+    DO_REG(RISCV_REG_F8_32);
+    DO_REG(RISCV_REG_F8_64);
+    DO_REG(RISCV_REG_F9_32);
+    DO_REG(RISCV_REG_F9_64);
+    DO_REG(RISCV_REG_F10_32);
+    DO_REG(RISCV_REG_F10_64);
+    DO_REG(RISCV_REG_F11_32);
+    DO_REG(RISCV_REG_F11_64);
+    DO_REG(RISCV_REG_F12_32);
+    DO_REG(RISCV_REG_F12_64);
+    DO_REG(RISCV_REG_F13_32);
+    DO_REG(RISCV_REG_F13_64);
+    DO_REG(RISCV_REG_F14_32);
+    DO_REG(RISCV_REG_F14_64);
+    DO_REG(RISCV_REG_F15_32);
+    DO_REG(RISCV_REG_F15_64);
+    DO_REG(RISCV_REG_F16_32);
+    DO_REG(RISCV_REG_F16_64);
+    DO_REG(RISCV_REG_F17_32);
+    DO_REG(RISCV_REG_F17_64);
+    DO_REG(RISCV_REG_F18_32);
+    DO_REG(RISCV_REG_F18_64);
+    DO_REG(RISCV_REG_F19_32);
+    DO_REG(RISCV_REG_F19_64);
+    DO_REG(RISCV_REG_F20_32);
+    DO_REG(RISCV_REG_F20_64);
+    DO_REG(RISCV_REG_F21_32);
+    DO_REG(RISCV_REG_F21_64);
+    DO_REG(RISCV_REG_F22_32);
+    DO_REG(RISCV_REG_F22_64);
+    DO_REG(RISCV_REG_F23_32);
+    DO_REG(RISCV_REG_F23_64);
+    DO_REG(RISCV_REG_F24_32);
+    DO_REG(RISCV_REG_F24_64);
+    DO_REG(RISCV_REG_F25_32);
+    DO_REG(RISCV_REG_F25_64);
+    DO_REG(RISCV_REG_F26_32);
+    DO_REG(RISCV_REG_F26_64);
+    DO_REG(RISCV_REG_F27_32);
+    DO_REG(RISCV_REG_F27_64);
+    DO_REG(RISCV_REG_F28_32);
+    DO_REG(RISCV_REG_F28_64);
+    DO_REG(RISCV_REG_F29_32);
+    DO_REG(RISCV_REG_F29_64);
+    DO_REG(RISCV_REG_F30_32);
+    DO_REG(RISCV_REG_F30_64);
+    DO_REG(RISCV_REG_F31_32);
+    DO_REG(RISCV_REG_F31_64);
+    default:
+      return "UNKNOWN";
+      break;
+  }
+}
 
 static int decode_to_common(fpvm_inst_t *fi)
 {
@@ -61,19 +190,16 @@ static int decode_to_common(fpvm_inst_t *fi)
   return 0;
 }
 
-
 static int decode_move(fpvm_inst_t *fi)
 {
-  //Just changed everything to 1 from 0. Not sure whether we have to do anything else. Can look into this later
-  fi->is_simple_mov = 1;
-  fi->is_gpr_mov = 1;
+  fi->is_simple_mov = 0;
+  fi->is_gpr_mov = 0;
   fi->extend = FPVM_INST_ZERO_EXTEND;
   return 0;
 }
 
 static int decode_comparison(fpvm_inst_t *fi)
 {
-  //Haresh: I implemented this
   if (fi->common->op_type != FPVM_OP_CMPXX) {
     return 0;
   }
@@ -82,12 +208,15 @@ static int decode_comparison(fpvm_inst_t *fi)
 
   switch(inst->id){
     case RISCV_INS_FEQ_D:
+    case RISCV_INS_FEQ_S:
       fi->compare = FPVM_INST_COMPARE_EQ;
       break;
     case RISCV_INS_FLE_D:
+    case RISCV_INS_FLE_S:
       fi->compare = FPVM_INST_COMPARE_LE;
       break;
     case RISCV_INS_FLT_D:
+    case RISCV_INS_FLT_S:
       fi->compare = FPVM_INST_COMPARE_LT;
       break;
     default:
@@ -203,7 +332,15 @@ void fpvm_decoder_get_inst_str(fpvm_inst_t *fi, char *buf, int len) {
 int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   cs_insn *inst = (cs_insn *)fi->internal;
   cs_detail *det = inst->detail;
-  cs_x86 *x86 = &det->x86;
+  // 
+  // typedef struct cs_riscv {
+  // 	// Does this instruction need effective address or not. <====== What does this mean????
+  // 	bool need_effective_addr;
+  // 	uint8_t op_count;
+  // 	cs_riscv_op operands[NUM_RISCV_OPS];
+  // } cs_riscv;
+  //
+  cs_riscv *riscv = &det->riscv;
 
   // operand sizes for memory operands cannot be determined
   // trivially, so the idea here is to make memory operands
@@ -232,6 +369,68 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
   }
 
   fi->operand_count = 0;
+
+  for (i=0; i < riscv->op_count; i++) {
+    DEBUG("Binding operand #%d\n", i);
+    cs_riscv_op *o = &riscv->operands[i];
+
+    switch (o->type) {
+
+      case RISCV_OP_REG:
+        if (IS_FPR(o->reg)) {
+          fi->operand_addrs[fi->operand_count] = fr->fprs + (fr->fpr_size * GET_FPR_INDEX(o->reg)); // x2 because Capstone stores 32/64 registers side by side in enum
+          fi->operand_sizes[fi->operand_count] = GET_FPR_SIZE(o->reg);
+
+          UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+          DEBUG("Mapped FPR %s of value %lf to %p (size: %d bytes)\n", reg_name(o->reg), *((double*)fi->operand_addrs[fi->operand_count]),
+              fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
+        }
+        else {
+          // Are we assuming RISCV64???
+          fi->operand_addrs[fi->operand_count] = fr->mcontext->__gregs + (64 * GET_GPR_INDEX(o->reg));
+          fi->operand_sizes[fi->operand_count] = GPR_SIZE;
+
+          UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+          DEBUG("Mapped GPR %s to %p (size: %d bytes)\n", reg_name(o->reg),
+              fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
+        }
+        fi->operand_count++;
+
+      break;
+
+      case RISCV_OP_IMM:
+        fi->operand_addrs[fi->operand_count] = &o->imm;
+        fi->operand_sizes[fi->operand_count] = 0;
+        // Capstone doesn't expose size in RISC-V it seems, set to 0 for now and it will be updated
+        // to max_operand_size
+	      UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+        fi->operand_count++;
+      break;
+
+      case RISCV_OP_MEM:
+      // riscv seems to only have base + offset memory addressing available 
+        riscv_op_mem *mo = &o->mem;
+
+        //Calculate address using offset/displacement + base
+        uint64_t addr = mo->disp;
+         if (mo->base != RISCV_REG_INVALID) {
+          addr += fr->mcontext->__gregs[GET_GPR_INDEX(mo->base)];
+        }
+
+        fi->operand_addrs[fi->operand_count] = (void *)addr;
+
+
+        // Need to double check if this is the correct way to get the size for riscv. Just copied arm
+        fi->operand_sizes[fi->operand_count] = 0;
+        UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
+        fi->operand_count++;
+      break;
+
+      default:
+        DEBUG("Operand type is invalid\n");
+    }
+
+  }
 
   return 0;
 }
