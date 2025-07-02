@@ -115,7 +115,7 @@ void translate_fir_to_assembly(uint8_t *fir_code, size_t code_size, asm_gen_t *g
         "    movq %%rsi, %%r13\n"
         "    subq $1024, %%rsp\n"
         "    movq %%rsp, %%r14\n"
-        "    subq $64, %%rsp\n"
+        "    subq $72, %%rsp\n"
         "    movq %%rsp, %%r15\n"
         "    xorq %%rax, %%rax\n"
         "    movq $8, %%rcx\n"
@@ -244,7 +244,7 @@ void translate_fir_to_assembly(uint8_t *fir_code, size_t code_size, asm_gen_t *g
             case fpvm_opcode_done:
                 asm_emit(gen,
                     "    # done\n"
-                    "    addq $1088, %%rsp\n"
+                    "    addq $1096, %%rsp\n"
                     "    popq %%r15\n"
                     "    popq %%r14\n"
                     "    popq %%r13\n"
