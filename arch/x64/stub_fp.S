@@ -25,7 +25,11 @@ my_instruction:
 //   comisd %xmm2, %xmm1
 //   PATCHHERE
 //    addpd (%rsp), %xmm1
-  addsd %xmm2, %xmm1
+  addsd %xmm1, %xmm2
+//   cmpeqsd %xmm1, %xmm2
+//   movsd %xmm1, %xmm2 TODO
+//   cvtsi2sd %eax, %xmm1 TODO
+//   cvtss2sd %xmm1, %xmm2 TODO
 //   comisd %xmm2, %xmm1
 //  comisd %xmm2, %xmm1
 //  cmpltsd %xmm2, %xmm1
