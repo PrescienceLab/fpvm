@@ -1,4 +1,4 @@
-#  FPVM - Floatng Point Virtual Machine
+#  FPVM - Floating Point Virtual Machine
 #
 #  Copyright (c) 2021 Peter Dinda - see LICENSE
 #
@@ -13,8 +13,14 @@ ifeq ($(CONFIG_TOOLCHAIN_PREFIX),"")
 endif
 PREFIX=$(CONFIG_TOOLCHAIN_PREFIX)
 
-
-CAPSTONE_LIB=-lcapstone
+ifeq ($(CONFIG_CAPSTONE_DIR),"")
+  CONFIG_CAPSTONE_DIR=
+  CAPSTONE_INC=
+  CAPSTONE_LINK=-lcapstone
+else
+  CAPSTONE_INC=-I$(CONFIG_CAPSTONE_DIR)/include
+  CAPSTONE_LINK=-L$(CONFIG_CAPSTONE_DIR)/lib -lcapstone
+endif
 
 ifeq ($(CONFIG_ARCH_X64),1)
    ARCH=x64
@@ -22,7 +28,6 @@ else ifeq ($(CONFIG_ARCH_ARM64),1)
    ARCH=arm64
 else ifeq ($(CONFIG_ARCH_RISCV64),1)
    ARCH=riscv64
-   CAPSTONE_LIB=arch/riscv64/lib/libcapstone.a
 endif
 
 ARCHSRCDIR = arch/$(ARCH)
@@ -41,69 +46,85 @@ BUILD?=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := $(ARCHINCDIR)/ include/ 
-INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+INC_DIRS := $(ARCHINCDIR)/ include/
+INC_FLAGS := $(addprefix -I,$(INC_DIRS)) $(CAPSTONE_INC)
 
 CC = $(PREFIX)gcc
 AS = $(PREFIX)gcc
 CXX = $(PREFIX)g++
-CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security
+CFLAGS = $(INC_FLAGS) -MMD -MP -O3 -g3 -Wall -Wno-unused-variable -Wno-unused-function -fno-strict-aliasing -Wno-format	-Wno-format-security -D$(ARCH)
 CXXFLAGS = -std=c++17 -fno-exceptions -fno-rtti $(CFLAGS)
 
-TARGET=$(BUILD)/fpvm.so
+ifeq ($(CONFIG_HAVE_MAIN),1)
+  TARGETS = $(BUILD)/fpvm_main
+else
+  TARGETS = $(BUILD)/fpvm.so
+  TARGETS += $(BUILD)/test_fpvm
+endif
 
-all: $(TARGET) # $(BUILD)/test_fpvm
+ifdef V
+  Q ?=
+  QPIPE ?=
+else
+  Q ?= @
+  QPIPE ?= >/dev/null 2>&1
+endif
 
-.PHONY: foo test_lorenz
-foo:
+ifdef Q
+  MAKEFLAGS += -s
+  define quiet-cmd =
+	@printf "\t%s\t%s\n" "$(1)" "$(2)"
+  endef
+else
+  define quiet-cmd =
+  endef
+endif
+
+
+all: $(TARGETS)
+
+.PHONY: what test_lorenz
+what:
 	@echo "sources:  $(SRCS)"
 	@echo "objects:  $(OBJS)"
 	@echo "includes: $(INCS)"
 
+
 # assembly
 $(BUILD)/%.s.o: %.s
-	@@mkdir -p $(dir $@)
-	@echo " AS   $<"
-	@$(AS) -fPIC -shared -c $< -o $@
+	@mkdir -p $(dir $@)
+	$(call quiet-cmd,AS,$@)
+	$(Q)$(AS) -fPIC -shared -c $< -o $@
 
 $(BUILD)/%.S.o: %.S
 	@mkdir -p $(dir $@)
-	@echo " AS   $<"
-	@$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
+	$(call quiet-cmd,AS,$@)
+	$(Q)$(AS) $(INC_FLAGS) -MMD -MP -fPIC -shared -c $< -o $@
 
 # c source
 $(BUILD)/%.c.o: %.c
 	@mkdir -p $(dir $@)
-	@echo " CC   $<"
-	@$(CC) $(CFLAGS) -std=gnu11 -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
+	$(call quiet-cmd,CC,$@)
+	$(Q)$(CC) $(CFLAGS) -std=gnu11 -Wno-discarded-qualifiers -fPIC -shared -c $< -o $@
 
 # c++ source
 $(BUILD)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
-	@echo " CXX  $<"
-	@$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
+	$(call quiet-cmd,CXX,$@)
+	$(Q)$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
 $(TARGET): $(BUILD) $(OBJS)
-	@echo " LD   $(TARGET)"
-	@cp .config $(BUILD)/.config
-	@cp include/fpvm/config.h $(BUILD)/config.h
-	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LIB)
+	$(call quiet-cmd,LD,$@)
+	$(Q)cp .config $(BUILD)/.config
+	$(Q)cp include/fpvm/config.h $(BUILD)/config.h
+	$(Q)$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS)
-	@echo " LD   $(BUILD)/fpvm_main"
-	@$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LIB)
+	$(call quiet-cmd,LD,$@)
+	$(Q)$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
 
-main:$(BUILD)/fpvm_main
-
-
-
-
-$(BUILD)/vmtest: $(BUILD) $(OBJS) bin/vmtest.c
-	@$(CC) $(CFLAGS) bin/vmtest.c src/vm.c -o $(BUILD)/vmtest -Wl,-rpath -Wl,./lib/-lm -ldl
-
-
-$(BUILD)/test_fpvm: test_fpvm.c
-	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test_fpvm.c -lm -o $@
+$(BUILD)/test_fpvm: test/test_fpvm.c
+	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test/test_fpvm.c -lm -o $@
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -116,47 +137,6 @@ test: $(TARGET) $(BUILD)/test_fpvm
 	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y $(BUILD)/test_fpvm 2>&1 > test.log
 
 
-
-test_miniaero: $(TARGET) $(BUILD)/test_fpvm
-	@echo ==================================
-	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y test/miniaero_patched
-
-
-
-test/lorenz_attractor: test/lorenz_attractor.cpp
-	@[ -d "test/boost" ] || ( \
-	wget -O test/boost.tar.gz https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.gz && \
-	tar -C test/ -xvf test/boost.tar.gz && mv test/boost_1_78_0 test/boost \
-	)
-	g++ -std=c++11 -fno-PIC -no-pie -pthread -lm -I ./test/boost/ -O3 test/lorenz_attractor.cpp -o test/lorenz_attractor
-
-test/lorenz_attractor.patched: test/lorenz_attractor
-	./patch.sh test/lorenz_attractor
-
-
-test_lorenz: $(TARGET) test/lorenz_attractor.patched
-	@echo ==================================
-	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y test/lorenz_attractor.patched
-
-
-test/double_pendulum: test/double_pendulum.cpp
-	g++ -std=c++11 -fno-PIC -no-pie -lm -O3 test/double_pendulum.cpp -o test/double_pendulum
-test/double_pendulum.patched: test/double_pendulum
-	./patch.sh test/double_pendulum
-
-
-lorenz: test/lorenz_attractor
-
-
-test_enzo: $(TARGET) $(BUILD)/test_fpvm
-	@echo ==================================
-	@echo source env.sh first !
-	@echo ==================================
-	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y test/enzo/enzo_patched -d test/enzo/input
-
-test_fbench: $(TARGET) $(BUILD)/test_fpvm
-	@echo ==================================
-	LD_PRELOAD=$(TARGET) FPVM_AGGRESSIVE=y DISABLE_PTHREADS=y test/fbench_patched
 
 menuconfig:
 	@scripts/menuconfig.py

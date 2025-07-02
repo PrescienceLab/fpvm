@@ -9,6 +9,11 @@ choice
 	help
             Intel 64 bit with at least SSE
 
+    config ARCH_ARM64
+        bool "arm64"
+	help
+            ARM 64 bit architecture.  The machine must support traps, which are optional on ARM
+
     config ARCH_RISCV64
         bool "RISC-V (64)"
 	help
@@ -18,13 +23,6 @@ choice
 
 endchoice
 
-config TOOLCHAIN_PREFIX
-   string "Toolchain Prefix"
-   default ""
-   help
-      Prefix for all compilation tools (for cross-compilation use)
-      "riscv64-unknown-linux-gnu-" is used for cross-compiling
-      for riscv64, which is necessary for the RAFT-V setup
 
 config RISCV_HAVE_FP_TRAPS
    bool "RISC-V Supports Floating Point Traps (RAFT-V)"
@@ -54,26 +52,6 @@ config RISCV_USE_ESTEP
        Not available on standard RISC-V, only RAFT-V
        The kernel module also needs to be inserted
 
-config HAVE_MAIN
-    bool "Add a main function"
-    default n
-    help
-       This compiles it with a main function
-       that can be used for testing without LD_PRELOAD
-       This is for hacking around on NVM
-
-config USE_NVM
-    bool "Use NVM"
-    depends on ARCH_X64
-    default n
-    help
-       Use the NVM virtual machine for ordinary processing
-       This is for hacking around on NVM
-
-config ENABLE_NVM_LOGGING
-    bool "Enable NVM Logging"
-    depends on USE_NVM
-    default n
 
 config NO_OUTPUT
     bool "Disable output"
@@ -122,21 +100,17 @@ config PERF_STATS_PERIOD
         Number of FP traps between performance statistics reports
 	0 means that reports are generated only at thread end / process end
 
-config INSTR_TRACES
-    bool "Instruction tracing and analysis"
+
+config KERNEL_SHORT_CIRCUITING
+    bool "Kernel short-circuiting"
+    depends on ARCH_RISCV64
     default n
-
-config INSTR_TRACES_PERIOD
-    depends on INSTR_TRACES
-    int "Reporting period"
-    default 0
     help
-        Number of FP traps between trace reports
-	0 means that reports are generated only at thread end / process end
-
+       Use user-level trap handling if possible
 
 config TRAP_SHORT_CIRCUITING
     bool "Trap short-circuiting (kernel support)"
+    depends on ARCH_X64
     default y
     help
        Use the FPVM kernel support to do much faster trap delivery
@@ -155,11 +129,6 @@ config MAGIC_CORRECTNESS_TRAP
        calls.  The static binary analysis must also
        be configured to use this feature
 
-config KERNEL_SHORT_CIRCUITING
-    bool "Kernel short-circuiting (currently a nop)"
-    default n
-    help
-       Use user-level trap handling if possible
 
 
 # Add your own alternative math here
@@ -192,3 +161,68 @@ config MPFR_PRECISION
         bool "Rationals"
 
 endchoice
+
+menu "Parameters"
+   config MAX_CONTEXTS
+      int "Maximum Simultaneous Contexts"
+      default 1024
+      help
+          Maximum number of simultaneous contexts (threads, basically)
+	  that can be simultaneously traced.
+   config DECODE_CACHE_SIZE
+      int "Decode Cache Size (ideally prime number)"
+      default 65537
+      help
+          The number of entries in the instruction decode cache
+endmenu
+
+menu "Developer Features"
+config TOOLCHAIN_PREFIX
+   string "Toolchain Prefix"
+   default ""
+   help
+      Prefix for all compilation tools (for cross-compilation use)
+      "riscv64-unknown-linux-gnu-" is used for cross-compiling
+      for riscv64, which is necessary for the RAFT-V setup
+
+config CAPSTONE_DIR
+   string "Capstone Install Directory"
+   default ""
+   help
+      Install directory for Capstone, which must include
+      support for your architecture
+
+config HAVE_MAIN
+    bool "Build FPVM as a simple executable with a main()"
+    default n
+    help
+       This compiles it with a main function
+       that can be used for testing without LD_PRELOAD
+
+config USE_NVM
+    bool "Use NVM"
+    depends on ARCH_X64
+    default n
+    help
+       Use the NVM virtual machine for ordinary processing
+       This is for hacking around on NVM
+
+config ENABLE_NVM_LOGGING
+    bool "Enable NVM Logging"
+    depends on USE_NVM
+    default n
+
+config INSTR_TRACES
+    bool "Instruction tracing and analysis"
+    default n
+
+config INSTR_TRACES_PERIOD
+    depends on INSTR_TRACES
+    int "Reporting period"
+    default 0
+    help
+        Number of FP traps between trace reports
+	0 means that reports are generated only at thread end / process end
+
+
+endmenu
