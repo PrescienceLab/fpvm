@@ -1,7 +1,7 @@
 #include <fpvm/gc.h>
 
 #include <chrono>
-#include <fpvm/number_system.h> // For fpvm_alt_apply_sign 
+#include <fpvm/number_system.h> // For fpvm_alt_apply_sign
 #include <fpvm/nan_boxing.h>
 #include <math.h>
 #include <stdio.h>
@@ -245,11 +245,10 @@ extern "C" unsigned fpvm_gc_run(void) {
 
   for (auto ptr : toFree) {
     if (gcDestructor) gcDestructor(ptr);
-
-    // free the pointer w/ free :)
-    free(ptr);
     // remove the pointer from the heap
     heap.erase(heap.find(ptr));
+    // free the pointer w/ free :)
+    free(ptr);
   }
 
   // if (gcLogFile == NULL) {
@@ -294,7 +293,7 @@ extern "C" void fpvm_gc_init(fpvm_gc_callback_t c, fpvm_gc_callback_t d) {
   has been flipped by the application by comparing it to the sign
   of the value pointed to.
 
-  Unfortunately, this cannot be caught by the hardware.    
+  Unfortunately, this cannot be caught by the hardware.
 
  */
 
@@ -332,9 +331,9 @@ extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign
 
 
   if (!b.valid()) return 0;
-  
+
   void *ptr = b.get(sign);
-  
+
   if (is_tracked(ptr)) {
     return ptr;
   } else {
