@@ -277,8 +277,6 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 #define SHOW_CALL_STACK()
 
-#define MAX_CONTEXTS 1024
-
 // make this run-time configurable later
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
@@ -418,7 +416,7 @@ typedef union {
 } __attribute__((packed)) rflags_t;
 
 static int context_lock;
-static execution_context_t context[MAX_CONTEXTS];
+static execution_context_t context[CONFIG_MAX_CONTEXTS];
 
 // faster lookup of execution context
 __thread execution_context_t *__fpvm_current_execution_context=0;
@@ -493,7 +491,7 @@ static void unlock_contexts() {
 static execution_context_t * find_execution_context(int tid) {
   int i;
   lock_contexts();
-  for (i = 0; i < MAX_CONTEXTS; i++) {
+  for (i = 0; i < CONFIG_MAX_CONTEXTS; i++) {
     if (context[i].tid == tid) {
       unlock_contexts();
       return &context[i];
@@ -509,6 +507,11 @@ static inline execution_context_t *find_my_execution_context(void)
 }
 
 
+int fpvm_current_execution_context_is_in_init(void)
+{
+  return __fpvm_current_execution_context && __fpvm_current_execution_context->state==INIT;
+}
+
 static void dump_execution_contexts_info(void)
 {
   int i;
@@ -518,7 +521,7 @@ static void dump_execution_contexts_info(void)
   // and need to guarantee that we don't trap to ourselves
   mxcsr_disable_save(&m);
 
-  for (i = 0; i < MAX_CONTEXTS; i++) {
+  for (i = 0; i < CONFIG_MAX_CONTEXTS; i++) {
     if (context[i].tid) {
 #if CONFIG_INSTR_TRACES
       PRINT_TRACES(&context[i]);
@@ -583,7 +586,7 @@ void config_prev_trap(uint64_t x)
 static execution_context_t *alloc_execution_context(int tid) {
   int i;
   lock_contexts();
-  for (i = 0; i < MAX_CONTEXTS; i++) {
+  for (i = 0; i < CONFIG_MAX_CONTEXTS; i++) {
     if (!context[i].tid) {
       context[i].tid = tid;
       unlock_contexts();
@@ -608,7 +611,7 @@ static execution_context_t *alloc_execution_context(int tid) {
 static void free_execution_context(int tid) {
   int i;
   lock_contexts();
-  for (i = 0; i < MAX_CONTEXTS; i++) {
+  for (i = 0; i < CONFIG_MAX_CONTEXTS; i++) {
     if (context[i].tid == tid) {
       DEINIT_TRACER(&context[i]);
       context[i].tid = 0;
@@ -788,7 +791,7 @@ static inline void zero_fp_xmm_context(ucontext_t *uc)
 }
 
 
-static void abort_operation(char *reason) {
+void abort_operation(char *reason) {
   DEBUG("aborting due to %s inited=%d\n",reason,inited);
   if (!inited) {
     DEBUG("Initializing before aborting\n");
@@ -1390,6 +1393,14 @@ static int correctness_trap_handler(ucontext_t *uc)
 
 }
 
+void brk_trap_handler(ucontext_t *uc)
+{
+  if (correctness_trap_handler(uc)) {
+    abort_operation("correctness trap handler failed\n");
+    ASSERT(0);
+  }
+}
+
 // ENTRY point for SIGTRAP
 static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
 {
@@ -1398,10 +1409,7 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
   DEBUG("SIGTRAP signo 0x%x errno 0x%x code 0x%x rip %p\n", si->si_signo, si->si_errno, si->si_code,
       si->si_addr);
 
-  if (correctness_trap_handler(uc)) {
-    abort_operation("correctness trap handler failed\n");
-    ASSERT(0);
-  }
+  brk_trap_handler(uc);
 
   DEBUG("SIGTRAP done (mc->state=%d)\n",find_my_execution_context()->state);
 }
@@ -2164,7 +2172,7 @@ fail_do_trap:
 }
 
 
-static inline void fp_trap_handler(ucontext_t *uc)
+void fp_trap_handler(ucontext_t *uc)
 {
 #if CONFIG_USE_NVM
   return fp_trap_handler_nvm(uc);
