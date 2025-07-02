@@ -1,21 +1,25 @@
 # The Floating Point Virtual Machine
 
-Copyright (c) 2025 Prescience Lab. Please see LICENSE file.
-This is a tool for floating point trap and emulate processing on x64.
-This is a work in progress
+Copyright (c) 2021-2025 Peter Dinda and the Prescience Lab. Please see LICENSE file.
+This is a tool for floating point virtualization developed as part of the [Buoyancy Project](https://buoyancy-project.org/).
+
+For more information, see the following papers:
+
+- P. Dinda, N. Wanninger, J. Ma, A. Bernat, C. Bernat, S. Ghosh, C. Kraemer, Y. Elmasry, *FPVM: Towards a Floating Point Virtual Machine*, Proceedings of the 31st ACM Symposium on High-performance Parallel and Distributed Computing (HDPC 2022). June, 2022. [pdf](http://pdinda.org/Papers/hpdc22.pdf)
+
+- N. Wanninger, N. Dhiantravan, P. Dinda, *Virtualization So Light, It Floats! Accelerating Floating Point Virtualization*, Proceedings of the 34th ACM Symposium on High-performance Parallel and Distributed Computing (HDPC 2025). July, 2025. [pdf](http://pdinda.org/Papers/hpdc25.pdf)
 
 
 ---
 
 ## Configuring, Building and Testing
 
-First, we require you source the `ENV` file to build.
+First, we require you source the `ENV.ARCH` file to build.
 This will configure paths and whatnot to work with FPVM more efficiently.
-You can either run `source ENV` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
+You can either run `source ENV.ARCH` in your bash shell, or use [direnv](https://direnv.net/) to make your life simpler.
+FPVM started with a focus on the 64 bit x86 architecture ("x64"), but now also has some support for 64 bit ARM architecture and for a variant of the 64 bit RISC-V architecture that we have developed.  The following is primarily geared to x64.
 
-
-
-While FPVM doesn't depend on much, you must make sure you have them installed first.
+While FPVM doesn't depend on many packages, you must make sure you have them installed first.
 
 We've tested on Ubuntu 22.04 systems with the following packages:
 ```bash
@@ -45,11 +49,15 @@ make -j $(nproc)
 
 This will produce a `build/` folder with the results of FPVM.
 
+Note that you can configure FPVM in "HAVE_MAIN" mode, which
+creates a greatly simplified single executable that is only
+useful for those doing FPVM development.
+
 ## Running FPVM
 
 To run FPVM against a binary, you can use the `fpvm` tool to run your program.
-This program is located in `scripts/`, but you should make sure to source the `ENV` file before using it.
-`ENV` will add `scripts/` to your path.
+This program is located in `scripts/`, but you should make sure to source the `ENV.ARCH` file before using it.
+`ENV.ARCH` will add `scripts/` to your path.
 ```bash
 fpvm run ./a.out
 ```
@@ -62,17 +70,6 @@ Subsequent runs of the same (hash-identical) binary will be much faster, as the 
 **NOTE:** It's important that you always run `FPVM` through the above tool.
 Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
 
-
----
-
-## Compiling FPVM for ARM64
-
-FPVM is mainly an x86 project, but we are working on getting other architectures to work.
-By default, x86 is the target arch.
-This can be changed by compiling with the following command (assuming it is being built from an arm machine and not cross compiled):
-```
-make ARCH=arm64
-```
 
 --- 
 
