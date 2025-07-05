@@ -9,23 +9,23 @@
   rather to support traps, etc
  */
 
-typedef uint32_t fpvm_round_config_t;
+typedef uint32_t fpvm_arch_round_config_t;
 
 typedef enum {
-  FPVM_ROUND_NEAREST = 0,
-  FPVM_ROUND_NEGATIVE = 1,
-  FPVM_ROUND_POSITIVE = 2,
-  FPVM_ROUND_ZERO = 3,
-  FPVM_ROUND_NEAREST_MAXMAG = 4,
-  FPVM_ROUND_DYNAMIC = 5
-} fpvm_round_mode_t;
+  FPVM_ARCH_ROUND_NEAREST = 0,
+  FPVM_ARCH_ROUND_NEGATIVE = 1,
+  FPVM_ARCH_ROUND_POSITIVE = 2,
+  FPVM_ARCH_ROUND_ZERO = 3,
+  FPVM_ARCH_ROUND_NEAREST_MAXMAG = 4,
+  FPVM_ARCH_ROUND_DYNAMIC = 5
+} fpvm_arch_round_mode_t;
 
 typedef enum {
-  FPVM_ROUND_NO_DAZ_NO_FTZ = 0,
-  FPVM_ROUND_NO_DAZ_FTZ = 1,
-  FPVM_ROUND_DAZ_NO_FTZ = 2,
-  FPVM_ROUND_DAZ_FTZ = 3
-} fpvm_dazftz_mode_t;
+  FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ = 0,
+  FPVM_ARCH_ROUND_NO_DAZ_FTZ = 1,
+  FPVM_ARCH_ROUND_DAZ_NO_FTZ = 2,
+  FPVM_ARCH_ROUND_DAZ_FTZ = 3
+} fpvm_arch_dazftz_mode_t;
 
 
 // arch-specific structures and inline functions
@@ -105,22 +105,22 @@ void arch_unmask_fp_traps(ucontext_t *uc);
 
 // Implementation must allow us to get the FP rounding configuration from the
 // hardware. This is opaque
-fpvm_round_config_t arch_get_machine_round_config(void);
+fpvm_arch_round_config_t arch_get_machine_round_config(void);
 
 // Implementation must allow us to get/set the FP rounding configuration
 // of the ucontext.  This is opaque
-fpvm_round_config_t arch_get_round_config(ucontext_t *uc);
-void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config);
+fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc);
+void arch_set_round_config(ucontext_t *uc, fpvm_arch_round_config_t config);
 
 // Implementation must allow us to interogate the opaque rounding config
 // to get at the IEEE rounding mode.
-fpvm_round_mode_t arch_get_round_mode(fpvm_round_config_t config);
-void arch_set_round_mode(fpvm_round_config_t *config, fpvm_round_mode_t mode);
+fpvm_arch_round_mode_t arch_get_round_mode(fpvm_arch_round_config_t config);
+void arch_set_round_mode(fpvm_arch_round_config_t *config, fpvm_arch_round_mode_t mode);
 
 // Implementation must allow us to interogate the opaque rounding config
 // to get at the DAZ and FTZ features of the hardware, if they are supported
-fpvm_dazftz_mode_t arch_get_dazftz_mode(fpvm_round_config_t *config);
-void arch_set_dazftz_mode(fpvm_round_config_t *config, fpvm_dazftz_mode_t mode);
+fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config);
+void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode);
 
 // Implementation must allow us to get at the raw FP and FP CSRs of the ucontext
 // As well as the instruction pointer and stack pointer

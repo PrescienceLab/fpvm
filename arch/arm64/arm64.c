@@ -9,9 +9,8 @@
 #include <fenv.h>
 #include <string.h>
 
-#include "config.h"
-#include "fpvm_common.h"
-#include "arch.h"
+#include <fpvm/fpvm.h>
+#include <fpvm/arch.h>
 
 
 /*
@@ -440,13 +439,13 @@ void arch_unmask_fp_traps(ucontext_t *uc) {
 // FIZ = bit 0
 #define FPCR_ROUND_DAZ_FTZ_MASK ((0x1c00003))
 
-fpspy_round_config_t arch_get_machine_round_config(void) {
+fpvm_arch_round_config_t arch_get_machine_round_config(void) {
   uint64_t fpcr = get_fpcr_machine();
   uint32_t fpcr_round = fpcr & FPCR_ROUND_DAZ_FTZ_MASK;
   return fpcr_round;
 }
 
-fpspy_round_config_t arch_get_round_config(ucontext_t *uc) {
+fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc) {
   fpcr_t f;
 
   if (get_fpcr(uc, &f)) {
@@ -460,7 +459,7 @@ fpspy_round_config_t arch_get_round_config(ucontext_t *uc) {
   return fpcr_round;
 }
 
-void arch_set_round_config(ucontext_t *uc, fpspy_round_config_t config) {
+void arch_set_round_config(ucontext_t *uc, fpvm_arch_round_config_t config) {
   fpcr_t f;
 
   if (get_fpcr(uc, &f)) {
@@ -475,19 +474,19 @@ void arch_set_round_config(ucontext_t *uc, fpspy_round_config_t config) {
   arch_dump_fp_csr("arch_set_round_config", uc);
 }
 
-fpspy_round_mode_t arch_get_round_mode(fpspy_round_config_t config) {
+fpvm_arch_round_mode_t arch_get_round_mode(fpvm_arch_round_config_t config) {
   switch ((config >> 22) & 0x3) {
     case 0:
-      return FPSPY_ROUND_NEAREST;
+      return FPVM_ARCH_ROUND_NEAREST;
       break;
     case 1:
-      return FPSPY_ROUND_POSITIVE;
+      return FPVM_ARCH_ROUND_POSITIVE;
       break;
     case 2:
-      return FPSPY_ROUND_NEGATIVE;
+      return FPVM_ARCH_ROUND_NEGATIVE;
       break;
     case 3:
-      return FPSPY_ROUND_ZERO;
+      return FPVM_ARCH_ROUND_ZERO;
       break;
     default:
       return -1;
@@ -495,19 +494,19 @@ fpspy_round_mode_t arch_get_round_mode(fpspy_round_config_t config) {
   }
 }
 
-void arch_set_round_mode(fpspy_round_config_t *config, fpspy_round_mode_t mode) {
+void arch_set_round_mode(fpvm_arch_round_config_t *config, fpvm_arch_round_mode_t mode) {
   *config &= (~0xc00000);
   switch (mode) {
-    case FPSPY_ROUND_NEAREST:
+    case FPVM_ARCH_ROUND_NEAREST:
       *config |= 0x0;  // zero
       break;
-    case FPSPY_ROUND_POSITIVE:
+    case FPVM_ARCH_ROUND_POSITIVE:
       *config |= 0x400000;  // one
       break;
-    case FPSPY_ROUND_NEGATIVE:
+    case FPVM_ARCH_ROUND_NEGATIVE:
       *config |= 0x800000;  // two
       break;
-    case FPSPY_ROUND_ZERO:
+    case FPVM_ARCH_ROUND_ZERO:
       *config |= 0xc00000;  // three
       break;
     default:
@@ -516,7 +515,7 @@ void arch_set_round_mode(fpspy_round_config_t *config, fpspy_round_mode_t mode) 
   }
 }
 
-fpspy_dazftz_mode_t arch_get_dazftz_mode(fpspy_round_config_t *config) {
+fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config) {
   int daz = 0;
   int ftz = 0;
 
@@ -547,22 +546,22 @@ fpspy_dazftz_mode_t arch_get_dazftz_mode(fpspy_round_config_t *config) {
   return daz * 2 + ftz;
 }
 
-void arch_set_dazftz_mode(fpspy_round_config_t *config, fpspy_dazftz_mode_t mode) {
+void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode) {
   *config &= ~0x1000003;
   switch (mode) {
-    case FPSPY_ROUND_NO_DAZ_NO_FTZ:
+    case FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ:
       // fiz=0, ah=0, fz= 0
       // do nothing
       break;
-    case FPSPY_ROUND_NO_DAZ_FTZ:
+    case FPVM_ARCH_ROUND_NO_DAZ_FTZ:
       // fiz=0, ah=1, fz= 1
       *config |= 0x1000002;
       break;
-    case FPSPY_ROUND_DAZ_NO_FTZ:
+    case FPVM_ARCH_ROUND_DAZ_NO_FTZ:
       // fiz=1, ah=1, fz= 0
       *config |= 0x0000003;
       break;
-    case FPSPY_ROUND_DAZ_FTZ:
+    case FPVM_ARCH_ROUND_DAZ_FTZ:
       // fiz=1, ah=0, fz= 1
       *config |= 0x1000001;
       break;

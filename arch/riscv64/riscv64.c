@@ -412,13 +412,13 @@ void arch_unmask_fp_traps(ucontext_t *uc) {
 
 #define FCSR_ROUND_MASK (0x70UL)
 
-fpvm_round_config_t arch_get_machine_round_config(void) {
+fpvm_arch_round_config_t arch_get_machine_round_config(void) {
   uint32_t fcsr = riscv_get_fcsr();
   uint32_t fcsr_round = fcsr & FCSR_ROUND_MASK;
   return fcsr_round;
 }
 
-fpvm_round_config_t arch_get_round_config(ucontext_t *uc) {
+fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc) {
   arch_fp_csr_t f;
 
   if (get_fpcsr(uc, &f)) {
@@ -432,7 +432,7 @@ fpvm_round_config_t arch_get_round_config(ucontext_t *uc) {
   return fpcr_round;
 }
 
-void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config) {
+void arch_set_round_config(ucontext_t *uc, fpvm_arch_round_config_t config) {
   arch_fp_csr_t f;
 
   if (get_fpcsr(uc, &f)) {
@@ -451,25 +451,25 @@ void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config) {
   arch_dump_fp_csr("arch_set_round_config", uc);
 }
 
-fpvm_round_mode_t arch_get_round_mode(fpvm_round_config_t config) {
+fpvm_arch_round_mode_t arch_get_round_mode(fpvm_arch_round_config_t config) {
   switch ((config >> 5) & 0x7) {
     case 0:
-      return FPVM_ROUND_NEAREST;
+      return FPVM_ARCH_ROUND_NEAREST;
       break;
     case 1:
-      return FPVM_ROUND_ZERO;
+      return FPVM_ARCH_ROUND_ZERO;
       break;
     case 2:
-      return FPVM_ROUND_NEGATIVE;
+      return FPVM_ARCH_ROUND_NEGATIVE;
       break;
     case 3:
-      return FPVM_ROUND_POSITIVE;
+      return FPVM_ARCH_ROUND_POSITIVE;
       break;
     case 4:
-      return FPVM_ROUND_NEAREST_MAXMAG;
+      return FPVM_ARCH_ROUND_NEAREST_MAXMAG;
       break;
     case 7:
-      return FPVM_ROUND_DYNAMIC;
+      return FPVM_ARCH_ROUND_DYNAMIC;
       break;
     default:
       return -1;
@@ -477,37 +477,37 @@ fpvm_round_mode_t arch_get_round_mode(fpvm_round_config_t config) {
   }
 }
 
-void arch_set_round_mode(fpvm_round_config_t *config, fpvm_round_mode_t mode) {
+void arch_set_round_mode(fpvm_arch_round_config_t *config, fpvm_arch_round_mode_t mode) {
   *config &= (~0x70);
   switch (mode) {
-    case FPVM_ROUND_NEAREST:
+    case FPVM_ARCH_ROUND_NEAREST:
       *config |= 0x00;  // zero
       break;
-    case FPVM_ROUND_ZERO:
+    case FPVM_ARCH_ROUND_ZERO:
       *config |= 0x20;  // one
       break;
-    case FPVM_ROUND_NEGATIVE:
+    case FPVM_ARCH_ROUND_NEGATIVE:
       *config |= 0x40;  // two
       break;
-    case FPVM_ROUND_POSITIVE:
+    case FPVM_ARCH_ROUND_POSITIVE:
       *config |= 0x60;  // three
       break;
-    case FPVM_ROUND_NEAREST_MAXMAG:
+    case FPVM_ARCH_ROUND_NEAREST_MAXMAG:
       *config |= 0x80;  // four
       break;
-    case FPVM_ROUND_DYNAMIC:
+    case FPVM_ARCH_ROUND_DYNAMIC:
       *config |= 0xe0;  // seven
   }
 }
 
 
-fpvm_dazftz_mode_t arch_get_dazftz_mode(fpvm_round_config_t *config) {
+fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config) {
   // not supported
-  return FPVM_ROUND_NO_DAZ_NO_FTZ;
+  return FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ;
 }
 
-void arch_set_dazftz_mode(fpvm_round_config_t *config, fpvm_dazftz_mode_t mode) {
-  if (mode != FPVM_ROUND_NO_DAZ_NO_FTZ) {
+void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode) {
+  if (mode != FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ) {
     ERROR("risc-v does not support DAZ or FTZ behavior! (asking for mode %d)\n", mode);
   }
 }
