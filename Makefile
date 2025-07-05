@@ -117,11 +117,11 @@ $(BUILD)/%.cpp.o: %.cpp
 	$(call quiet-cmd,CXX,$@)
 	$(Q)$(CXX) $(CXXFLAGS) -fPIC -shared -c $< -o $@
 
-$(TARGET): $(BUILD) $(OBJS)
+$(BUILD)/fpvm.so: $(BUILD) $(OBJS)
 	$(call quiet-cmd,LD,$@)
 	$(Q)cp .config $(BUILD)/.config
 	$(Q)cp include/fpvm/config.h $(BUILD)/config.h
-	$(Q)$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
+	$(Q)$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(BUILD)/fpvm.so -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS)
 	$(call quiet-cmd,LD,$@)
