@@ -661,7 +661,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
 
   DEBUG("FPE exceptions %s\n", buf);
 
-  fp_trap_handler(si, uc);
+  fp_trap_handler(uc);
 
   /* XXX: We assume D extension here! */
   /* Restore the FCSR's FP event bits. */
@@ -706,7 +706,7 @@ static uintptr_t ppe_estep_handler(void *real_gregs, uintptr_t epc) {
 
   int skip_estep = fpvm_current_execution_context_is_in_init();
 
-  brk_trap_handler(si, &fake_ucontext);
+  brk_trap_handler(&fake_ucontext);
 
   /* Restore the FCSR's FP event bits. */
   riscv_set_fcsr(fake_ucontext.uc_mcontext.__fpregs.__d.__fcsr);
