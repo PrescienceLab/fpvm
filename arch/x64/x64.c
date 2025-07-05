@@ -186,13 +186,13 @@ void arch_unmask_fp_traps(ucontext_t *uc) { uc->uc_mcontext.fpregs->mxcsr &= ~MX
 
 #define MXCSR_ROUND_DAZ_FTZ_MASK 0xe040UL
 
-fpvm_round_config_t arch_get_machine_round_config(void) {
+fpvm_arch_round_config_t arch_get_machine_round_config(void) {
   uint32_t mxcsr = get_mxcsr();
   uint32_t mxcsr_round = mxcsr & MXCSR_ROUND_DAZ_FTZ_MASK;
   return mxcsr_round;
 }
 
-fpvm_round_config_t arch_get_round_config(ucontext_t *uc) {
+fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc) {
   uint32_t mxcsr = uc->uc_mcontext.fpregs->mxcsr;
   uint32_t mxcsr_round = mxcsr & MXCSR_ROUND_DAZ_FTZ_MASK;
   DEBUG("mxcsr (0x%08x) round faz dtz at 0x%08x\n", mxcsr, mxcsr_round);
@@ -200,7 +200,7 @@ fpvm_round_config_t arch_get_round_config(ucontext_t *uc) {
   return mxcsr_round;
 }
 
-void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config) {
+void arch_set_round_config(ucontext_t *uc, fpvm_arch_round_config_t config) {
   uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_ROUND_DAZ_FTZ_MASK;
   uc->uc_mcontext.fpregs->mxcsr |= config;
   DEBUG("mxcsr masked to 0x%08x after round daz ftz update (0x%08x)\n",
@@ -208,45 +208,45 @@ void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config) {
   arch_dump_fp_csr("arch_set_round_config", uc);
 }
 
-fpvm_round_mode_t arch_get_round_mode(fpvm_round_config_t config) { return (config >> 13) & 0x3; }
+fpvm_arch_round_mode_t arch_get_round_mode(fpvm_arch_round_config_t config) { return (config >> 13) & 0x3; }
 
-void arch_set_round_mode(fpvm_round_config_t *config, fpvm_round_mode_t mode) {
+void arch_set_round_mode(fpvm_arch_round_config_t *config, fpvm_arch_round_mode_t mode) {
   *config &= (~0x6000);
   *config |= (mode & 0x3) << 13;
 }
 
-fpvm_dazftz_mode_t arch_get_dazftz_mode(fpvm_round_config_t *config) {
+fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config) {
   switch (*config & 0x8040) {
     case 0x8040:
-      return FPVM_ROUND_DAZ_FTZ;
+      return FPVM_ARCH_ROUND_DAZ_FTZ;
       break;
     case 0x8000:
-      return FPVM_ROUND_NO_DAZ_FTZ;
+      return FPVM_ARCH_ROUND_NO_DAZ_FTZ;
       break;
     case 0x0040:
-      return FPVM_ROUND_DAZ_NO_FTZ;
+      return FPVM_ARCH_ROUND_DAZ_NO_FTZ;
       break;
     case 0x0000:
     default:
-      return FPVM_ROUND_NO_DAZ_NO_FTZ;
+      return FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ;
       break;
   }
 }
 
-void arch_set_dazftz_mode(fpvm_round_config_t *config, fpvm_dazftz_mode_t mode) {
+void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode) {
   *config &= ~0x8040;
   mode &= 0x3;
   switch (mode) {
-    case FPVM_ROUND_DAZ_FTZ:
+    case FPVM_ARCH_ROUND_DAZ_FTZ:
       *config |= 0x8040;
       break;
-    case FPVM_ROUND_NO_DAZ_FTZ:
+    case FPVM_ARCH_ROUND_NO_DAZ_FTZ:
       *config |= 0x8000;
       break;
-    case FPVM_ROUND_DAZ_NO_FTZ:
+    case FPVM_ARCH_ROUND_DAZ_NO_FTZ:
       *config |= 0x0040;
       break;
-    case FPVM_ROUND_NO_DAZ_NO_FTZ:
+    case FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ:
     default:
       // leave at 0x0000
       break;

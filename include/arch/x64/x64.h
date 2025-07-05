@@ -93,16 +93,16 @@ void arch_clear_fp_exceptions(ucontext_t *uc);
 void arch_mask_fp_traps(ucontext_t *uc);
 void arch_unmask_fp_traps(ucontext_t *uc);
 
-fpvm_round_config_t arch_get_machine_round_config(void);
+fpvm_arch_round_config_t arch_get_machine_round_config(void);
 
-fpvm_round_config_t arch_get_round_config(ucontext_t *uc);
-void arch_set_round_config(ucontext_t *uc, fpvm_round_config_t config);
+fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc);
+void arch_set_round_config(ucontext_t *uc, fpvm_arch_round_config_t config);
 
-fpvm_round_mode_t arch_get_round_mode(fpvm_round_config_t config);
-void arch_set_round_mode(fpvm_round_config_t *config, fpvm_round_mode_t mode);
+fpvm_arch_round_mode_t arch_get_round_mode(fpvm_arch_round_config_t config);
+void arch_set_round_mode(fpvm_arch_round_config_t *config, fpvm_arch_round_mode_t mode);
 
-fpvm_dazftz_mode_t arch_get_dazftz_mode(fpvm_round_config_t *config);
-void arch_set_dazftz_mode(fpvm_round_config_t *config, fpvm_dazftz_mode_t mode);
+fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config);
+void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode);
 
 
 uint64_t arch_get_fp_csr(const ucontext_t *uc);
