@@ -2215,8 +2215,11 @@ void fpvm_short_circuit_handler(void *priv)
     fake_siginfo.si_code = FPE_FLTUND;
   } else if (err & 0x020) { /* Precision */
     fake_siginfo.si_code = FPE_FLTRES;
+  } else {
+    // quell warning
+    fake_siginfo.si_code = -1;
   }
-
+  
   siginfo_t * si = (siginfo_t *)&fake_siginfo;
 
   #ifdef __x86_64__
@@ -2234,9 +2237,9 @@ void fpvm_short_circuit_handler(void *priv)
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
   DEBUG(
-	"SCFPE signo 0x%x errno 0x%x code 0x%x rip %p %02x %02x %02x %02x %02x "
+	"SCFPE code 0x%x rip %p %02x %02x %02x %02x %02x "
 	"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-	si->si_signo, si->si_errno, si->si_code, si->si_addr, rip[0], rip[1], rip[2], rip[3], rip[4],
+	si->si_code, rip, rip[0], rip[1], rip[2], rip[3], rip[4],
 	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
   DEBUG("SCFPE RIP=%p RSP=%p\n", rip, MCTX_SP(&uc->uc_mcontext));
 
