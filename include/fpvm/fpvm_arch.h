@@ -12,8 +12,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 
-void fp_trap_handler(siginfo_t *si, ucontext_t *uc);
-void brk_trap_handler(siginfo_t *si, ucontext_t *uc);
+void fp_trap_handler(ucontext_t *uc);
+void brk_trap_handler(ucontext_t *uc);
 void abort_operation(char *reason);
 
 // returns true if we are in the INIT state
