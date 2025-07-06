@@ -13,7 +13,13 @@
 #include <fpvm/fpvm_common.h>
 #include <fpvm/vm.h>
 
+// this macro is used in the fpvm arch independence layer
+// and also in capstone - we don't need the arch independence layer version here
+#undef arm64
+
 #include <capstone/capstone.h>
+
+
 
 static csh handle;
 

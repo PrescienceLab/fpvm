@@ -6,7 +6,9 @@
 #ifndef _FPVM_COMMON_
 #define _FPVM_COMMON_
 
-#include "config.h"
+#include <fpvm/fpvm.h>
+#include <fpvm/arch.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/syscall.h>
@@ -189,11 +191,7 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 // Generated from script and reduced to that accepted by ubuntu 22 default compiler
 //#define NO_TOUCH_FLOAT __attribute__((target ("no-3dnow,no-3dnowa,no-abm,no-adx,no-aes,no-avx,no-avx2,no-avx5124fmaps,no-avx5124vnniw,no-avx512bitalg,no-avx512bw,no-avx512cd,no-avx512dq,no-avx512er,no-avx512f,no-avx512ifma,no-avx512pf,no-avx512vbmi,no-avx512vbmi2,no-avx512vl,no-avx512vnni,no-avx512vpopcntdq,no-bmi,no-bmi2,no-cldemote,no-clflushopt,no-clwb,no-clzero,no-crc32,no-cx16,no-f16c,no-fma,no-fma4,no-fsgsbase,no-fxsr,no-gfni,no-hle,no-lwp,no-lzcnt,no-mmx,no-movbe,no-movdir64b,no-movdiri,no-mwait,no-mwaitx,no-pclmul,no-pconfig,no-pku,no-popcnt,no-prefetchwt1,no-prfchw,no-ptwrite,no-rdpid,no-rdrnd,no-rdseed,no-rtm,no-sahf,no-sgx,no-sha,no-shstk,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3,no-tbm,no-vaes,no-vpclmulqdq,no-waitpkg,no-wbnoinvd,no-xop,no-xsave,no-xsavec,no-xsaveopt,no-xsaves,no-amx-tile,no-amx-int8,no-amx-bf16,no-uintr,no-hreset,no-kl,no-widekl,no-avxvnni,no-cld,no-fancy-math-387,no-ieee-fp,no-inline-all-stringops,no-inline-stringops-dynamically,no-align-stringops,no-recip")))
 
-static inline uint64_t NO_TOUCH_FLOAT __attribute__((always_inline)) rdtsc(void) {
-  uint32_t lo, hi;
-  __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi));
-  return lo | ((uint64_t)(hi) << 32);
-}
+
 
 
 #define DIVU(x,y) ((y)==0 ? 0 : (x)/(y))
