@@ -10,17 +10,22 @@
 
 #include <ucontext.h>
 
-#include <capstone/capstone.h>
 
+#include <fpvm/fpvm.h>
+#include <fpvm/arch.h>
 #include <fpvm/decoder.h>
 #include <fpvm/emulator.h>
-#include <fpvm/fpvm_common.h>
 
 #include <fpvm/fp_ops.h>
 #include <fpvm/number_system.h>
 #include <fpvm/nan_boxing.h>
 #include <fpvm/gc.h>
 
+// capstone itself uses arm64, hence this horrible hack
+#ifdef arm64
+#undef arm64
+#endif
+#include <capstone/capstone.h>
 
 #define IS_OUR_NAN(x) fpvm_gc_is_tracked_nan_from_uint(x)
 
