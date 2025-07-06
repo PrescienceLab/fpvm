@@ -58,7 +58,7 @@ typedef union {
 typedef rflags_t arch_gp_csr_t;
 
 
-static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void) {
+static inline uint64_t __attribute__((always_inline)) __attribute__((target ("general-regs-only"))) arch_cycle_count(void) {
   uint32_t lo, hi;
   asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
   return lo | ((uint64_t)(hi) << 32);
@@ -118,5 +118,21 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+// special support
+int arch_kernel_short_circuiting_init(void);
+void arch_kernel_short_circuiting_deinit(void);
+
+#include <signal.h>
+#include <sys/syscall.h>
+#ifndef gettid
+#define gettid() syscall(SYS_gettid)
+#endif
+
+static inline void __attribute__((always_inline)) arch_kernel_short_circuiting_kick_self()
+{
+    kill(gettid(),SIGTRAP);
+}
+#endif
 
 #endif

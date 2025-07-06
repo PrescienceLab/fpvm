@@ -7,10 +7,17 @@
 #include <ucontext.h>
 #include <fenv.h>
 #include <string.h>
+#include <fcntl.h>
 
 #include <fpvm/fpvm.h>
 #include <fpvm/arch.h>
+#include <fpvm/fpvm_arch.h>
 
+// support for kernel module
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+#include <sys/ioctl.h>
+#include <fpvm/fpvm_ioctl.h>
+#endif
 
 
 static int mxcsrmask_base = 0x3f;  // which sse exceptions to handle, default all (using base zero)
@@ -73,13 +80,15 @@ void arch_reset_trap_mask(int which) {
 #define MXCSR_OURS 0x1f80
 
 
-static uint32_t get_mxcsr() {
+static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
   uint32_t val = 0;
   __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
   return val;
 }
 
-static void set_mxcsr(uint32_t val) { __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory"); }
+static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
+    __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
+}
 
 void arch_get_machine_fp_csr(arch_fp_csr_t *f) { f->val = get_mxcsr(); }
 
@@ -288,3 +297,176 @@ int arch_thread_init(ucontext_t *uc) {
 }
 
 void arch_thread_deinit(void) { DEBUG("x64 thread deinit\n"); }
+
+
+static uint64_t NO_TOUCH_FLOAT get_xmm0() {
+  uint64_t val = 0;
+  #ifdef __x86_64__
+  // TODO: move to a central "machine state save/restore" function
+  __asm__ __volatile__("movq %%xmm0, %0" : "=r"(val) : : "memory");
+  #endif
+  return val;
+}
+
+
+
+static void mxcsr_disable_save(uint32_t* old) {
+  uint32_t tmp = get_mxcsr();
+  *old = tmp;
+  tmp |= MXCSR_MASK_MASK;
+  set_mxcsr(tmp);
+}
+
+static void mxcsr_restore(uint32_t old) {
+  set_mxcsr(old);
+}
+
+static inline void NO_TOUCH_FLOAT fxsave(fpvm_fpstate_t *fpvm_fpregs)
+{
+  #ifdef __x86_64__
+  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
+  #endif
+}
+
+static inline void NO_TOUCH_FLOAT fxrstor(const fpvm_fpstate_t *fpvm_fpregs)
+{
+  #ifdef __x86_64__
+  __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
+  #endif
+}
+
+
+//
+// Entry point for FP Trap for trap short circuiting (kernel module)
+// is used
+//
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+void fpvm_short_circuit_handler(void *priv)
+{
+  // Build up a sufficiently detailed ucontext_t and
+  // call the shared handler.  Copy in/out the FP and GP
+  // state
+
+  siginfo_t fake_siginfo;
+  fpvm_fpstate_t fpvm_fpregs;
+  ucontext_t fake_ucontext;
+  uint32_t old;
+
+  // capture FP state (note that this eventually needs to do xsave)
+  fxsave(&fpvm_fpregs);
+
+  // disable FP traps during our handler execution
+  mxcsr_disable_save(&old);
+
+
+  uint32_t err = ~(old >> 7) & old;
+  if (err & 0x001) {	/* Invalid op*/
+    fake_siginfo.si_code = FPE_FLTINV;
+  } else if (err & 0x004) { /* Divide by Zero */
+    fake_siginfo.si_code = FPE_FLTDIV;
+  } else if (err & 0x008) { /* Overflow */
+    fake_siginfo.si_code = FPE_FLTOVF;
+  } else if (err & 0x012) { /* Denormal, Underflow */
+    fake_siginfo.si_code = FPE_FLTUND;
+  } else if (err & 0x020) { /* Precision */
+    fake_siginfo.si_code = FPE_FLTRES;
+  } else {
+    // quell warning
+    fake_siginfo.si_code = -1;
+  }
+
+  siginfo_t * si = (siginfo_t *)&fake_siginfo;
+
+  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
+
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
+  }
+
+  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+
+  uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
+
+  DEBUG(
+	"SCFPE code 0x%x rip %p %02x %02x %02x %02x %02x "
+	"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
+	si->si_code, rip, rip[0], rip[1], rip[2], rip[3], rip[4],
+	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
+  DEBUG("SCFPE RIP=%p RSP=%p\n", rip, MCTX_SP(&uc->uc_mcontext));
+
+#if DEBUG_OUTPUT
+  char buf[80];
+#define CASE(X)      \
+  case X:            \
+    strcpy(buf, #X); \
+    break;
+  switch (si->si_code) {
+    CASE(FPE_FLTDIV);
+    CASE(FPE_FLTINV);
+    CASE(FPE_FLTOVF);
+    CASE(FPE_FLTUND);
+    CASE(FPE_FLTRES);
+    CASE(FPE_FLTSUB);
+    CASE(FPE_INTDIV);
+    CASE(FPE_INTOVF);
+  default:
+    sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
+    break;
+  }
+  DEBUG("FPE exceptions: %s\n", buf);
+#endif
+
+  fp_trap_handler(uc);
+
+  DEBUG("SCFPE  done\n");
+
+  // restore GP state
+  // consider memcpy
+  for (int i = 0; i < 18; i++) {
+    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
+  }
+
+  // restore FP state (note that this eventually needs to do xsave)
+  // note that this is also doing the mxcsr restore for however
+  // fp_trap_handler modified it
+  fxrstor(&fpvm_fpregs);
+
+  return;
+}
+
+// trampoline entry stub - from the assembly code
+extern void * _user_fpvm_entry;
+
+static int kernel_short_circuit_fd = -1;
+
+int arch_kernel_short_circuiting_init(void)
+{
+    kernel_short_circuit_fd = open("/dev/fpvm_dev", O_RDWR);
+
+    if (kernel_short_circuit_fd < 0) {
+	ERROR("failed to open FPVM kernel support (/dev/fpvm_dev)\n");
+	return -1;
+    } else {
+	if (ioctl(kernel_short_circuit_fd, FPVM_IOCTL_REG, &_user_fpvm_entry)) {
+	    ERROR("failed to ioctl FPVM kernel support (/dev/fpvm_dev)\n");
+	    close(kernel_short_circuit_fd);
+	    return -1;
+	} else {
+	    DEBUG(":) FPVM kerenl support setup successful\n");
+	    return 0;
+	}
+    }
+}
+
+void arch_kernel_short_circuiting_deinit(void)
+{
+    if (kernel_short_circuit_fd>0) {
+	DEBUG("unregistering from FPVM kernel support (/dev/fpvm_dev)\n");
+	close(kernel_short_circuit_fd);
+    } else {
+	DEBUG("skipping unregistering from FPVM kernel support (/dev/fpvm_dev) since fd=%d\n",kernel_short_circuit_fd);
+    }
+}
+
+#endif
