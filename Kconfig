@@ -101,15 +101,15 @@ config PERF_STATS_PERIOD
 	0 means that reports are generated only at thread end / process end
 
 
-config KERNEL_SHORT_CIRCUITING
-    bool "Kernel short-circuiting"
-    depends on ARCH_RISCV64
+config TRAP_SHORT_CIRCUITING
+    bool "Trap short-circuiting (hardware support)"
+    depends on  RISCV_TRAP_PIPELINED_EXCEPTIONS && RISCV_USE_ESTEP
     default n
     help
        Use user-level trap handling if possible
 
-config TRAP_SHORT_CIRCUITING
-    bool "Trap short-circuiting (kernel support)"
+config KERNEL_SHORT_CIRCUITING
+    bool "Kernel short-circuiting (kernel support)"
     depends on ARCH_X64
     default y
     help

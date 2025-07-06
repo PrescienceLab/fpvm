@@ -71,7 +71,7 @@ Subsequent runs of the same (hash-identical) binary will be much faster, as the 
 Using FPVM.so directly will likely result in incorrect output due to wrapped functions and whatnot.
 
 
---- 
+---
 
 # Misc Information
 
@@ -94,13 +94,16 @@ The following environment variables configure FPVM:
 FPVM_AGGRESSIVE=y|n
     Aggressive interposition (you almost always want this)
 
-FPVM_KERNEL=y|n
-    Use kernel support if it is available (FPVM kernel module)
+FPVM_TRAP_SC=y|n
+    Trap short-circuiting - bypass kernel on traps if hardware support available (RAFT-V PPE)
+
+FPVM_KERNEL_SC=y|n
+    Kernel short-circuiting - bypass signal delivery if kernel support is available (FPVM kernel module)
 
 FPVM_DISABLE_PTHREADS=y|n
     Turn off pthread support (do not attempt to interpose on pthreads)
     You will want to set this if there is a link failure involving pthreads
-    
+
 FPVM_EXCEPT_LIST=inv;den;div;over;under;prec
     Exceptions that will invoke FPVM
     You almost certainly do not want to set this variable so that
