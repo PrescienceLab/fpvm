@@ -117,33 +117,12 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
-extern void trap_entry(void);
+#if CONFIG_TRAP_SHORT_CIRCUITING
+int  arch_trap_short_circuiting_init(void);
+void arch_trap_short_circuiting_deint(void);
 
-struct delegate_config_t {
-  unsigned int en_flag;
-  unsigned long trap_mask;
-};
-
-#if CONFIG_RISCV_TRAP_PIPELINED_EXCEPTIONS
-#include <fcntl.h>
-#include "riscv64.h"
-#include <sys/ioctl.h>
-#define PIPELINED_DELEGATE_HELLO_WORLD 0x4630
-#define PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
-#define PIPELINED_DELEGATE_DELEGATE_TRAPS 0x80084632
-#define PIPELINED_DELEGATE_CSR_STATUS 0x4633
-#define PIPELINED_DELEGATE_FILE "/dev/pipelined-delegate"
-
-void init_pipelined_exceptions(void);
-
-#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT)
-
-#if CONFIG_RISCV_USE_ESTEP
-#undef PPE_TRAP_MASK
-#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT) | (1 << EXC_INSTRUCTION_STEP)
-#else
-#endif
-
-#endif
-
+static inline void __attribute__((always_inline)) arch_trap_short_circuiting_kick_self(void) {
+    // estep instruction
+    __asm__ __volatile__(".insn 0x00300073\n\t") };
+}
 #endif
