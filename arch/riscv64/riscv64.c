@@ -308,6 +308,15 @@ void arch_dump_fp_csr(const char *pre, const ucontext_t *uc) {
 }
 
 
+extern void trap_entry(void);
+
+struct delegate_config_t {
+  unsigned int en_flag;
+  unsigned long trap_mask;
+};
+
+
+
 #if CONFIG_RISCV_USE_ESTEP
 // When using PPE, we can place a new "estep" instruction
 // which will cause a trap that is delivered via PPE
@@ -552,22 +561,75 @@ uint64_t arch_get_fp_csr(const ucontext_t *uc) {
 //
 #if CONFIG_RISCV_TRAP_PIPELINED_EXCEPTIONS
 
-void init_pipelined_exceptions(void) {
-  int fd = open(PIPELINED_DELEGATE_FILE, O_RDWR);
+#include <fcntl.h>
+#include "riscv64.h"
+#include <sys/ioctl.h>
+
+#define PIPELINED_DELEGATE_HELLO_WORLD 0x4630
+#define PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
+#define PIPELINED_DELEGATE_DELEGATE_TRAPS 0x80084632
+#define PIPELINED_DELEGATE_CSR_STATUS 0x4633
+#define PIPELINED_DELEGATE_FILE "/dev/pipelined-delegate"
+
+#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT)
+
+#if CONFIG_RISCV_USE_ESTEP
+#undef PPE_TRAP_MASK
+#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT) | (1 << EXC_INSTRUCTION_STEP)
+#else
+#endif
+
+#endif
+
+static int ppe_fd=-1;
+
+static int init_pipelined_exceptions(void) {
+  ppe_fd = open(PIPELINED_DELEGATE_FILE, O_RDWR);
+
+  if (ppe_fd<0) {
+      ERROR("cannot open %s\n",PIPELINED_DELEGATE_FILE);
+      return -1;
+  }
+
   struct delegate_config_t config = {
       .en_flag = 1,
       .trap_mask = PPE_TRAP_MASK,
   };
 
-  DEBUG("Installing %s (0x%016lx) as pipelined delegation handler\n", "trap_entry",
+  DEBUG("Installing %s (0x%016lx) as PPE handler\n", "trap_entry",
       (uintptr_t)trap_entry);
 
-  ioctl(fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry);
-  ioctl(fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &config);
+  if (ioctl(fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
+      ERROR("cannot install handler target for PPE\n");
+      close(ppe_fd);
+      ppe_fd=-1;
+      return -1;
+  }
+  if (ioctl(fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
+      ERROR("cannot delegate traps for PPE\n");
+      close(ppe_fd);
+      ppe_fd=-1;
+      return -1;
+  }
+
   /* NOTE: You must leave the pipelined delegation character device open for the
    * ENTIRE lifetime of the process. Closing the character device resets the
    * core's delegation registers to a default state! */
+
+  return 0;
 }
+
+static void deinit_pipelined_exceptions(void)
+{
+    if (ppe_fd>0) {
+	DEBUG("terminating PPE handling\n");
+	close(ppe_fd);
+    } else {
+	DEBUG("skipping request to terminate PPE handling as it is not running\n");
+    }
+}
+
+
 
 // note that unlike FPVM, the handler WILL NOT and MUST NOT
 // change any state except for possibly changing
@@ -796,6 +858,7 @@ int arch_process_init(void) {
   // TODO: Actually figure out the FP extension in-use
   what_fp = HAVE_D_FP;
   return make_my_exec_regions_writeable();
+
 }
 
 void arch_process_deinit(void) { DEBUG("riscv64 process deinit\n"); }
@@ -806,3 +869,13 @@ int arch_thread_init(ucontext_t *uc) {
 }
 
 void arch_thread_deinit(void) { DEBUG("riscv64 thread deinit\n"); }
+
+
+int  arch_trap_short_circuiting_init(void)
+{
+    return init_pipelined_exceptions();
+}
+void arch_trap_short_circuiting_deinit(void)
+{
+    deinit_pipelined_exceptions();
+}
