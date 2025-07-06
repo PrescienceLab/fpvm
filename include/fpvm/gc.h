@@ -9,13 +9,13 @@ extern "C" {
 #include <stdint.h>
 
 #include <fpvm/fpvm_common.h>
-  
+
 typedef void (*fpvm_gc_callback_t)(void *);
 
 // call with the constructor for your number system
-void fpvm_gc_init(fpvm_gc_callback_t constructor, fpvm_gc_callback_t destructor);
+int   fpvm_gc_init(fpvm_gc_callback_t constructor, fpvm_gc_callback_t destructor);
 void *fpvm_gc_alloc(size_t sz);
-  
+
 // run a round of garbage collection, returning how many items were freed
 unsigned fpvm_gc_run(void);
 

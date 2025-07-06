@@ -274,9 +274,10 @@ extern "C" void *fpvm_gc_alloc(size_t sz) {
   return ptr;
 }
 
-extern "C" void fpvm_gc_init(fpvm_gc_callback_t c, fpvm_gc_callback_t d) {
+extern "C" int fpvm_gc_init(fpvm_gc_callback_t c, fpvm_gc_callback_t d) {
   gcConstructor = c;
   gcDestructor = d;
+  return 0;
 }
 
 /*
