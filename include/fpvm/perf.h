@@ -6,11 +6,12 @@
 #include <stdint.h>
 #include <math.h>
 
-#include <fpvm/fpvm_common.h>
+#include <fpvm/fpvm.h>
+#include <fpvm/arch.h>
 
 typedef struct perf_stat {
   char *name;
-  uint64_t start;  // last starting rdtsc
+  uint64_t start;  // last starting cyclecount
   uint64_t n;
   uint64_t sum;
   uint64_t sum2;
@@ -28,11 +29,11 @@ static inline void perf_stat_init(perf_stat_t *p, char *name) {
 // to measure anywhere
 
 static inline void NO_TOUCH_FLOAT perf_stat_start(perf_stat_t *p) {
-  p->start = rdtsc();
+  p->start = arch_cycle_count();
 }
 
 static inline void NO_TOUCH_FLOAT perf_stat_end(perf_stat_t *p) {
-  uint64_t end = rdtsc();
+  uint64_t end = arch_cycle_count();
   uint64_t dur = end - p->start;
 
   p->n++;

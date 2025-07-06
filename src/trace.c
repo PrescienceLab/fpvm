@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <fpvm/fpvm.h>
+#include <fpvm/arch.h>
 #include <fpvm/trace.h>
 #include <fpvm/decoder.h>
 #include <fpvm/fpvm_common.h>
