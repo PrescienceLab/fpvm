@@ -476,3 +476,75 @@ void arch_kernel_short_circuiting_deinit(void)
 }
 
 #endif
+
+// scrap
+
+
+#if DEBUG_OUTPUT
+
+static void dump_rflags(char *pre, ucontext_t *uc) {
+  #ifdef __x86_64__
+  char buf[256];
+  rflags_t *r = (rflags_t *)&(uc->uc_mcontext.gregs[REG_EFL]);
+
+  sprintf(buf, "rflags = %016lx", r->val);
+
+#define EF(x, y)         \
+  if (r->x) {            \
+    strcat(buf, " " #y); \
+  }
+
+  EF(zf, zero);
+  EF(sf, neg);
+  EF(cf, carry);
+  EF(of, over);
+  EF(pf, parity);
+  EF(af, adjust);
+  EF(tf, TRAP);
+  EF(intf, interrupt);
+  EF(ac, alignment)
+  EF(df, down);
+
+  DEBUG("%s: %s\n", pre, buf);
+  #endif
+}
+
+static void dump_mxcsr(char *pre, ucontext_t *uc) {
+  char buf[256];
+  #ifdef __x86_64__
+
+  mxcsr_t *m = (mxcsr_t *)&uc->uc_mcontext.fpregs->mxcsr;
+
+  sprintf(buf, "mxcsr = %08x flags:", m->val);
+
+#define MF(x, y)         \
+  if (m->x) {            \
+    strcat(buf, " " #y); \
+  }
+
+  MF(ie, NAN);
+  MF(de, DENORM);
+  MF(ze, ZERO);
+  MF(oe, OVER);
+  MF(ue, UNDER);
+  MF(pe, PRECISION);
+
+  strcat(buf, " masking:");
+
+  MF(im, nan);
+  MF(dm, denorm);
+  MF(zm, zero);
+  MF(om, over);
+  MF(um, under);
+  MF(pm, precision);
+
+  DEBUG("%s: %s rounding: %s %s %s\n", pre, buf,
+      m->rounding == 0   ? "nearest"
+      : m->rounding == 1 ? "negative"
+      : m->rounding == 2 ? "positive"
+                         : "zero",
+      m->daz ? "DAZ" : "", m->fz ? "FTZ" : "");
+  #endif
+}
+
+#endif
