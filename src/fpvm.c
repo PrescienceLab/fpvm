@@ -80,6 +80,17 @@
 #include <fpvm/config.h>
 
 
+// PAD: to be killed
+static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
+  uint32_t val = 0;
+  __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
+  return val;
+}
+
+static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
+    __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
+}
+
 
 int fpvm_setup_additional_wrappers() {
  return 0;
@@ -302,33 +313,6 @@ __thread execution_context_t *__fpvm_current_execution_context=0;
 
 
 
-static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
-  uint32_t val = 0;
-  #ifdef __x86_64__
-  // TODO: move to a central "machine state save/restore" function
-  __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
-  #endif
-  return val;
-}
-
-static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
-  #ifdef __x86_64__
-  // TODO: move to a central "machine state save/restore" function
-  __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
-  #endif
-}
-
-
-static void mxcsr_disable_save(uint32_t* old) {
-  uint32_t tmp = get_mxcsr();
-  *old = tmp;
-  tmp |= MXCSR_MASK_MASK;
-  set_mxcsr(tmp);
-}
-
-static void mxcsr_restore(uint32_t old) {
-  set_mxcsr(old);
-}
 
 
 static inline void NO_TOUCH_FLOAT fxsave(fpvm_fpstate_t *fpvm_fpregs)
@@ -386,12 +370,9 @@ int fpvm_current_execution_context_is_in_init(void)
 static void dump_execution_contexts_info(void)
 {
   int i;
-  uint32_t m;
+  arch_fp_csr_t old;
   lock_contexts();
-  // we will internally be using floating point
-  // and need to guarantee that we don't trap to ourselves
-  mxcsr_disable_save(&m);
-
+  arch_config_machine_fp_csr_for_local(&old);
   for (i = 0; i < CONFIG_MAX_CONTEXTS; i++) {
     if (context[i].tid) {
 #if CONFIG_INSTR_TRACES
@@ -405,7 +386,7 @@ static void dump_execution_contexts_info(void)
 #endif
     }
   }
-  mxcsr_restore(m);
+  arch_set_machine_fp_csr(&old);
   unlock_contexts();
 }
 
@@ -499,88 +480,7 @@ static void fpvm_init(void);
 static __attribute__((constructor )) void fpvm_init(void);
 #endif
 
-#if DEBUG_OUTPUT
 
-static void dump_rflags(char *pre, ucontext_t *uc) {
-  #ifdef __x86_64__
-  char buf[256];
-  rflags_t *r = (rflags_t *)&(uc->uc_mcontext.gregs[REG_EFL]);
-
-  sprintf(buf, "rflags = %016lx", r->val);
-
-#define EF(x, y)         \
-  if (r->x) {            \
-    strcat(buf, " " #y); \
-  }
-
-  EF(zf, zero);
-  EF(sf, neg);
-  EF(cf, carry);
-  EF(of, over);
-  EF(pf, parity);
-  EF(af, adjust);
-  EF(tf, TRAP);
-  EF(intf, interrupt);
-  EF(ac, alignment)
-  EF(df, down);
-
-  DEBUG("%s: %s\n", pre, buf);
-  #endif
-}
-
-static void dump_mxcsr(char *pre, ucontext_t *uc) {
-  char buf[256];
-  #ifdef __x86_64__
-
-  mxcsr_t *m = (mxcsr_t *)&uc->uc_mcontext.fpregs->mxcsr;
-
-  sprintf(buf, "mxcsr = %08x flags:", m->val);
-
-#define MF(x, y)         \
-  if (m->x) {            \
-    strcat(buf, " " #y); \
-  }
-
-  MF(ie, NAN);
-  MF(de, DENORM);
-  MF(ze, ZERO);
-  MF(oe, OVER);
-  MF(ue, UNDER);
-  MF(pe, PRECISION);
-
-  strcat(buf, " masking:");
-
-  MF(im, nan);
-  MF(dm, denorm);
-  MF(zm, zero);
-  MF(om, over);
-  MF(um, under);
-  MF(pm, precision);
-
-  DEBUG("%s: %s rounding: %s %s %s\n", pre, buf,
-      m->rounding == 0   ? "nearest"
-      : m->rounding == 1 ? "negative"
-      : m->rounding == 2 ? "positive"
-                         : "zero",
-      m->daz ? "DAZ" : "", m->fz ? "FTZ" : "");
-  #endif
-}
-
-#endif
-
-// trap should never be enabled...   this can probably go
-static inline void set_trap_flag_context(ucontext_t *uc, int val) {
-  #ifdef __x86_64__
-  if (val) {
-    uc->uc_mcontext.gregs[REG_EFL] |= 0x100UL;
-  } else {
-    uc->uc_mcontext.gregs[REG_EFL] &= ~0x100UL;
-  }
-  #else
-  // TODO: arm64 & riscv
-#warning not handling trap_flag_context in this architecture
-  #endif
-}
 
 static inline void clear_fp_exceptions_context(ucontext_t *uc) {
 #ifdef __x86_64__
@@ -1198,10 +1098,10 @@ static int correctness_trap_handler(ucontext_t *uc)
   orig_round_config = arch_get_round_config(uc);
 
 
-  clear_fp_exceptions_context(uc);        // exceptions cleared
-  set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
+  arch_clear_fp_exceptions(uc);            // exceptions cleared
+  arch_unmask_fp_traps(uc);                // exceptions unmasked
   set_our_round_config(uc);
-  set_trap_flag_context(uc,0);         // traps disabled
+  arch_reset_trap(uc,&mc->trap_state);    // traps disabled
 
   mc->state = AWAIT_FPE;
 
@@ -1497,7 +1397,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     arch_set_round_config(uc,orig_round_config);
-    set_trap_flag_context(uc, 0);  // traps disabled
+    arch_reset_trap(uc,&mc->trap_state);    // traps disabled
     if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
@@ -1824,7 +1724,7 @@ fail_do_trap:
   clear_fp_exceptions_context(uc);        // exceptions cleared
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
   set_our_round_config(uc);
-  set_trap_flag_context(uc, 1);  // traps disabled
+  arch_reset_trap(uc,&mc->trap_state);      // traps disabled
 
   mc->state = AWAIT_TRAP;
 
@@ -1846,10 +1746,10 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   // sanity check state and abort if needed
   if (!mc || mc->state != AWAIT_FPE) {
-    clear_fp_exceptions_context(uc);        // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+    arch_clear_fp_exceptions(uc);           // exceptions cleared
+    arch_mask_fp_traps(uc);                 // exceptions masked
     arch_set_round_config(uc, orig_round_config);
-    set_trap_flag_context(uc, 0);  // traps disabled
+    arch_reset_trap(uc,&mc->trap_state);    // traps disabled
     if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
@@ -1947,7 +1847,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
 
-  clear_fp_exceptions_context(uc);        // exceptions cleared
+  arch_clear_fp_exceptions(uc);        // exceptions cleared
 
   // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
 
@@ -1971,10 +1871,10 @@ fail_do_trap:
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
-  clear_fp_exceptions_context(uc);        // exceptions cleared
-  set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+  arch_clear_fp_exceptions(uc);           // exceptions cleared
+  arch_mask_fp_traps(uc);                 // exceptions masked
   set_our_round_config(uc);
-  set_trap_flag_context(uc, 1);  // traps disabled
+  arch_reset_trap(uc,&mc->trap_state);    // traps disabled
 
 
 
@@ -2442,7 +2342,7 @@ static void config_round_daz_ftz(char *buf)
 	}
     }
 
-    control_round_config=0;
+    control_round_config=1;
 
     DEBUG("Configuring rounding control to 0x%08x\n", our_round_config);
 }
