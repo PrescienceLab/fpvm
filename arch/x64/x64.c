@@ -308,6 +308,12 @@ static uint64_t NO_TOUCH_FLOAT get_xmm0() {
   return val;
 }
 
+// zero out all fpregs
+void arch_zero_fpregs(const ucontext_t *uc)
+{
+  // fix to zero all regs...
+  memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
+}
 
 
 static void mxcsr_disable_save(uint32_t* old) {
