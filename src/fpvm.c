@@ -80,11 +80,6 @@
 #include <fpvm/config.h>
 
 
-// support for kernel module
-#if CONFIG_TRAP_SHORT_CIRCUITING
-#include <sys/ioctl.h>
-#include "fpvm/fpvm_ioctl.h"
-#endif
 
 int fpvm_setup_additional_wrappers() {
  return 0;
@@ -122,7 +117,8 @@ volatile static int fpsrmask_base = 0x9f;  // which exceptions 1001 1111
 
 
 
-volatile static int kernel = 0;
+volatile static int trap_sc = 0;
+volatile static int kernel_sc = 0;
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
 
@@ -209,7 +205,6 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 #define SHOW_CALL_STACK()
 
-// make this run-time configurable later
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
 
@@ -293,59 +288,6 @@ typedef struct execution_context {
 #endif
 
 } execution_context_t;
-
-typedef union {
-  uint32_t val;
-  struct {
-    uint8_t ie : 1;        // detected nan
-    uint8_t de : 1;        // detected denormal
-    uint8_t ze : 1;        // detected divide by zero
-    uint8_t oe : 1;        // detected overflow (infinity)
-    uint8_t ue : 1;        // detected underflow (zero)
-    uint8_t pe : 1;        // detected precision (rounding)
-    uint8_t daz : 1;       // denormals become zeros
-    uint8_t im : 1;        // mask nan exceptions
-    uint8_t dm : 1;        // mask denorm exceptions
-    uint8_t zm : 1;        // mask zero exceptions
-    uint8_t om : 1;        // mask overflow exceptions
-    uint8_t um : 1;        // mask underflow exceptions
-    uint8_t pm : 1;        // mask precision exceptions
-    uint8_t rounding : 2;  // rounding (toward
-                           // 00=>nearest,01=>negative,10=>positive,11=>zero)
-    uint8_t fz : 1;        // flush to zero (denormals are zeros)
-    uint16_t rest;
-  } __attribute__((packed));
-} __attribute__((packed)) mxcsr_t;
-
-typedef union {
-  uint64_t val;
-  struct {
-    // note that not all of these are visible in user mode
-    uint8_t cf : 1;      // detected carry
-    uint8_t res1 : 1;    // reserved MB1
-    uint8_t pf : 1;      // detected parity
-    uint8_t res2 : 1;    // reserved
-    uint8_t af : 1;      // detected adjust (BCD math)
-    uint8_t res3 : 1;    // resered
-    uint8_t zf : 1;      // detected zero
-    uint8_t sf : 1;      // detected negative
-    uint8_t tf : 1;      // trap enable flag (single stepping)
-    uint8_t intf : 1;    // interrupt enable flag
-    uint8_t df : 1;      // direction flag (1=down);
-    uint8_t of : 1;      // detected overflow
-    uint8_t iopl : 2;    // I/O privilege level (ring)
-    uint8_t nt : 1;      // nested task
-    uint8_t res4 : 1;    // reserved
-    uint8_t rf : 1;      // resume flag;
-    uint8_t vm : 1;      // virtual 8086 mode
-    uint8_t ac : 1;      // alignment check enable
-    uint8_t vif : 1;     // virtual interrupt flag
-    uint8_t vip : 1;     // virtual interrupt pending;
-    uint8_t id : 1;      // have cpuid instruction
-    uint16_t res5 : 10;  // reserved
-    uint32_t res6;       // nothing in top half of rflags yet
-  } __attribute__((packed));
-} __attribute__((packed)) rflags_t;
 
 static int context_lock;
 static execution_context_t context[CONFIG_MAX_CONTEXTS];
@@ -722,6 +664,22 @@ static inline void zero_fp_xmm_context(ucontext_t *uc)
   #endif
 }
 
+static void kick_self(void)
+{
+    if (trap_sc) {
+#if CONFIG_TRAP_SHORT_CIRCUITING
+	arch_trap_short_circuiting_kick_self();
+#endif
+    } else if (kernel_sc) {
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+	arch_kernel_short_circuiting_kick_self();
+#endif
+    } else {
+	kill(gettid(), SIGTRAP);
+    }
+}
+
+
 
 void abort_operation(char *reason) {
   DEBUG("aborting due to %s inited=%d\n",reason,inited);
@@ -751,7 +709,7 @@ void abort_operation(char *reason) {
     // and we are a trap, the mcontext has already been restored
     if (!mc || !mc->aborting_in_trap) {
       // signal ourselves to restore the FP and TRAP state in the context
-      kill(gettid(), SIGTRAP);
+      kick_self();
     }
   }
 
@@ -798,8 +756,9 @@ int fork() {
       // we won't break, however..
     } else {
       // we should have inherited all the sighandlers, etc, from our parent
-      // now kick ourselves to set the sse bits; we are currently in state INIT
-      kill(gettid(), SIGTRAP);
+      // now kick ourselves to set relevant bits; we are currently in state INIT
+      // this will also do the architectural init
+      kick_self();
       // we should now be in the right state
     }
 
@@ -841,7 +800,7 @@ static void *trampoline(void *p) {
     // thread
 
     // now kick ourselves to set the sse bits; we are currently in state INIT
-    kill(gettid(), SIGTRAP);
+    kick_self();
     // we should now be in the right state
   }
   DEBUG("Done with setup on thread creation\n");
@@ -1288,6 +1247,7 @@ static int correctness_trap_handler(ucontext_t *uc)
   case INIT:
     DEBUG("initialization trap received\n");
     zero_fp_xmm_context(uc);
+    arch_thread_init(uc);
     // we have completed startup of the thread
     break;
   case AWAIT_TRAP:
@@ -2113,112 +2073,6 @@ void fp_trap_handler(ucontext_t *uc)
 #endif
 }
 
-//
-// Entry point for FP Trap for trap short circuiting (kernel module)
-// is used
-//
-#if CONFIG_TRAP_SHORT_CIRCUITING
-void fpvm_short_circuit_handler(void *priv)
-{
-  // Build up a sufficiently detailed ucontext_t and
-  // call the shared handler.  Copy in/out the FP and GP
-  // state
-
-  siginfo_t fake_siginfo;
-  fpvm_fpstate_t fpvm_fpregs;
-  ucontext_t fake_ucontext;
-  uint32_t old;
-
-  // capture FP state (note that this eventually needs to do xsave)
-  fxsave(&fpvm_fpregs);
-
-  // disable FP traps during our handler execution
-  mxcsr_disable_save(&old);
-
-
-  uint32_t err = ~(old >> 7) & old;
-  if (err & 0x001) {	/* Invalid op*/
-    fake_siginfo.si_code = FPE_FLTINV;
-  } else if (err & 0x004) { /* Divide by Zero */
-    fake_siginfo.si_code = FPE_FLTDIV;
-  } else if (err & 0x008) { /* Overflow */
-    fake_siginfo.si_code = FPE_FLTOVF;
-  } else if (err & 0x012) { /* Denormal, Underflow */
-    fake_siginfo.si_code = FPE_FLTUND;
-  } else if (err & 0x020) { /* Precision */
-    fake_siginfo.si_code = FPE_FLTRES;
-  } else {
-    // quell warning
-    fake_siginfo.si_code = -1;
-  }
-  
-  siginfo_t * si = (siginfo_t *)&fake_siginfo;
-
-  #ifdef __x86_64__
-  // TODO: arm64 & riscv
-  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
-
-  // consider memcpy
-  for (int i = 0; i < 18; i++) {
-    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
-  }
-  #endif
-
-  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
-
-  uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
-
-  DEBUG(
-	"SCFPE code 0x%x rip %p %02x %02x %02x %02x %02x "
-	"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
-	si->si_code, rip, rip[0], rip[1], rip[2], rip[3], rip[4],
-	rip[5], rip[6], rip[7], rip[8], rip[9], rip[10], rip[11], rip[12], rip[13], rip[14], rip[15]);
-  DEBUG("SCFPE RIP=%p RSP=%p\n", rip, MCTX_SP(&uc->uc_mcontext));
-
-#if DEBUG_OUTPUT
-  char buf[80];
-#define CASE(X)      \
-  case X:            \
-    strcpy(buf, #X); \
-    break;
-  switch (si->si_code) {
-    CASE(FPE_FLTDIV);
-    CASE(FPE_FLTINV);
-    CASE(FPE_FLTOVF);
-    CASE(FPE_FLTUND);
-    CASE(FPE_FLTRES);
-    CASE(FPE_FLTSUB);
-    CASE(FPE_INTDIV);
-    CASE(FPE_INTOVF);
-  default:
-    sprintf(buf, "UNKNOWN(0x%x)\n", si->si_code);
-    break;
-  }
-  DEBUG("FPE exceptions: %s\n", buf);
-#endif
-
-  fp_trap_handler(uc);
-
-  DEBUG("SCFPE  done\n");
-
-  #ifdef __x86_64__
-  // TODO: arm64 & riscv
-
-  // restore GP state
-  // consider memcpy
-  for (int i = 0; i < 18; i++) {
-    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
-  }
-  #endif
-
-  // restore FP state (note that this eventually needs to do xsave)
-  // note that this is also doing the mxcsr restore for however
-  // fp_trap_handler modified it
-  fxrstor(&fpvm_fpregs);
-
-  return;
-}
-#endif
 
 
 //
@@ -2297,6 +2151,7 @@ static void sigsegv_handler(int sig, siginfo_t *si, void *priv)
     // this means we faulted, in the probe address
     // and so it is unwritable, so return to retbad
     // if it did not fault, then it would continue to retgood
+    // PAD: this assumes x64...
     MCTX_PC(&uc->uc_mcontext) += 0xb;
   } else {
     // this means it is a fault somewhere in FPVM (impossible!) or
@@ -2377,6 +2232,8 @@ static int bringup_execution_context(int tid) {
   return 0;
 }
 
+// PAD: Review lifetime management for arch process/thread init/deinit
+
 static int teardown_execution_context(int tid) {
   execution_context_t *mc = find_execution_context(tid);
 
@@ -2411,10 +2268,6 @@ static int teardown_execution_context(int tid) {
 }
 
 
-#if CONFIG_TRAP_SHORT_CIRCUITING
-// trampoline entry stub - from the assembly code
-extern void * _user_fpvm_entry;
-#endif
 
 #if !CONFIG_HAVE_MAIN
 // This is defined in the LD_PRELOAD for the wrapper
@@ -2436,8 +2289,15 @@ int fpvm_demote_in_place(void *v) {
 
 static int bringup() {
 
-  // fpvm_gc_init();
-  fpvm_gc_init(fpvm_number_init, fpvm_number_deinit);
+  if (arch_process_init()) {
+    ERROR("Cannot initialize architecture support\n");
+    return -1;
+  }
+
+  if (fpvm_gc_init(fpvm_number_init, fpvm_number_deinit)) {
+    ERROR("Cannot initialize garbage collector\n");
+    return -1;
+  }
 
   if (fpvm_decoder_init()) {
     ERROR("Failed to initialized decoder\n");
@@ -2464,35 +2324,37 @@ static int bringup() {
     return -1;
   }
 
+  // try to set up our most powerful mechanisms first
+#if CONFIG_TRAP_SHORT_CIRCUITING
+  if (trap_sc) {
+      if (arch_trap_short_circuiting_init()) {
+	  DEBUG("failed to set up trap short-circuiting, trying next method\n");
+	  trap_sc = 0;
+      } else {
+	  DEBUG("set up trap short-ciruiting successfully\n");
+	  goto setup_signals;
+      }
+  }
+#endif
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+  if (kernel_sc) {
+      if (arch_kernel_short_circuiting_init()) {
+	  DEBUG("failed to set up kernel short-circuiting, trying next method\n");
+	  kernel_sc = 0;
+      } else {
+	  DEBUG("set up kernel short-ciruiting successfully\n");
+	  goto setup_signals;
+      }
+  }
+#endif
 
   struct sigaction sa;
 
-#if CONFIG_TRAP_SHORT_CIRCUITING
-  if (kernel) {
-    int file_desc = open("/dev/fpvm_dev", O_RDWR);
-
-    if (file_desc < 0) {
-      ERROR("SC failed to open FPVM kernel support (/dev/fpvm_dev), falling back to signal handler\n");
-      goto setup_sigfpe;
-    } else {
-	if (ioctl(file_desc, FPVM_IOCTL_REG, &_user_fpvm_entry)) {
-	  ERROR("SC failed to ioctl FPVM kernel support (/dev/fpvm_dev), falling back to signal handler\n");
-	  goto setup_sigfpe;
-	} else {
-	  DEBUG(":) FPVM kernel support setup successful\n");
-	  goto skip_setup_sigfpe;
-	}
-      }
-  }else {
-    DEBUG("skipping FPVM kernel support, even though it is enabled\n");
-    goto setup_sigfpe;
-  }
-
- setup_sigfpe:
-
+#if CONFIG_TRAP_SHORT_CIRCUITING || CONFIG_KERNEL_SHORT_CIRCUITING
+ setup_signals:
 #endif
 
-  DEBUG("Setting up FPE handler\n");
+  DEBUG("Setting up SIGFPE handler (default mechanism)\n");
   memset(&sa,0,sizeof(sa));
   sa.sa_sigaction = sigfpe_handler;
   sa.sa_flags |= SA_SIGINFO;
@@ -2501,10 +2363,7 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction,SIGFPE,&sa,&oldsa_fpe);
 
-#if CONFIG_TRAP_SHORT_CIRCUITING
- skip_setup_sigfpe:
-#endif
-
+  DEBUG("Setting up SIGTRAP handler (default mechanism)\n");
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = sigtrap_handler;
   sa.sa_flags |= SA_SIGINFO;
@@ -2514,6 +2373,7 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGFPE);
   ORIG_IF_CAN(sigaction, SIGTRAP, &sa, &oldsa_trap);
 
+  DEBUG("Setting up SIGINT handler\n");
   memset(&sa, 0, sizeof(sa));
   sa.sa_sigaction = sigint_handler;
   sa.sa_flags |= SA_SIGINFO;
@@ -2521,6 +2381,7 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   ORIG_IF_CAN(sigaction, SIGINT, &sa, &oldsa_int);
 
+  // DEBUG("Setting up SIGSEGV handler (for debugging purposes only)\n");
   // memset(&sa, 0, sizeof(sa));
   // sa.sa_sigaction = sigsegv_handler;
   // sa.sa_flags |= SA_SIGINFO;
@@ -2532,16 +2393,17 @@ static int bringup() {
 
 #if CONFIG_MAGIC_CORRECTNESS_TRAP
   // see if the binary has magic trap support
+  DEBUG("attempting to set up magic correctness traps\n");
   fpvm_magic_trap_entry_t *f;
 
   f = dlsym(RTLD_NEXT, FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
 
   if (f) {
     *f = (fpvm_magic_trap_entry_t)&fpvm_magic_trap_entry;
-    DEBUG("airdropped magic trap location\n");
+    DEBUG("airdropped magic trap location (%p) to target location (%p)\n",*f,f);
   } else {
     DEBUG("no airdrop of magic trap is possible, can't find %s\n",FPVM_MAGIC_TRAP_ENTRY_NAME_STR);
-    DEBUG("setting up magic page instead\n");
+    DEBUG("trying to set up magic page instead\n");
     magic_page=mmap(FPVM_MAGIC_ADDR,
 		    4096,
 		    PROT_READ | PROT_READ | PROT_WRITE,
@@ -2553,6 +2415,7 @@ static int bringup() {
 	munmap(magic_page,4096);
       }
       magic_page = 0;
+      ERROR("magic traps in configuration but cannot be set up\n");
     } else {
       struct fpvm_trap_magic *magic = magic_page;
       magic->magic_cookie = FPVM_MAGIC_COOKIE;
@@ -2669,19 +2532,20 @@ static __attribute__((constructor )) void fpvm_init(void) {
     } else {
       DEBUG("no log file specified, using stderr\n");
     }
-
-    kernel = 1;
-    if (getenv("FPVM_KERNEL") && tolower(getenv("FPVM_KERNEL")[0])=='y') {
-      DEBUG("Attempting to use FPVM kernel suppport\n");
-      kernel = 1;
+    trap_sc = 0;
+    if (getenv("FPVM_TRAP_SC") && tolower(getenv("FPVM_TRAP_SC")[0])=='y') {
+	DEBUG("Attempting to use trap short-circuiting if hardware supports it\n");
+	trap_sc = 1;
     }
-
-
+    kernel_sc = 0;
+    if (getenv("FPVM_KERNEL_SC") && tolower(getenv("FPVM_KERNEL_SC")[0])=='y') {
+      DEBUG("Attempting to use kernel short-circuiting if kernel supports it\n");
+      kernel_sc = 1;
+    }
     INFO("LD_PRELOAD=%s\n", getenv("LD_PRELOAD"));
     for (int i = 0; enabled_configurations[i]; i++) {
         INFO("Enabled config %s\n", enabled_configurations[i]);
     }
-
     if (getenv("FPVM_AGGRESSIVE") && tolower(getenv("FPVM_AGGRESSIVE")[0]) == 'y') {
       DEBUG("Setting AGGRESSIVE\n");
       aggressive = 1;
@@ -2719,6 +2583,17 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 
   // If a different log file was chosen, close it.
   if (fpvm_log_file) fclose(fpvm_log_file);
+#if CONFIG_KERNEL_SHORT_CIRCUITING
+  if (kernel_sc) {
+      arch_kernel_short_circuiting_deinit();
+  }
+#endif
+#if CONFIG_TRAP_SHORT_CIRCUITING
+  if (trap_sc) {
+      arch_trap_short_circuiting_deinit();
+  }
+#endif
+  arch_process_deinit();
   inited = 0;
   DEBUG("done\n");
 }
@@ -2728,20 +2603,10 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 
 #if CONFIG_HAVE_MAIN
 
-/*
-asm (
-".global my_instruction\n"
-"my_instruction:\n"
-"   vfmaddsd %xmm1, %xmm2, %xmm3, %xmm4\n"
-// "   sqrtpd %xmm2, %xmm3\n"
-// "   maxsd %xmm2, %xmm3\n"
-// "   subpd %xmm2, %xmm3\n"
-// "   mulpd %xmm2, %xmm3\n"
-);
-*/
-
+// x86 only at the moment
 
 extern uint8_t my_instruction[];
+
 struct xmm {
   double low;
   double high;
