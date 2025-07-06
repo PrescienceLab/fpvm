@@ -103,12 +103,9 @@ volatile static int mxcsrmask_base =
 // All masked, flags zeroed, round nearest, special features off
 #define MXCSR_OURS 0x1f80
 
-static int control_mxcsr_round_daz_ftz = 0;     // control the rounding bits
-static uint32_t orig_mxcsr_round_daz_ftz_mask;  // captured at start
-static uint32_t our_mxcsr_round_daz_ftz_mask =
-    0;  // as we want to run 0 = round to nearest, no FAZ, no DAZ (IEEE default)
-
-
+static int control_round_config = 0;                  // control the rounding bits
+static fpvm_arch_round_config_t orig_round_config;    // captured at start
+static fpvm_arch_round_config_t our_round_config = 0; // as we want to run
 
 volatile static int fpsrmask_base = 0x9f;  // which exceptions 1001 1111
 
@@ -117,7 +114,9 @@ volatile static int fpsrmask_base = 0x9f;  // which exceptions 1001 1111
 
 
 
+// trap short ciruiting requested / configured
 volatile static int trap_sc = 0;
+// kernel short ciruiting requested / configured
 volatile static int kernel_sc = 0;
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
@@ -128,6 +127,8 @@ static int (*orig_pthread_create)(
 static int (*orig_pthread_exit)(void *ret) __attribute__((noreturn)) = 0;
 static sighandler_t (*orig_signal)(int sig, sighandler_t func) = 0;
 static int (*orig_sigaction)(int sig, const struct sigaction *act, struct sigaction *oldact) = 0;
+
+// PAD: why are these not static?
 // static int (*orig_feenableexcept)(int) = 0 ;
 // static int (*orig_fedisableexcept)(int) = 0 ;
 // static int (*orig_fegetexcept)() = 0 ;
@@ -143,6 +144,7 @@ static int (*orig_sigaction)(int sig, const struct sigaction *act, struct sigact
 // static int (*orig_fesetenv)(const fenv_t *envp) = 0;
 // static int (*orig_feupdateenv)(const fenv_t *envp) = 0;
 
+// PAD: why are these not static?
 int (*orig_feenableexcept)(int) = 0;
 int (*orig_fedisableexcept)(int) = 0;
 int (*orig_fegetexcept)() = 0;
@@ -158,6 +160,7 @@ int (*orig_feholdexcept)(fenv_t *envp) = 0;
 int (*orig_fesetenv)(const fenv_t *envp) = 0;
 int (*orig_feupdateenv)(const fenv_t *envp) = 0;
 
+// PAD: why are these not static?
 double (*orig_pow)(double a, double b) = 0;
 double (*orig_exp)(double a) = 0;
 double (*orig_log)(double a) = 0;
@@ -217,6 +220,8 @@ typedef struct execution_context {
   enum { INIT, AWAIT_FPE, AWAIT_TRAP, ABORT } state;
   int aborting_in_trap;
   int tid;
+
+  uint64_t trap_state;      // for breakpoints should we ever use them
 
   uint32_t foreign_return_mxcsr;  // PAD: x86-ism, but we are ignoring foreign calls for now
   void    *foreign_return_addr;
@@ -296,14 +301,6 @@ static execution_context_t context[CONFIG_MAX_CONTEXTS];
 __thread execution_context_t *__fpvm_current_execution_context=0;
 
 
-static uint64_t NO_TOUCH_FLOAT get_xmm0() {
-  uint64_t val = 0;
-  #ifdef __x86_64__
-  // TODO: move to a central "machine state save/restore" function
-  __asm__ __volatile__("movq %%xmm0, %0" : "=r"(val) : : "memory");
-  #endif
-  return val;
-}
 
 static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
   uint32_t val = 0;
@@ -495,46 +492,6 @@ static void free_execution_context(int tid) {
   unlock_contexts();
 }
 
-static void stringify_current_fe_exceptions(char *buf) {
-  int have = 0;
-  uint32_t mxcsr = get_mxcsr();
-  buf[0] = 0;
-
-#define FE_HANDLE(x)          \
-  if (orig_fetestexcept(x)) { \
-    if (!have) {              \
-      strcat(buf, #x);        \
-      have = 1;               \
-    } else {                  \
-      strcat(buf, " " #x);    \
-    }                         \
-  }
-  FE_HANDLE(FE_DIVBYZERO);
-  FE_HANDLE(FE_INEXACT);
-  FE_HANDLE(FE_INVALID);
-  FE_HANDLE(FE_OVERFLOW);
-  FE_HANDLE(FE_UNDERFLOW);
-  if (mxcsr & 0x2) {  // denorm
-    if (have) {
-      strcat(buf, " ");
-    }
-    strcat(buf, "FE_DENORM");
-    have = 1;
-  }
-
-  if (!have) {
-    strcpy(buf, "NO_EXCEPTIONS_RECORDED");
-  }
-}
-
-/*
-static void show_current_fe_exceptions()
-{
-  char buf[80];
-  stringify_current_fe_exceptions(buf);
-  INFO("%s\n", buf);
-}
-*/
 
 #if CONFIG_HAVE_MAIN
 static void fpvm_init(void);
@@ -652,17 +609,6 @@ static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
 #endif
 }
 
-static inline void zero_fp_xmm_context(ucontext_t *uc)
-{
-  #ifdef __x86_64__
-  memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
-  #endif
-  // TODO: arm64 & riscv
-  #ifdef __aarch64__
-  // CAN"T DO THIS, THIS IS NOT A POINTER
-  // memset(MCTX_FPRS(uc->uc_mcontext), 0, 32 * 16); // 32 registers, each 16 bytes long
-  #endif
-}
 
 static void kick_self(void)
 {
@@ -1057,34 +1003,13 @@ static int setup_shims() {
   return 0;
 }
 
-#define MXCSR_ROUND_DAZ_FTZ_MASK (~(0xe040UL))
-
-static uint32_t get_mxcsr_round_daz_ftz(ucontext_t *uc) {
-  #ifdef __x86_64__
-  uint32_t mxcsr = uc->uc_mcontext.fpregs->mxcsr;
-  uint32_t mxcsr_round = mxcsr & MXCSR_ROUND_DAZ_FTZ_MASK;
-  DEBUG("mxcsr (0x%08x) round faz dtz at 0x%08x\n", mxcsr, mxcsr_round);
-  // dump_mxcsr("get_mxcsr_round_daz_ftz: ", uc);
-  return mxcsr_round;
-  #else
-  // TODO: arm64 & riscv
-  return 0;
-  #endif
+inline static void set_our_round_config(ucontext_t *uc)
+{
+    if (control_round_config) {
+	arch_set_round_config(uc,our_round_config);
+    }
 }
 
-static void set_mxcsr_round_daz_ftz(ucontext_t *uc, uint32_t mask) {
-  #ifdef __x86_64__
-  if (control_mxcsr_round_daz_ftz) {
-    uc->uc_mcontext.fpregs->mxcsr &= MXCSR_ROUND_DAZ_FTZ_MASK;
-    uc->uc_mcontext.fpregs->mxcsr |= mask;
-    DEBUG("mxcsr masked to 0x%08x after round daz ftz update (0x%08x)\n",
-        uc->uc_mcontext.fpregs->mxcsr, mask);
-    // dump_mxcsr("set_mxcsr_round_daz_ftz: ", uc);
-  }
-  #else
-#warning ignoring round_daz_ftz for this architecture - FIX
-  #endif
-}
 
 inline static fpvm_inst_t *decode_cache_lookup(execution_context_t *c, void *rip);
 inline static void decode_cache_insert(execution_context_t *c, fpvm_inst_t *inst);
@@ -1225,15 +1150,14 @@ static int correctness_trap_handler(ucontext_t *uc)
   if (!mc || mc->state == ABORT) {
     // ABORT case
     DEBUG("Aborting: mc=%p, mc->state=%d\n",mc,mc?mc->state:-1);
-    clear_fp_exceptions_context(uc);        // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
-    set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
-    // the trap flag (rflags.
-    set_trap_flag_context(uc, 0);  // traps disabled
+    arch_clear_fp_exceptions(uc);
+    arch_mask_fp_traps(uc);
+    arch_set_round_config(uc,orig_round_config);
     if (!mc) {
       // this may end badly
       abort_operation("Cannot find execution context during correctness trap handler exec");
     } else {
+      arch_reset_trap(uc,&mc->trap_state);
       DEBUG("FP and TRAP mcontext restored on abort\n");
     }
     return -1;
@@ -1246,7 +1170,7 @@ static int correctness_trap_handler(ucontext_t *uc)
   switch (mc->state) {
   case INIT:
     DEBUG("initialization trap received\n");
-    zero_fp_xmm_context(uc);
+    arch_zero_fpregs(uc);
     arch_thread_init(uc);
     // we have completed startup of the thread
     break;
@@ -1271,10 +1195,12 @@ static int correctness_trap_handler(ucontext_t *uc)
   }
 
   // reconfigure state to reflect waiting for the next FP trap in all cases
-  orig_mxcsr_round_daz_ftz_mask = get_mxcsr_round_daz_ftz(uc);
+  orig_round_config = arch_get_round_config(uc);
+
+
   clear_fp_exceptions_context(uc);        // exceptions cleared
   set_mask_fp_exceptions_context(uc, 0);  // exceptions unmasked
-  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_our_round_config(uc);
   set_trap_flag_context(uc,0);         // traps disabled
 
   mc->state = AWAIT_FPE;
@@ -1375,11 +1301,6 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 }
 
 
-void __fpvm_foreign_debug(void)
-{
-  SAFE_DEBUG_QUAD("fpvm_print_xmm0: ",get_xmm0());
-  //  ERROR("args are %lf (%016lx), %lf, %lf, %lf\n",a,*(uint64_t*)&a,b,c,d);
-}
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 {
@@ -1575,7 +1496,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   if (!mc || mc->state != AWAIT_FPE) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
-    set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
+    arch_set_round_config(uc,orig_round_config);
     set_trap_flag_context(uc, 0);  // traps disabled
     if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
@@ -1902,7 +1823,7 @@ fail_do_trap:
   // done
   clear_fp_exceptions_context(uc);        // exceptions cleared
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
-  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_our_round_config(uc);
   set_trap_flag_context(uc, 1);  // traps disabled
 
   mc->state = AWAIT_TRAP;
@@ -1927,7 +1848,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   if (!mc || mc->state != AWAIT_FPE) {
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
-    set_mxcsr_round_daz_ftz(uc, orig_mxcsr_round_daz_ftz_mask);
+    arch_set_round_config(uc, orig_round_config);
     set_trap_flag_context(uc, 0);  // traps disabled
     if (mc) {
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
@@ -2052,10 +1973,10 @@ fail_do_trap:
   // done
   clear_fp_exceptions_context(uc);        // exceptions cleared
   set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
-  set_mxcsr_round_daz_ftz(uc, our_mxcsr_round_daz_ftz_mask);
+  set_our_round_config(uc);
   set_trap_flag_context(uc, 1);  // traps disabled
 
-  mc->state = AWAIT_TRAP;
+
 
   // our next stop should be the instruction, and then, immediately afterwards,
   // the sigtrap handler
@@ -2287,12 +2208,28 @@ int fpvm_demote_in_place(void *v) {
   return *p != orig;
 }
 
+static void init_arch_trap_mask(void)
+{
+    arch_clear_trap_mask();
+#define SET_IF_NEED(E) if (exceptmask & E) { arch_set_trap_mask(E); }
+    SET_IF_NEED(FE_INVALID);
+    SET_IF_NEED(FE_DIVBYZERO);
+    SET_IF_NEED(FE_OVERFLOW);
+    SET_IF_NEED(FE_UNDERFLOW);
+    SET_IF_NEED(FE_INEXACT);
+#ifdef FE_DENORM
+    if (arch_have_special_fp_csr_exception(FE_DENORM)) { SET_IF_NEED(FE_DENORM);}
+#endif
+}
+
 static int bringup() {
 
   if (arch_process_init()) {
     ERROR("Cannot initialize architecture support\n");
     return -1;
   }
+
+  init_arch_trap_mask();
 
   if (fpvm_gc_init(fpvm_number_init, fpvm_number_deinit)) {
     ERROR("Cannot initialize garbage collector\n");
@@ -2442,68 +2379,72 @@ static int bringup() {
 // when we invoke
 static void config_exceptions(char *buf) {
   exceptmask = 0;
-  mxcsrmask_base = 0;
 
   if (strcasestr(buf, "inv")) {
     DEBUG("tracking INVALID\n");
     exceptmask |= FE_INVALID;
-    mxcsrmask_base |= 0x1;
   }
   if (strcasestr(buf, "den")) {
+#ifdef FE_DENORM
     DEBUG("tracking DENORM\n");
-    exceptmask |= 0;  // not provided...
-    mxcsrmask_base |= 0x2;
+    exceptmask |= FE_DENORM;
+#else
+    ERROR("cannot track DENORM on this architecture\n");
+#endif
   }
   if (strcasestr(buf, "div")) {
     DEBUG("tracking DIVIDE_BY_ZERO\n");
     exceptmask |= FE_DIVBYZERO;
-    mxcsrmask_base |= 0x4;
   }
   if (strcasestr(buf, "over")) {
     DEBUG("tracking OVERFLOW\n");
     exceptmask |= FE_OVERFLOW;
-    mxcsrmask_base |= 0x8;
   }
   if (strcasestr(buf, "under")) {
     DEBUG("tracking UNDERFLOW\n");
     exceptmask |= FE_UNDERFLOW;
-    mxcsrmask_base |= 0x10;
   }
   if (strcasestr(buf, "prec")) {
     DEBUG("tracking PRECISION\n");
     exceptmask |= FE_INEXACT;
-    mxcsrmask_base |= 0x20;
   }
 }
 
-static void config_round_daz_ftz(char *buf) {
-  uint32_t r = 0;
+static void config_round_daz_ftz(char *buf)
+{
+    our_round_config = 0;
 
-  if (strcasestr(buf, "pos")) {
-    r = 0x4000UL;
-  } else if (strcasestr(buf, "neg")) {
-    r = 0x2000UL;
-  } else if (strcasestr(buf, "zer")) {
-    r = 0x6000UL;
-  } else if (strcasestr(buf, "nea")) {
-    r = 0x0000UL;
-  } else {
-    ERROR("Unknown rounding mode - avoiding rounding control\n");
-    control_mxcsr_round_daz_ftz = 0;
-    return;
-  }
+    if (strcasestr(buf, "pos")) {
+	arch_set_round_mode(&our_round_config,FPVM_ARCH_ROUND_POSITIVE);
+    } else if (strcasestr(buf, "neg")) {
+	arch_set_round_mode(&our_round_config,FPVM_ARCH_ROUND_NEGATIVE);
+    } else if (strcasestr(buf, "zer")) {
+	arch_set_round_mode(&our_round_config,FPVM_ARCH_ROUND_ZERO);
+    } else if (strcasestr(buf, "nea")) {
+	arch_set_round_mode(&our_round_config,FPVM_ARCH_ROUND_NEAREST);
+    } else {
+	ERROR("Unknown rounding mode - avoiding rounding control\n");
+	control_round_config = 0;
+	return;
+    }
 
-  if (strcasestr(buf, "daz")) {
-    r |= 0x0040UL;
-  }
-  if (strcasestr(buf, "ftz")) {
-    r |= 0x8000UL;
-  }
+    if (strcasestr(buf, "daz")) {
+	if (strcasestr(buf,"ftz")) {
+	    arch_set_dazftz_mode(&our_round_config,FPVM_ARCH_ROUND_DAZ_FTZ);
+	} else {
+	    arch_set_dazftz_mode(&our_round_config,FPVM_ARCH_ROUND_DAZ_NO_FTZ);
+	}
+    } else {
+	if (strcasestr(buf,"ftz")) {
+	  arch_set_dazftz_mode(&our_round_config,FPVM_ARCH_ROUND_NO_DAZ_FTZ);
+	} else {
+	    arch_set_dazftz_mode(&our_round_config,FPVM_ARCH_ROUND_NO_DAZ_NO_FTZ);
+	}
+    }
 
-  control_mxcsr_round_daz_ftz = 1;
-  our_mxcsr_round_daz_ftz_mask = r;
+    control_round_config=0;
 
-  DEBUG("Configuring rounding control to 0x%08x\n", our_mxcsr_round_daz_ftz_mask);
+    DEBUG("Configuring rounding control to 0x%08x\n", our_round_config);
 }
 
 

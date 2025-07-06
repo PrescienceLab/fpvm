@@ -4,7 +4,7 @@
 
 /*
   This is the architectural interface for fpvm
-  
+
   Note that this is not about instructions, but
   rather to support traps, etc
  */
@@ -134,6 +134,8 @@ uint64_t arch_get_sp(const ucontext_t *uc);
 // then return the number of number of bytes read, or negative on error
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size);
 
+// zero out all fpregs
+void arch_zero_fpregs(const ucontext *uc);
 
 // Implementation is initialized at start of process.  It can
 // veto by returning non-zero.   Implementation is also
