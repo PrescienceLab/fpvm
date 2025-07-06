@@ -1397,10 +1397,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     clear_fp_exceptions_context(uc);        // exceptions cleared
     set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
     arch_set_round_config(uc,orig_round_config);
-    arch_reset_trap(uc,&mc->trap_state);    // traps disabled
     if (mc) {
+      arch_reset_trap(uc,&mc->trap_state);    // traps disabled
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
+      arch_reset_trap(uc,0);
       abort_operation("Cannot find execution context during sigfpvm_handler exec");
     }
     ASSERT(0);
@@ -1749,11 +1750,12 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     arch_clear_fp_exceptions(uc);           // exceptions cleared
     arch_mask_fp_traps(uc);                 // exceptions masked
     arch_set_round_config(uc, orig_round_config);
-    arch_reset_trap(uc,&mc->trap_state);    // traps disabled
     if (mc) {
+      arch_reset_trap(uc,&mc->trap_state);    // traps disabled
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
-      abort_operation("Cannot find execution context during sigfpvm_handler exec");
+       arch_reset_trap(uc,0);                 // traps disabled
+       abort_operation("Cannot find execution context during sigfpvm_handler exec");
     }
     ASSERT(0);
     return;
