@@ -2840,12 +2840,6 @@ int main(int argc, char *argv[])
     abort();
   }
 
-  // TESTING - Check for fi contents
-  // op type should be 0 for fadd
-  DEBUG("op_type: %d\n", fi->common->op_type);
-  DEBUG("is_simple_mov: %d\n", fi->is_simple_mov);
-  DEBUG("is_gpr_mov: %d\n", fi->is_gpr_mov);
-
   // acquire pointers to the GP and FP register state
   // from the mcontext.
   //

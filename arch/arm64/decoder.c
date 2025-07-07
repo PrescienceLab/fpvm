@@ -472,6 +472,7 @@ static int check_round_mode(fpvm_inst_t *fi ,cs_insn *inst) {
       fi->round_mode = FPVM_ROUND_ZERO;
       break;
     default:
+      fi->round_mode = FPVM_ROUND_DEFAULT;
       return 0;
   }
 
@@ -493,6 +494,8 @@ static int decode_to_common(fpvm_inst_t *fi) {
   cs_arm64 *arm64 = &detail->arm64;
 
   // determine whether it's vector or scalar
+  // TODO:
+  //    This only checks for floating point, need to also check for integer registers
   cs_arm64_op *op = &arm64->operands[1];
   if (op->reg >= ARM64_REG_S0 && op->reg <= ARM64_REG_S31) {
       DEBUG("Operand is scalar float (32-bit)\n");
@@ -503,9 +506,9 @@ static int decode_to_common(fpvm_inst_t *fi) {
       DEBUG("Operand is vector\n");
   }
 
-  if(check_dest_and_op_sizes(fi, inst)){
-    return -1;
-  }
+  // if(check_dest_and_op_sizes(fi, inst)){
+  //   return -1;
+  // }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
     // not an error, since this could be a sequence-ending instruction
@@ -687,6 +690,8 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
       fi->operand_sizes[i] = max_operand_size;
     }
   }
+
+  fi->common->op_size = max_operand_size;
 
   return 0;
 }

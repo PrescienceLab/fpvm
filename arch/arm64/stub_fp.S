@@ -8,7 +8,7 @@ fpvm_test_instr:
 .global my_instruction
 my_instruction:
    // TODO:
-
+   fcvtas x4, d30
    ret
 
 
