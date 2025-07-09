@@ -117,6 +117,21 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+// Registers
+#ifndef REG_PC
+#define REG_PC 32
+#endif
+
+#ifndef REG_SP
+#define REG_SP 2
+#endif
+
+#define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
+#define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
+#define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
+#define MCTX_GPRS(mc) ((mc)->__gregs)
+
+
 #if CONFIG_TRAP_SHORT_CIRCUITING
 int  arch_trap_short_circuiting_init(void);
 void arch_trap_short_circuiting_deint(void);
