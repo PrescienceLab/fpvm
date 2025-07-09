@@ -432,6 +432,27 @@ void arch_unmask_fp_traps(ucontext_t *uc) {
   }
 }
 
+// TODO:
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs) {
+  return;
+}
+
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs) {
+  memcpy(((struct fpsimd_context *)(uc->uc_mcontext))->vregs, fpregs->data, 32 * 16); // 32 registers, 16 bytes wide
+}
+
+// TODO:
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs) {
+  return;
+}
+
+// TODO:
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs) {
+  return;
+}
+
+
+
 // see notes in arm64.h for how this crazy thing works
 // FZ = bit 24
 // RM = bits 23-22
@@ -585,6 +606,11 @@ int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
     }
     return 4;
   }
+}
+
+void arch_zero_fpregs(const ucontext_t* uc) {
+  struct fpsimd_context *fpctxt = (struct fpsimd_context *)(uc->uc_mcontext.__reserved);
+  memset(fpctxt->vregs, 0, 32 * 16); // 32 registers, each 16 bytes wide
 }
 
 
