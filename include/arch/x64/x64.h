@@ -106,11 +106,22 @@ void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mod
 
 
 uint64_t arch_get_fp_csr(const ucontext_t *uc);
+uint64_t arch_set_fp_csr(ucontext_t *uc, const uint64_t fpcsr);
 uint64_t arch_get_gp_csr(const ucontext_t *uc);
 uint64_t arch_get_ip(const ucontext_t *uc);
+uint64_t arch_set_ip(const ucontext_t *uc, uint64_t ip);
 uint64_t arch_get_sp(const ucontext_t *uc);
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size);
+
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs);
+
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs);
+
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs);
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs);
 
 // zero out all fpregs
 void arch_zero_fpregs(const ucontext_t *uc);
@@ -120,6 +131,16 @@ void arch_process_deinit(void);
 
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
+
+// mcontext_t-access-specific stuff
+#define MCTX_PC(mc) ((mc)->gregs[REG_RIP])
+#define MCTX_SP(mc) ((mc)->gregs[REG_RSP])
+#define MCTX_FPRS(mc) ((mc)->fpregs->_xmm)
+#define MCTX_GPRS(mc) ((mc)->gregs)
+
+#define FXSAVE_ALIGN __attribute__((aligned (16)));
+#define XMM_ALIGN __attribute__((aligned (16)));
+
 
 #if CONFIG_KERNEL_SHORT_CIRCUITING
 // special support
