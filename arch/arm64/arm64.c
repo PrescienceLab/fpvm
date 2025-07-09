@@ -463,6 +463,21 @@ void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs) {
 }
 
 
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs)
+{
+    gpregs->numregs=32;
+    gpregs->regsize_bytes=8;
+    gpregs->regalign_bytes=8;
+    if (uc) {
+	gpregs->data=uc->uc_mcontext.regs;
+    }
+}
+
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
+{
+    memcpy(uc->uc_mcontext.regs,gpregs->data,32*8);
+}
+
 
 // see notes in arm64.h for how this crazy thing works
 // FZ = bit 24
