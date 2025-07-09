@@ -432,23 +432,34 @@ void arch_unmask_fp_traps(ucontext_t *uc) {
   }
 }
 
-// TODO:
-void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs) {
-  return;
+void arm64_fprs_in(const void *);
+void arm64_fprs_out(void *);
+
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs)
+{
+  fpregs->numregs=32;
+  fpregs->regsize_bytes=16;
+  fpregs->regalign_bytes=16;
+  fpregs->regsize_entries=2;
+  fpregs->data = ((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs;
 }
 
 void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs) {
-  memcpy(((struct fpsimd_context *)(uc->uc_mcontext))->vregs, fpregs->data, 32 * 16); // 32 registers, 16 bytes wide
+  memcpy(((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs, fpregs->data, 32 * 16); // 32 registers, 16 bytes wide
 }
 
-// TODO:
 void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs) {
-  return;
+  fpregs->numregs=32;
+  fpregs->regsize_bytes=16;
+  fpregs->regalign_bytes=16;
+  fpregs->regsize_entries=2;
+  if (fpregs->data) {
+    arm64_fprs_out(fpregs->data);
+  }
 }
 
-// TODO:
 void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs) {
-  return;
+  arm64_fprs_in(fpregs->data);
 }
 
 
