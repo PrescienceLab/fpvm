@@ -183,6 +183,12 @@ void arch_clear_fp_exceptions(ucontext_t *uc);
 void arch_mask_fp_traps(ucontext_t *uc);
 void arch_unmask_fp_traps(ucontext_t *uc);
 
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs);
+
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs);
+
 fpvm_arch_round_config_t arch_get_machine_round_config(void);
 
 fpvm_arch_round_config_t arch_get_round_config(ucontext_t *uc);
@@ -202,6 +208,7 @@ uint64_t arch_get_sp(const ucontext_t *uc);
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size);
 
+void arch_zero_fpregs(const ucontext_t *uc);
 
 int arch_process_init(void);
 void arch_process_deinit(void);
