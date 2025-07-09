@@ -139,12 +139,13 @@ void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mod
 
 // Implementation must allow us to get at the raw FP and FP CSRs of the ucontext
 // as well as the instruction pointer and stack pointer
-uint64_t arch_get_fp_csr(const ucontext_t *uc);
-uint64_t arch_get_fp_csr_machine(void);
-uint64_t arch_set_fp_csr(ucontext_t *uc, const uint64_t fpcsr);
+void     arch_get_fp_csr(const ucontext_t *uc, arch_fp_csr_t *fpcsr);
+void     arch_get_fp_csr_machine(arch_fp_csr_t *fpcsr);
+void     arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *fpcsr);
+void     arch_set_fp_csr_machine(const arch_fp_csr_t *fpcsr);
 uint64_t arch_get_gp_csr(const ucontext_t *uc);
 uint64_t arch_get_ip(const ucontext_t *uc);
-uint64_t arch_set_ip(const ucontext_t *uc, uint64_t ip);
+void     arch_set_ip(ucontext_t *uc, const uint64_t ip);
 uint64_t arch_get_sp(const ucontext_t *uc);
 
 
