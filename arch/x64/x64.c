@@ -271,6 +271,8 @@ uint64_t arch_get_gp_csr(const ucontext_t *uc) { return uc->uc_mcontext.gregs[RE
 
 uint64_t arch_get_fp_csr(const ucontext_t *uc) { return uc->uc_mcontext.fpregs->mxcsr; }
 
+   
+
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
   int len = size > 15 ? 15 : size;
@@ -311,7 +313,7 @@ static uint64_t NO_TOUCH_FLOAT get_xmm0() {
 // zero out all fpregs
 void arch_zero_fpregs(const ucontext_t *uc)
 {
-  // fix to zero all regs...
+  // fix to zero all regs, not just xmm
   memset(uc->uc_mcontext.fpregs->_xmm,0,16*16);
 }
 
@@ -327,18 +329,75 @@ static void mxcsr_restore(uint32_t old) {
   set_mxcsr(old);
 }
 
-static inline void NO_TOUCH_FLOAT fxsave(fpvm_fpstate_t *fpvm_fpregs)
+static inline void NO_TOUCH_FLOAT fxsave(void *fpvm_fpregs)
 {
   #ifdef __x86_64__
   __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
   #endif
 }
 
-static inline void NO_TOUCH_FLOAT fxrstor(const fpvm_fpstate_t *fpvm_fpregs)
+static inline void NO_TOUCH_FLOAT fxrstor(const void *fpvm_fpregs)
 {
   #ifdef __x86_64__
   __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
   #endif
+}
+
+
+
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs)
+{
+    fpregs->numregs=16;
+    fpregs->regsize_bytes=16;
+    fpregs->regalign_bytes=16;
+    fpregs->regsize_entries=2;
+    fpregs->data=uc->uc_mcontext.fpregs->_xmm;
+}
+
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs)
+{
+    memcpy(uc->uc_mcontext.fpregs->_xmm,fpregs->data,16*16);
+}
+
+// similar, but if data is null, it only fills out the metadata
+// if data is not null, it fills out both metadata and copies the data
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
+{
+    fpregs->numregs=16;
+    fpregs->regsize_bytes=16;
+    fpregs->regalign_bytes=16;
+    fpregs->regsize_entries=2;
+    if (fpregs->data) {
+	uint8_t temp[4096] __attribute__((aligned (16)));
+	fxsave(temp);
+	memcpy(fpregs->data,temp+160,16*16);
+    }
+}
+
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+    uint8_t temp[4096] __attribute__((aligned(16)));
+    fxsave(temp);
+    memcpy(temp+160,fpregs->data,16*16);
+    fxrstor(temp);
+#pragma GCC diagnostic pop
+}
+
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs)
+{
+    gpregs->numregs=18;
+    gpregs->regsize_bytes=8;
+    gpregs->regalign_bytes=8;
+    if (uc) {
+	gpregs->data=uc->uc_mcontext.gregs;
+    }
+}
+
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
+{
+    memcpy(uc->uc_mcontext.gregs,gpregs->data,18*8);
 }
 
 
@@ -354,7 +413,7 @@ void fpvm_short_circuit_handler(void *priv)
   // state
 
   siginfo_t fake_siginfo;
-  fpvm_fpstate_t fpvm_fpregs;
+  uint8_t   fpvm_fpregs[4096] __attribute__((aligned(16)));
   ucontext_t fake_ucontext;
   uint32_t old;
 
@@ -383,7 +442,7 @@ void fpvm_short_circuit_handler(void *priv)
 
   siginfo_t * si = (siginfo_t *)&fake_siginfo;
 
-  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
+  fake_ucontext.uc_mcontext.fpregs = (fpregset_t) fpvm_fpregs;
 
   // consider memcpy
   for (int i = 0; i < 18; i++) {
