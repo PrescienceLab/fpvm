@@ -136,7 +136,7 @@ typedef pstate_t arch_gp_csr_t;
 
 // note that without EL0 access this is not very useful for
 // short tests, since the times will be always about the same.
-static inline uint64_t __attribute__((always_inline)) arch_cycle_count(void) {
+static inline uint64_t __attribute__((always_inline)) __attribute__((target ("general-regs-only"))) arch_cycle_count(void) {
 #if HAVE_EL0_COUNTER_ACCESS
   uint64_t val;
   asm volatile("mrs %0, pmccntr_el0" : "=r"(val));
@@ -188,6 +188,9 @@ void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs);
 
 void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs);
 void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs);
+
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs);
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs);
 
 fpvm_arch_round_config_t arch_get_machine_round_config(void);
 
