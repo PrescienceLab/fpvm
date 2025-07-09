@@ -618,6 +618,8 @@ void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mod
 
 uint64_t arch_get_ip(const ucontext_t *uc) { return uc->uc_mcontext.pc; }
 
+void     arch_set_ip(ucontext_t *uc, const uint64_t ip) { uc->uc_mcontext.pc = ip; }
+
 uint64_t arch_get_sp(const ucontext_t *uc) { return uc->uc_mcontext.sp; }
 
 uint64_t arch_get_gp_csr(const ucontext_t *uc) { return uc->uc_mcontext.pstate; }
@@ -645,15 +647,18 @@ void arch_zero_fpregs(const ucontext_t* uc) {
 //
 // When used in a trace record, this should end up
 // with "mxcsr" being fpsr... yet it doesn't...
-uint64_t arch_get_fp_csr(const ucontext_t *uc) {
-  arch_fp_csr_t f;
+void arch_get_fp_csr(const ucontext_t *uc, arch_fp_csr_t *f) {
 
-  if (get_fpcsr(uc, &f)) {
+  if (get_fpcsr(uc, f)) {
     ERROR("failed to get fpcsr from context\n");
-    return -1;
   }
+}
 
-  return (f.fpcr.val << 32) | (f.fpsr.val & 0xffffffffUL);
+void arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *f) {
+
+  if (set_fpcsr(uc, f)) {
+    ERROR("failed to set fpcsr in context\n");
+  }
 }
 
 /*

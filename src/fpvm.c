@@ -1058,7 +1058,7 @@ void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
 
   // now build out our ucontext using that info
   arch_set_fpregs(&fake_ucontext,&fpregs);
-  arch_set_fp_csr(&fake_ucontext,fpcsr.val);
+  arch_set_fp_csr(&fake_ucontext,&fpcsr);
   arch_set_gpregs(&fake_ucontext,&gpregs);
 
   arch_set_ip(&fake_ucontext,arch_get_ip(&fake_ucontext) + MAGIC_TRAP_INSTRUCTION_SIZE);
