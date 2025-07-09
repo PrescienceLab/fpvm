@@ -1,4 +1,4 @@
-CXX = gcc -O2 -mfpmath=sse -msse2 -fno-pic -no-pie
+CXX = gcc -O2 -fno-pic -no-pie
 
 EXEC = three_body_simulation
 all: $(EXEC) $(EXEC).patched_trap $(EXEC).patched_magic
