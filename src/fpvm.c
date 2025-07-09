@@ -80,17 +80,6 @@
 #include <fpvm/config.h>
 
 
-// PAD: to be killed
-static uint32_t NO_TOUCH_FLOAT get_mxcsr() {
-  uint32_t val = 0;
-  __asm__ __volatile__("stmxcsr %0" : "=m"(val) : : "memory");
-  return val;
-}
-
-static void NO_TOUCH_FLOAT set_mxcsr(uint32_t val) {
-    __asm__ __volatile__("ldmxcsr %0" : : "m"(val) : "memory");
-}
-
 
 int fpvm_setup_additional_wrappers() {
  return 0;
@@ -102,17 +91,9 @@ volatile static int aborted = 0;  // set if the target is doing its own FPE proc
 
 volatile static int exceptmask = FE_ALL_EXCEPT;  // which C99 exceptions to handle, default all
 
-volatile static int mxcsrmask_base =
-    0x3f;  // which sse exceptions to handle, default all (using base zero)
 
-#define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
-#define MXCSR_MASK_MASK (mxcsrmask_base << 7)
-
-
-// x64-isms
-// MXCSR used when *we* are executing floating point code
-// All masked, flags zeroed, round nearest, special features off
-#define MXCSR_OURS 0x1f80
+static fpvm_arch_fpregs_t fpregs_template;
+static fpvm_arch_gpregs_t gpregs_template;
 
 static int control_round_config = 0;                  // control the rounding bits
 static fpvm_arch_round_config_t orig_round_config;    // captured at start
@@ -234,7 +215,7 @@ typedef struct execution_context {
 
   uint64_t trap_state;      // for breakpoints should we ever use them
 
-  uint32_t foreign_return_mxcsr;  // PAD: x86-ism, but we are ignoring foreign calls for now
+  uint64_t foreign_return_fpcsr; 
   void    *foreign_return_addr;
 
   uint64_t fp_traps;
@@ -313,22 +294,6 @@ __thread execution_context_t *__fpvm_current_execution_context=0;
 
 
 
-
-
-static inline void NO_TOUCH_FLOAT fxsave(fpvm_fpstate_t *fpvm_fpregs)
-{
-  #ifdef __x86_64__
-  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
-  #endif
-}
-
-static inline void NO_TOUCH_FLOAT fxrstor(const fpvm_fpstate_t *fpvm_fpregs)
-{
-  #ifdef __x86_64__
-  __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
-  #endif
-}
-
 static void init_execution_contexts() {
   memset(context, 0, sizeof(context));
   context_lock = 0;
@@ -390,50 +355,6 @@ static void dump_execution_contexts_info(void)
   unlock_contexts();
 }
 
-#ifdef __aarch64__
-static uint64_t get_fpcr_machine(void)
-{
-  uint64_t fpcr;
-  __asm__ __volatile__ ("mrs %0, fpcr" : "=r"(fpcr) : :);
-  return fpcr;
-}
-
-static void set_fpcr_machine(uint64_t fpcr)
-{
-  __asm__ __volatile__ ("msr fpcr, %0" : : "r"(fpcr));
-}
-
-static uint64_t get_fpsr_machine(void)
-{
-  uint64_t fpsr;
-  __asm__ __volatile__ ("mrs %0, fpsr" : "=r"(fpsr) : :);
-  return fpsr;
-}
-
-static void set_fpsr_machine(uint64_t fpsr)
-{
-  __asm__ __volatile__ ("msr fpsr, %0" : : "r"(fpsr));
-}
-
-static void sync_fp(void)
-{
-  __asm__ __volatile__ ("dsb ish" : : : "memory");
-}
-
-uint64_t config_no_trap()
-{
-  uint64_t old = get_fpcr_machine();
-  set_fpcr_machine(old & ~(0xBF00UL));
-  sync_fp();
-  return old;
-}
-
-void config_prev_trap(uint64_t x)
-{
-  set_fpcr_machine(x);
-  sync_fp();
-}
-#endif
 
 static execution_context_t *alloc_execution_context(int tid) {
   int i;
@@ -480,34 +401,6 @@ static void fpvm_init(void);
 static __attribute__((constructor )) void fpvm_init(void);
 #endif
 
-
-
-static inline void clear_fp_exceptions_context(ucontext_t *uc) {
-#ifdef __x86_64__
-  uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_FLAG_MASK;
-#endif
-#ifdef __aarch64__
-  MCTX_FPSR(uc->uc_mcontext) &= ~FPSR_FLAG_MASK;
-#endif
-
-}
-
-static inline void set_mask_fp_exceptions_context(ucontext_t *uc, int mask) {
-#ifdef __x86_64__
-  if (mask) {
-    uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK;
-  } else {
-    uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK;
-  }
-#endif
-#ifdef __aarch64__
-  if (mask) {  // arm has enables, so need to invert sense
-    MCTX_FPCR(uc->uc_mcontext) &= ~FPCR_ENABLE_MASK;
-  } else {
-    MCTX_FPCR(uc->uc_mcontext) |= FPCR_ENABLE_MASK;
-  }
-#endif
-}
 
 
 static void kick_self(void)
@@ -1136,50 +1029,56 @@ static void sigtrap_handler(int sig, siginfo_t *si, void *priv)
 // Entry via magic (e9patch call)
 static void *magic_page=0;
 
+
+// This is to handle e9patch's lea instruction
+#define MAGIC_TRAP_INSTRUCTION_SIZE 8
+
 void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
 {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state
-  fpvm_fpstate_t fpvm_fpregs FXSAVE_ALIGN;
   ucontext_t fake_ucontext;
 
-  // capture FP state (note that this eventually needs to do xsave)
-  fxsave(&fpvm_fpregs);
-  #ifdef __x86_64__
-  // TODO: arm64 & riscv
-  fake_ucontext.uc_mcontext.fpregs = &fpvm_fpregs;
-  // capture greg state
-  // consider memcpy
-  for (int i = 0; i < 18; i++) {
-    fake_ucontext.uc_mcontext.gregs[i] = *((greg_t*)priv + i);
-  }
-  #endif
+  // capture fp register state in our arch independent form
+  uint8_t fpdata[fpregs_template.regalign_bytes*fpregs_template.numregs];
+  fpvm_arch_fpregs_t fpregs;
+  fpregs.data = fpdata;
+  arch_get_fpregs_machine(&fpregs);
 
-  ucontext_t *uc = (ucontext_t *)&fake_ucontext;
+  // we will not modify this
+  arch_fp_csr_t fpcsr;
+  arch_get_machine_fp_csr(&fpcsr);
+  
+  // capture gpregs we were passed in our arch independent form
+  fpvm_arch_gpregs_t gpregs;
+  gpregs.data = 0;
+  arch_get_gpregs(0,&gpregs);
+  gpregs.data = priv;
 
-  // This is to handle e9patch's lea instruction
-  MCTX_PC(&uc->uc_mcontext) += 8;
+  // now build out our ucontext using that info
+  arch_set_fpregs(&fake_ucontext,&fpregs);
+  arch_set_fp_csr(&fake_ucontext,fpcsr.val);
+  arch_set_gpregs(&fake_ucontext,&gpregs);
 
-  if (correctness_trap_handler(uc)) {
+  arch_set_ip(&fake_ucontext,arch_get_ip(&fake_ucontext) + MAGIC_TRAP_INSTRUCTION_SIZE);
+
+  if (correctness_trap_handler(&fake_ucontext)) {
     abort_operation("correctness trap handler failed\n");
     ASSERT(0);
   }
 
-  #ifdef __x86_64__
-  // TODO: arm64 & riscv
-
-  // restore GP state
-  // consider memcpy
-  for (int i = 0; i < 18; i++) {
-    *((greg_t*)priv + i) = fake_ucontext.uc_mcontext.gregs[i];
-  }
-  #endif
-
-  // restore FP state (note that this eventually needs to do xsave)
-  // note that this is also doing the mxcsr restore for however
-  // fp_trap_handler modified it
-  fxrstor(&fpvm_fpregs);
+  fpvm_arch_gpregs_t gpregsout;
+  fpvm_arch_fpregs_t fpregsout;
+  
+  // now copy the gpregs back out
+  arch_get_gpregs(&fake_ucontext,&gpregsout);
+  fpvm_safe_memcpy(priv,gpregsout.data,gpregsout.regalign_bytes*gpregs.numregs);
+  
+  // and copy the FP regs back out
+  arch_get_fpregs(&fake_ucontext,&fpregsout);
+  arch_set_fpregs_machine(&fpregsout);
+  
   return;
 }
 #endif
@@ -1204,81 +1103,84 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 {
-  fpvm_fpstate_t fstate FXSAVE_ALIGN;
-  uint32_t oldmxcsr;
+    
+    int demotions=0;
 
-  execution_context_t *mc = find_my_execution_context();
+    execution_context_t *mc = find_my_execution_context();
 
-  fpvm_regs_t regs;
-  int demotions=0;
+    SAFE_DEBUG("foreign entry\n");
+
+    if (!inited) {
+	hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - function ", func);
+	return ;
+    }
+    
+    START_PERF(mc, foreign_call);
+
+    // capture fp register state in our arch independent form
+    uint8_t fpdata[fpregs_template.regalign_bytes*fpregs_template.numregs];
+    fpvm_arch_fpregs_t fpregs;
+    fpregs.data = fpdata;
+    arch_get_fpregs_machine(&fpregs);
+
+    arch_fp_csr_t oldfpcsr;
+    arch_config_machine_fp_csr_for_local(&oldfpcsr);
+  
+    fpvm_regs_t regs;
+
+    if (mc->foreign_return_addr!=&fpvm_panic) {
+	hard_fail_show_foreign_func("recursive foreign entry detected - function ",func);
+	END_PERF(mc, foreign_call);
+	return;
+    }
+
+    //SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
+    //SAFE_DEBUG_QUAD("handling correctness for foreign call - function",func);
+
+    mc->correctness_foreign_calls++;
 
 
-  SAFE_DEBUG("foreign entry\n");
+    // note that the following assumes that all fprs are caller-save,
+    // as they are on x64.  Because of this assumption, we can demote
+    // them all in place and then not restore any of them.
+    //
+    // If some fpregs are callee-save, this will generate a world of hurt
+    // and we would want to carefully stash the callee-save registers
+    // here and restore them from the stash in __fpvm_foreign_exit
+    
+    regs.mcontext = 0;                     // nothing should need this state
+    regs.fprs = fpregs.data;
+    regs.fpr_size = fpregs.regsize_bytes;  // note, likely bogus
 
-  if (!inited) {
-    hard_fail_show_foreign_func("impossible to handle pre-boot foreign call from unknown context - function ", func);
-    return ;
-  }
+    demotions = fpvm_emulator_demote_registers(&regs);
 
-  START_PERF(mc, foreign_call);
-
-
-  oldmxcsr = get_mxcsr();
-  fxsave(&fstate);
-
-  if (mc->foreign_return_addr!=&fpvm_panic) {
-    hard_fail_show_foreign_func("recursive foreign entry detected - function ",func);
-    END_PERF(mc, foreign_call);
-    return;
-  }
-
-  //SAFE_DEBUG_QUAD("handling correctness for foreign call - trampoline",tramp);
-  //SAFE_DEBUG_QUAD("handling correctness for foreign call - function",func);
-
-  mc->correctness_foreign_calls++;
-
-
-  regs.mcontext = 0;        // nothing should need this state
-  regs.fprs = FPSTATE_FPRS(&fstate);  // note xmm only
-  regs.fpr_size = 16;       // note bogus
-
-  demotions = fpvm_emulator_demote_registers(&regs);
-
-  if (demotions<0) {
-    abort_operation("demotions in foreign call somehow failed\n");
-    END_PERF(mc, foreign_call);
-    return;
-  }
+    if (demotions<0) {
+	abort_operation("demotions in foreign call somehow failed\n");
+	END_PERF(mc, foreign_call);
+	return;
+    }
 
 #if CONFIG_TELEMETRY_PROMOTIONS
-  mc->correctness_demotions+=demotions;
-  // NOT SAFE TO DO HERE
-  // DEBUG("handling foreign call resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
+    mc->correctness_demotions+=demotions;
+    // NOT SAFE TO DO HERE
+    // DEBUG("handling foreign call resulted in %d demotions (total %lu so far)\n",demotions,mc->correctness_demotions);
 #endif
 
 
-  // stash the mxcsr we will enable on return
-  mc->foreign_return_mxcsr = oldmxcsr;
-  // stash the return address of the caller of the wrapper
-  // we will ultimately want to return there
-  mc->foreign_return_addr = *ret;
-  // modify the current return address to return back to the
-  // wrapper
-  *ret = tramp;
+    // stash the fpcsr we will enable on return
+    mc->foreign_return_fpcsr = oldfpcsr.val;
+    // stash the return address of the caller of the wrapper
+    // we will ultimately want to return there
+    mc->foreign_return_addr = *ret;
+    // modify the current return address to return back to the
+    // wrapper
+    *ret = tramp;
 
-  // disable our traps
-  uint32_t newmxcsr = oldmxcsr | MXCSR_MASK_MASK;
-
-  // NOT SAFE TO DO HERE WILL POLLUTE FPRS
-  //DEBUG("setting mxcsr to %08x (previously %08x)\n", mxcsr, oldmxcsr);
-  SAFE_DEBUG("setting fp regs and mxcsr\n");
-
-  fxrstor(&fstate);  // restore demoted registers to machine
-  set_mxcsr(newmxcsr); // Write the new mxcsr, with traps disabled
-
-  SAFE_DEBUG("foreign call begins\n");
-
-  END_PERF(mc, foreign_call);
+    arch_set_fpregs_machine(&fpregs);
+    
+    SAFE_DEBUG("foreign call begins\n");
+    
+    END_PERF(mc, foreign_call);
 
 }
 
@@ -1290,8 +1192,10 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
 
   SAFE_DEBUG("foreign call ends\n");
 
-  // do mxcsr restore
-  set_mxcsr(mc->foreign_return_mxcsr);
+  // do fpcsr restore
+  arch_fp_csr_t fpcsr;
+  fpcsr.val = mc->foreign_return_fpcsr;
+  arch_set_machine_fp_csr(&fpcsr);
 
   // now modify the return address to go back to
   // the original caller
@@ -1394,11 +1298,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
 
   if (!mc || mc->state != AWAIT_FPE) {
-    clear_fp_exceptions_context(uc);        // exceptions cleared
-    set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+    arch_clear_fp_exceptions(uc);
+    arch_mask_fp_traps(uc);           
     arch_set_round_config(uc,orig_round_config);
     if (mc) {
-      arch_reset_trap(uc,&mc->trap_state);    // traps disabled
+      arch_reset_trap(uc,&mc->trap_state);
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
       arch_reset_trap(uc,0);
@@ -1689,11 +1593,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
-  // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
-
-  clear_fp_exceptions_context(uc);        // exceptions cleared
-
-  // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
+  arch_clear_fp_exceptions(uc); 
 
   return;
 
@@ -1722,10 +1622,10 @@ fail_do_trap:
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
-  clear_fp_exceptions_context(uc);        // exceptions cleared
-  set_mask_fp_exceptions_context(uc, 1);  // exceptions masked
+  arch_clear_fp_exceptions(uc);
+  arch_mask_fp_traps(uc);
   set_our_round_config(uc);
-  arch_reset_trap(uc,&mc->trap_state);      // traps disabled
+  arch_reset_trap(uc,&mc->trap_state);
 
   mc->state = AWAIT_TRAP;
 
@@ -1747,14 +1647,14 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   // sanity check state and abort if needed
   if (!mc || mc->state != AWAIT_FPE) {
-    arch_clear_fp_exceptions(uc);           // exceptions cleared
-    arch_mask_fp_traps(uc);                 // exceptions masked
+    arch_clear_fp_exceptions(uc);
+    arch_mask_fp_traps(uc);
     arch_set_round_config(uc, orig_round_config);
     if (mc) {
-      arch_reset_trap(uc,&mc->trap_state);    // traps disabled
+      arch_reset_trap(uc,&mc->trap_state);
       abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
     } else {
-       arch_reset_trap(uc,0);                 // traps disabled
+       arch_reset_trap(uc,0);
        abort_operation("Cannot find execution context during sigfpvm_handler exec");
     }
     ASSERT(0);
@@ -1847,11 +1747,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   DEBUG("FPE succesfully done (emulated one instruction)\n");
 
-  // DEBUG("mxcsr was %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
-
   arch_clear_fp_exceptions(uc);        // exceptions cleared
-
-  // DEBUG("mxcsr is now %08lx\n",uc->uc_mcontext.fpregs->mxcsr);
 
   return;
 
@@ -1873,10 +1769,10 @@ fail_do_trap:
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
-  arch_clear_fp_exceptions(uc);           // exceptions cleared
-  arch_mask_fp_traps(uc);                 // exceptions masked
+  arch_clear_fp_exceptions(uc);
+  arch_mask_fp_traps(uc);
   set_our_round_config(uc);
-  arch_reset_trap(uc,&mc->trap_state);    // traps disabled
+  arch_set_trap(uc,&mc->trap_state);
 
 
 
@@ -1904,9 +1800,8 @@ void fp_trap_handler(ucontext_t *uc)
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
-  #ifdef __aarch64__
-  uint64_t oldcr = config_no_trap();
-  #endif
+  arch_fp_csr_t oldfpcsr;
+  arch_config_machine_fp_csr_for_local(&oldfpcsr);
   ucontext_t *uc = (ucontext_t *)priv;
   uint8_t *rip = (uint8_t*) MCTX_PC(&uc->uc_mcontext);
 
@@ -1941,9 +1836,7 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
   fp_trap_handler(uc);
 
-  #ifdef __aarch64__
-  config_prev_trap(oldcr);
-  #endif
+  arch_set_machine_fp_csr(&oldfpcsr);
 }
 
 static __attribute__((destructor)) void fpvm_deinit(void);
@@ -2021,7 +1914,7 @@ static int bringup_execution_context(int tid) {
   }
 
   c->state = INIT;
-  c->foreign_return_mxcsr=0;
+  c->foreign_return_fpcsr=0;
   c->foreign_return_addr=&fpvm_panic;
   c->aborting_in_trap = 0;
   c->fp_traps = 0;
@@ -2132,6 +2025,11 @@ static int bringup() {
   }
 
   init_arch_trap_mask();
+
+  // stash metadata about fp and gp regs on this machine
+  memset(&fpregs_template,0,sizeof(fpregs_template));
+  arch_get_fpregs_machine(&fpregs_template);
+  arch_get_gpregs(0,&gpregs_template);
 
   if (fpvm_gc_init(fpvm_number_init, fpvm_number_deinit)) {
     ERROR("Cannot initialize garbage collector\n");
