@@ -209,5 +209,20 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+#define MCTX_PC(mc) ((mc)->pc)
+#define MCTX_SP(mc) ((mc)->sp)
+#define MCTX_PSTATE(mc) ((mc)->pstate)
+// #define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
+// #define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
+// #define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
+#define MCTX_FPSR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpsr)
+#define MCTX_FPCR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpcr)
+#define MCTX_FPRS(mc) (((struct fpsimd_context *)(mc.__reserved))->vregs)
+#define MCTX_GPRS(mc) -1
+
+// Why were we using uc->uc_mcontext?? Shouldn't it be mc->__reserved
+#define MCTX_FPSRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpsr)) // cast to void for 64bit pointer
+#define MCTX_FPCRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpcr))
+
 
 #endif
