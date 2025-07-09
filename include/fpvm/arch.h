@@ -27,6 +27,21 @@ typedef enum {
   FPVM_ARCH_ROUND_DAZ_FTZ = 3
 } fpvm_arch_dazftz_mode_t;
 
+typedef struct {
+    uint32_t numregs;
+    uint32_t regsize_bytes;
+    uint32_t regalign_bytes;
+    void    *data; 
+} fpvm_arch_gpregs_t;
+
+typedef struct {
+    uint32_t numregs;
+    uint32_t regsize_bytes;
+    uint32_t regalign_bytes;
+    uint32_t regsize_entries; // number of doubles per register
+    void    *data; 
+} fpvm_arch_fpregs_t;
+
 
 // arch-specific structures and inline functions
 // see else for what is expected
@@ -123,10 +138,13 @@ fpvm_arch_dazftz_mode_t arch_get_dazftz_mode(fpvm_arch_round_config_t *config);
 void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mode_t mode);
 
 // Implementation must allow us to get at the raw FP and FP CSRs of the ucontext
-// As well as the instruction pointer and stack pointer
+// as well as the instruction pointer and stack pointer
 uint64_t arch_get_fp_csr(const ucontext_t *uc);
+uint64_t arch_get_fp_csr_machine(void);
+uint64_t arch_set_fp_csr(ucontext_t *uc, const uint64_t fpcsr);
 uint64_t arch_get_gp_csr(const ucontext_t *uc);
 uint64_t arch_get_ip(const ucontext_t *uc);
+uint64_t arch_set_ip(const ucontext_t *uc, uint64_t ip);
 uint64_t arch_get_sp(const ucontext_t *uc);
 
 
@@ -135,7 +153,22 @@ uint64_t arch_get_sp(const ucontext_t *uc);
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size);
 
 // zero out all fpregs
-void arch_zero_fpregs(const ucontext *uc);
+void arch_zero_fpregs(const ucontext_t *uc);
+
+// fpregs comes back with metadata filled out and data pointing to
+// relevant part of ucontext
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs);
+
+// similar, but if data is null, it only fills out the metadata
+// if data is not null, it fills out both metadata and copies the data
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs);
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs);
+
+// gpregs comes back with metadata filled out and data pointing to
+// relevant part of ucontext; if uc is null, then only metadata is returned
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs);
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs);
 
 // Implementation is initialized at start of process.  It can
 // veto by returning non-zero.   Implementation is also
@@ -145,6 +178,12 @@ void arch_process_deinit(void);
 
 int arch_thread_init(ucontext_t *uc);  // uc can be null (for aggregate mode)
 void arch_thread_deinit(void);
+
+// mcontext_t-access-specific stuff
+#define MCTX_PC(mc) -1
+#define MCTX_SP(mc) -1
+#define MCTX_FPRS(mc) -1
+#define MCTX_GPRS(mc) -1
 
 #endif
 
