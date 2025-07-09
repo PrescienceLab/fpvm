@@ -92,94 +92,16 @@
 #define ASSERT(E)
 #endif
 
-#if __x86_64__
-// somehow this also causes stack alignment to be screwed up...
 #define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
-#define FXSAVE_ALIGN __attribute__((aligned (16)));
-#define XMM_ALIGN __attribute__((aligned (16)));
-#else
-#define NO_TOUCH_FLOAT
-#define FXSAVE_ALIGN
-#define XMM_ALIGN
-#endif
 
 
 // somehow incomplete...
 //#define NO_TOUCH_FLOAT __attribute__((target ("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3,no-3dnow,no-3dnowa,no-abm,no-adx,no-aes,no-mmx,no")))
 
-
-// --------------- x86 -----------------
-#if defined(__x86_64__)
-
-typedef struct _libc_fpstate fpvm_fpstate_t;
-#define FPSTATE_FPRS(fpstate) (&(fpstate)->_xmm[0])
-
-// these functions take an fpvm_regs_t struct, and return the address of various
-// fields according to the given architecture
-// HACK: this is not a good way to do this, but it works just to get FPVM compiling
-//       on arm64
-#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->gregs)
-#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
-
-// Grab important registers from the mcontext struct (it's layout is different on different archs)
-#define MCTX_PC(mc) ((mc)->gregs[REG_RIP])
-#define MCTX_SP(mc) ((mc)->gregs[REG_RSP])
-// A pointer to the start of the floating point register state
-#define MCTX_FPRS(mc) ((mc)->fpregs->_xmm)
-
-
-#endif
-
-// -------------- RISCV ----------------
-#if defined(__riscv)
-
-typedef union __riscv_mc_fp_state fpvm_fpstate_t;
-#define FPSTATE_FPRS(fpstate) (&(fpstate)->__d.__f);
-
-// Registers
-#ifndef REG_PC
-#define REG_PC 32
-#endif
-
-#ifndef REG_SP
-#define REG_SP 2
-#endif
-
-#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->__gregs)
-#define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
-
-#define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
-#define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
-
-#define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
-
-#endif
-
-// -------------- ARM64 ----------------
-#if defined(__aarch64__)
-
-typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
-#define FPSTATE_FPRS(fpstate) (&(fpstate)->data)
-
-#define FPVM_REGS_GPRS(regs) (uint8_t*)((regs)->mcontext->regs)
+#define FPVM_REGS_GPRS(regs) (uint8_t*)(MCTX_GPRS((regs)->mcontext))
 #define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
 
 
-#define MCTX_PC(mc) ((mc)->pc)
-#define MCTX_SP(mc) ((mc)->sp)
-#define MCTX_PSTATE(mc) ((mc)->pstate)
-// #define MCTX_FPSR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpsr)
-// #define MCTX_FPCR(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->fpcr)
-// #define MCTX_FPRS(mc) (((struct fpsimd_context *)(uc->uc_mcontext.__reserved))->vregs)
-#define MCTX_FPSR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpsr)
-#define MCTX_FPCR(mc) (((struct fpsimd_context *)(mc.__reserved))->fpcr)
-#define MCTX_FPRS(mc) (((struct fpsimd_context *)(mc.__reserved))->vregs)
-
-// Why were we using uc->uc_mcontext?? Shouldn't it be mc->__reserved
-#define MCTX_FPSRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpsr)) // cast to void for 64bit pointer
-#define MCTX_FPCRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpcr))
-
-#endif
 
 
 
@@ -198,9 +120,19 @@ typedef struct { double data[32]; } fpvm_fpstate_t; // TODO: INCORRECT
 #define DIVF(x,y) ((y)==0.0 ? 0.0 : (x)/(y))
 
 
-static inline void NO_TOUCH_FLOAT fpvm_safe_memset(void *p, uint8_t c,uint64_t len)
+static inline void NO_TOUCH_FLOAT fpvm_safe_memset(void *p, const uint8_t c,uint64_t len)
 {
   for (uint8_t *up=(uint8_t*)p; len ; len--, up++) { *up=c; }
+}
+
+static inline void NO_TOUCH_FLOAT fpvm_safe_memcpy(void *d, const void *s, uint64_t len)
+{
+    uint8_t *dp;
+    const uint8_t *sp;
+    
+    for (dp=(uint8_t*)d, sp=(const uint8_t*)s;
+	 len ;
+	 len--, dp++, sp++ ) { *dp=*sp; }
 }
 
 // interface to assembly stub
