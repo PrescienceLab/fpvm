@@ -215,8 +215,8 @@ typedef struct execution_context {
 
   uint64_t trap_state;      // for breakpoints should we ever use them
 
-  uint64_t foreign_return_fpcsr; 
-  void    *foreign_return_addr;
+  arch_fp_csr_t foreign_return_fpcsr; 
+  void         *foreign_return_addr;
 
   uint64_t fp_traps;
   uint64_t promotions;
@@ -1168,7 +1168,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 
 
     // stash the fpcsr we will enable on return
-    mc->foreign_return_fpcsr = oldfpcsr.val;
+    mc->foreign_return_fpcsr = oldfpcsr;
     // stash the return address of the caller of the wrapper
     // we will ultimately want to return there
     mc->foreign_return_addr = *ret;
@@ -1192,10 +1192,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
 
   SAFE_DEBUG("foreign call ends\n");
 
-  // do fpcsr restore
-  arch_fp_csr_t fpcsr;
-  fpcsr.val = mc->foreign_return_fpcsr;
-  arch_set_machine_fp_csr(&fpcsr);
+  arch_set_machine_fp_csr(&mc->foreign_return_fpcsr);
 
   // now modify the return address to go back to
   // the original caller
@@ -1914,7 +1911,7 @@ static int bringup_execution_context(int tid) {
   }
 
   c->state = INIT;
-  c->foreign_return_fpcsr=0;
+  memset(&c->foreign_return_fpcsr,0,sizeof(c->foreign_return_fpcsr));
   c->foreign_return_addr=&fpvm_panic;
   c->aborting_in_trap = 0;
   c->fp_traps = 0;
