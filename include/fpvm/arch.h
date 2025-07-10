@@ -186,6 +186,10 @@ void arch_thread_deinit(void);
 #define MCTX_FPRS(mc) -1
 #define MCTX_GPRS(mc) -1
 
+// should be defined as the appropriate attributes
+// for a function that will not touch floating point state
+#define NO_TOUCH_FLOAT
+
 #endif
 
 #endif
