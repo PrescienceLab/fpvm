@@ -92,11 +92,6 @@
 #define ASSERT(E)
 #endif
 
-#define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
-
-
-// somehow incomplete...
-//#define NO_TOUCH_FLOAT __attribute__((target ("no-avx,no-avx2,no-sse,no-sse2,no-sse3,no-sse4,no-sse4.1,no-sse4.2,no-sse4a,no-ssse3,no-3dnow,no-3dnowa,no-abm,no-adx,no-aes,no-mmx,no")))
 
 #define FPVM_REGS_GPRS(regs) (uint8_t*)(MCTX_GPRS((regs)->mcontext))
 #define FPVM_REGS_FPRS(regs) (uint8_t*)((regs)->fprs)
