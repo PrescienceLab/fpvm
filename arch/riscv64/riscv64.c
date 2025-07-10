@@ -524,6 +524,8 @@ void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mod
 
 uint64_t arch_get_ip(const ucontext_t *uc) { return uc->uc_mcontext.__gregs[REG_PC]; }
 
+void     arch_set_ip(ucontext_t *uc, uint64_t ip) { uc->uc_mcontext.__gregs[REG_PC] = ip; }
+
 uint64_t arch_get_sp(const ucontext_t *uc) { return uc->uc_mcontext.__gregs[REG_SP]; }
 
 uint64_t arch_get_gp_csr(const ucontext_t *uc) {
@@ -545,16 +547,171 @@ int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
 
 // representation is as the FCSR from the architecture
 // with "our" extensions added to the front
-uint64_t arch_get_fp_csr(const ucontext_t *uc) {
-  arch_fp_csr_t f;
+void arch_get_fp_csr(const ucontext_t *uc, arch_fp_csr_t *f) {
 
-  if (get_fpcsr(uc, &f)) {
+  if (get_fpcsr(uc, f)) {
     ERROR("failed to get fpcsr from context\n");
-    return -1;
   }
 
-  return f.val;
 }
+
+void     arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *fpcsr)
+{
+  set_fpcsr(uc,fpcsr);
+}
+
+void     arch_set_fp_csr_machine(const arch_fp_csr_t *fpcsr)
+{
+  arch_set_machine_fp_csr(fpcsr);
+}
+
+
+
+void arch_zero_fpregs(const ucontext_t *uc)
+{
+  switch (what_fp) {
+    case HAVE_F_FP:
+      memset(uc->uc_mcontext.__fpregs.__f.__f,0,4*32);
+      break;
+    case HAVE_D_FP:
+      memset(uc->uc_mcontext.__fpregs.__d.__f,0,8*32);
+      break;
+    case HAVE_Q_FP:
+      memset(uc->uc_mcontext.__fpregs.__q.__f,0,16*32);
+      break;
+    default:
+      ERROR("cannot zero fpregs on machine without FP\n");
+      break;
+  }
+}
+
+void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs)
+{
+  fpregs->numregs=32;
+  fpregs->regsize_entries=1;
+  switch (what_fp) {
+    case HAVE_F_FP:
+      fpregs->regsize_bytes=4;
+      fpregs->regalign_bytes=4;
+      if (fpregs->data) {
+	memcpy(fpregs->data,uc->uc_mcontext.__fpregs.__f.__f,4*32);
+      }
+      break;
+    case HAVE_D_FP:
+      fpregs->regsize_bytes=8;
+      fpregs->regalign_bytes=8;
+      if (fpregs->data) {
+	memcpy(fpregs->data,uc->uc_mcontext.__fpregs.__d.__f,8*32);
+      }
+      break;
+    case HAVE_Q_FP:
+      if (fpregs->data) {
+	memcpy(fpregs->data,uc->uc_mcontext.__fpregs.__q.__f,16*32);
+      }
+      break;
+    default:
+      ERROR("cannot copy out fpregs on machine without FP\n");
+  }
+}
+
+void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs)
+{
+  switch (what_fp) {
+    case HAVE_F_FP:
+      if (fpregs->data) {
+	memcpy(uc->uc_mcontext.__fpregs.__f.__f,fpregs->data,4*32);
+      }
+      break;
+    case HAVE_D_FP:
+      if (fpregs->data) {
+	memcpy(uc->uc_mcontext.__fpregs.__d.__f,fpregs->data,8*32);
+      }
+      break;
+    case HAVE_Q_FP:
+      if (fpregs->data) {
+	memcpy(uc->uc_mcontext.__fpregs.__q.__f,fpregs->data,16*32);
+      }
+      break;
+    default:
+      ERROR("cannot copy in fpregs on machine without FP\n");
+  }
+  
+}
+
+void riscv64_fprs_out_f(void *);
+void riscv64_fprs_out_d(void *);
+void riscv64_fprs_out_q(void *);
+
+void riscv64_fprs_in_f(void *);
+void riscv64_fprs_in_d(void *);
+void riscv64_fprs_in_q(void *);
+
+void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
+{
+  fpregs->numregs=32;
+  fpregs->regsize_bytes=16;
+  fpregs->regalign_bytes=16;
+  fpregs->regsize_entries=2;
+    switch (what_fp) {
+    case HAVE_F_FP:
+      if (fpregs->data) {
+	riscv64_fprs_out_f(fpregs->data);
+      }
+      break;
+    case HAVE_D_FP:
+      if (fpregs->data) {
+	riscv64_fprs_out_d(fpregs->data);
+      }
+      break;
+    case HAVE_Q_FP:
+      if (fpregs->data) {
+	riscv64_fprs_out_q(fpregs->data);
+      }
+      break;
+    default:
+      ERROR("cannot copy out fpregs on machine without FP\n");
+  }
+}
+
+
+void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs)
+{
+    switch (what_fp) {
+    case HAVE_F_FP:
+      if (fpregs->data) {
+	riscv64_fprs_in_f(fpregs->data);
+      }
+      break;
+    case HAVE_D_FP:
+      if (fpregs->data) {
+	riscv64_fprs_in_d(fpregs->data);
+      }
+      break;
+    case HAVE_Q_FP:
+      if (fpregs->data) {
+	riscv64_fprs_in_q(fpregs->data);
+      }
+      break;
+    default:
+      ERROR("cannot copy in fpregs on machine without FP\n");
+  }
+}
+
+void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs)
+{
+  gpregs->numregs=32;
+  gpregs->regsize_bytes=8;
+  gpregs->regalign_bytes=8;
+  if (uc) {
+    gpregs->data=uc->uc_mcontext.__gregs;
+  }
+}
+  
+void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
+{
+  memcpy(uc->uc_mcontext.__gregs,gpregs->data,8*32);
+}
+
 
 //
 // Entry point for FP Trap with pipelined exceptions on RISC-V
@@ -579,7 +736,6 @@ uint64_t arch_get_fp_csr(const ucontext_t *uc) {
 #else
 #endif
 
-#endif
 
 static int ppe_fd=-1;
 
@@ -599,13 +755,13 @@ static int init_pipelined_exceptions(void) {
   DEBUG("Installing %s (0x%016lx) as PPE handler\n", "trap_entry",
       (uintptr_t)trap_entry);
 
-  if (ioctl(fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
+  if (ioctl(ppe_fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
       ERROR("cannot install handler target for PPE\n");
       close(ppe_fd);
       ppe_fd=-1;
       return -1;
   }
-  if (ioctl(fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
+  if (ioctl(ppe_fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
       ERROR("cannot delegate traps for PPE\n");
       close(ppe_fd);
       ppe_fd=-1;
