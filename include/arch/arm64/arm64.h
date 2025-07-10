@@ -238,5 +238,8 @@ void arch_thread_deinit(void);
 #define MCTX_FPSRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpsr)) // cast to void for 64bit pointer
 #define MCTX_FPCRP(mc) ((void*)&(((struct fpsimd_context *)(mc->__reserved))->fpcr))
 
+#define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
+
+
 
 #endif
