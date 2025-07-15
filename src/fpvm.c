@@ -1927,59 +1927,74 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   fi = decode_cache_lookup(mc, rip);
 
-  if (!fi) {
-    DEBUG("Instruction is not in the decode cache\n");
-    fi = fpvm_decoder_decode_inst(rip);
-    if (!fi) {
-      ERROR("failed to decode instruction at %p\n",rip);
-      goto fail_do_trap;
-    }
-    // Doing fake bind here to capture operand sizes
-    // which is needed by the vm compilation
-    if (fpvm_decoder_bind_operands(fi, &regs)) {
-      ERROR("Cannot fake-bind operands of instruction\n");
-      goto fail_do_trap;
-    }
-    if (fpvm_vm_compile(fi)) {
-      ERROR("cannot compile instruction\n");
-      goto fail_do_trap;
-    }
-    DEBUG("successfully decoded and compiled instruction, which follows:\n");
-    fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
-    do_insert = 1;
+  // --- JIT LOGIC START ---
+
+  // Check if the instruction is in the cache AND has already been JIT-compiled.
+  if (fi && fi->jit_func) {
+    DEBUG("JIT cache hit for instruction at %p. Executing...\n", rip);
+    // Execute the cached JIT function directly.
+    fi->jit_func(regs.fprs, &uc->uc_mcontext);
+    // Advance the program counter past the emulated instruction.
+    rip += fi->length;
+    MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
+
   } else {
-    DEBUG("Instruction already found in the decode cache, ignoring decode, bind, codegen, and vm context creation\n");
-    do_insert = 0;
-  }
+    // This block handles a cache miss or an instruction that hasn't been JIT-compiled yet.
+    if (!fi) {
+      DEBUG("Instruction is not in the decode cache\n");
+      fi = fpvm_decoder_decode_inst(rip);
+      if (!fi) {
+        ERROR("failed to decode instruction at %p\n",rip);
+        goto fail_do_trap;
+      }
+      // Doing fake bind here to capture operand sizes
+      // which is needed by the vm compilation
+      if (fpvm_decoder_bind_operands(fi, &regs)) {
+        ERROR("Cannot fake-bind operands of instruction\n");
+        goto fail_do_trap;
+      }
+      // Compile the instruction to FIR (for both NVM and JIT).
+      if (fpvm_vm_compile(fi)) {
+        ERROR("cannot compile instruction to FIR\n");
+        goto fail_do_trap;
+      }
 
-  DEBUG("vm init\n");
-  fpvm_vm_init(mc->vm, fi, &regs);
-  
-  DEBUG("vm run\n");
-  if (fpvm_vm_run(mc->vm)) {
-    ERROR("failed to execute VM successfully for instruction at %p\n");
-    // this would be very bad since it could have partially completed, mangling stuff
-    goto fail_do_trap;
-  }
+      DEBUG("successfully decoded and compiled instruction to FIR\n");
+      fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
+      
+      // Now, attempt to JIT-compile the FIR to machine code.
+      if (fpvm_jit_compile_from_fir(fi) != 0) {
+        ERROR("Failed to JIT compile; will fall back to NVM interpreter.\n");
+        // fi->jit_func will be NULL, handled below.
+      }
 
-  
-  rip += fi->length;
+      do_insert = 1;
+    }
+
+    // Now execute the instruction. Prioritize JIT, fallback to NVM.
+    if (fi->jit_func) {
+        DEBUG("Executing newly JIT-compiled function for instruction at %p.\n", rip);
+        fi->jit_func(regs.fprs, &uc->uc_mcontext);
+    } else {
+        DEBUG("No JIT function available, executing with NVM interpreter.\n");
+        fpvm_vm_init(mc->vm, fi, &regs);
+        if (fpvm_vm_run(mc->vm)) {
+            ERROR("failed to execute VM successfully for instruction at %p\n", rip);
+            // This could be very bad since it could have partially completed.
+            goto fail_do_trap;
+        }
+    }
     
-  // DEBUG("Emulation done:\n");
-  // #if DEBUG_OUTPUT
-  //   fpvm_dump_xmms_double(stderr, regs.fprs);
-  //   fpvm_dump_xmms_float(stderr, regs.fprs);
-  //   fpvm_dump_float_control(stderr, uc);
-  //   fpvm_dump_gprs(stderr, uc);
-  // #endif
-    
-  // Skip those instructions we just emulated.
-  MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
-  
-  if (do_insert) {
-    // put into the cache for next time
-    decode_cache_insert(mc, fi);
+    // Advance program counter past the instruction we just handled.
+    rip += fi->length;
+    MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
+
+    if (do_insert) {
+      // put into the cache for next time
+      decode_cache_insert(mc, fi);
+    }
   }
+  // --- JIT LOGIC END ---
     
   // stay in state AWAIT_FPE
     
@@ -2777,7 +2792,7 @@ int main(int argc, char *argv[])
     INFO("EFLAGS address from mcontext: %p\n", &regs.mcontext->gregs[REG_EFL]);
     
     // Verify they point to the same location
-    if (fi->side_effect_addrs[0] == &regs.mcontext->gregs[REG_EFL]) {
+    if ((void*)fi->side_effect_addrs[0] == (void*)&regs.mcontext->gregs[REG_EFL]) {
       INFO("Side effect address correctly points to EFLAGS\n");
     } else {
       ERROR("Side effect address does NOT point to EFLAGS!\n");
