@@ -265,13 +265,15 @@ void arch_set_dazftz_mode(fpvm_arch_round_config_t *config, fpvm_arch_dazftz_mod
 
 uint64_t arch_get_ip(const ucontext_t *uc) { return uc->uc_mcontext.gregs[REG_RIP]; }
 
-void     arch_set_ip(const ucontext_t *uc, uint64_t ip) { uc->uc_mcontext.gregs[REG_RIP]=ip; }
+void     arch_set_ip(ucontext_t *uc, const uint64_t ip) { uc->uc_mcontext.gregs[REG_RIP]=ip; }
 
 uint64_t arch_get_sp(const ucontext_t *uc) { return uc->uc_mcontext.gregs[REG_RSP]; }
 
 uint64_t arch_get_gp_csr(const ucontext_t *uc) { return uc->uc_mcontext.gregs[REG_EFL]; }
 
-uint64_t arch_get_fp_csr(const ucontext_t *uc) { return uc->uc_mcontext.fpregs->mxcsr; }
+void     arch_get_fp_csr(const ucontext_t *uc, arch_fp_csr_t *fpcsr) { fpcsr->val = uc->uc_mcontext.fpregs->mxcsr; }
+
+void     arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *fpcsr) { uc->uc_mcontext.fpregs->mxcsr = fpcsr->val; }
 
    
 

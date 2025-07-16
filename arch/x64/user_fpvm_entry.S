@@ -3,7 +3,7 @@
 .code64
 .section .text
 
-#if CONFIG_TRAP_SHORT_CIRCUITING
+#if CONFIG_KERNEL_SHORT_CIRCUITING
 .global _user_fpvm_entry
 _user_fpvm_entry:
   pushf
