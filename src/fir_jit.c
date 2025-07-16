@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/mman.h>
 #include <fpvm/vm.h>
 #include <fpvm/fir_jit.h>
 
@@ -73,23 +74,43 @@ void* compile_and_load_assembly(const char* asm_code) {
     void *handle = dlopen(tmp_so_file, RTLD_LAZY);
     if (!handle) {
         fprintf(stderr, "dlopen failed: %s\n", dlerror());
+        unlink(tmp_s_file);
+        unlink(tmp_so_file);
         return NULL;
     }
 
-    // Get a pointer to the JIT-compiled function
-    void *jit_func = dlsym(handle, "jit_function");
-    if (!jit_func) {
+    // Get pointers to the function start and end
+    void *jit_func_start = dlsym(handle, "jit_function");
+    void *jit_func_end = dlsym(handle, "jit_function_end");
+
+    if (!jit_func_start || !jit_func_end) {
         fprintf(stderr, "dlsym failed: %s\n", dlerror());
         dlclose(handle);
+        unlink(tmp_s_file);
+        unlink(tmp_so_file);
         return NULL;
     }
+
+    // Calculate size and copy the code
+    size_t code_size = jit_func_end - jit_func_start;
+    void *executable_mem = mmap(NULL, code_size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     
-    // Clean up temporary files
+    if (executable_mem == MAP_FAILED) {
+        perror("mmap for executable memory");
+        dlclose(handle);
+        unlink(tmp_s_file);
+        unlink(tmp_so_file);
+        return NULL;
+    }
+
+    memcpy(executable_mem, jit_func_start, code_size);
+
+    // Unload the library and clean up
+    dlclose(handle);
     unlink(tmp_s_file);
     unlink(tmp_so_file);
 
-
-    return jit_func;
+    return executable_mem;
 }
 
 // FIR bytecode walker with assembly generation
@@ -252,6 +273,8 @@ void translate_fir_to_assembly(uint8_t *fir_code, size_t code_size, asm_gen_t *g
                     "    popq %%rbx\n"
                     "    popq %%rbp\n"
                     "    retq\n"
+                    ".global jit_function_end\n"
+                    "jit_function_end:\n"
                 );
                 return;
 
@@ -291,15 +314,14 @@ int fpvm_jit_compile_from_fir(fpvm_inst_t *fi) {
     printf("Generated assembly:\n%s\n", gen.code);
     
     // Compile and load the generated assembly
-    void* jit_func = compile_and_load_assembly(gen.code);
+    fi->jit_func = compile_and_load_assembly(gen.code);
 
-    if (jit_func) {
-        // In a real implementation you might store this function pointer
-        printf("JIT compilation successful. Function loaded at %p\n", jit_func);
+    if (fi->jit_func) {
+        printf("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
     } else {
-        fprintf(stderr, "JIT compilation failed.\n");
+        fprintf(stderr, "JIT compilation failed for instruction at %p.\n", fi->addr);
     }
 
     free(gen.code);
-    return jit_func ? 0 : -1;
+    return fi->jit_func ? 0 : -1;
 }

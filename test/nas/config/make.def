@@ -8,8 +8,8 @@ FFLAGS = -O3 -fno-pic -no-pie
 
 FLINKFLAGS = -fno-pic -no-pie
 
-CC = clang
-CLINK	= clang -fno-pic -no-pie
+CC = gcc
+CLINK	= gcc -fno-pic -no-pie
 
 C_LIB  = -lm
 
@@ -17,7 +17,7 @@ C_INC = -I../common
 
 CFLAGS = -O3 -pthread -fno-pic -no-pie
 CLINKFLAGS = -lm
-UCC	= clang -O -fno-pic -no-pie
+UCC	= gcc -O -fno-pic -no-pie
 BINDIR	= ../bin
 RAND   = randdp
 WTIME  = wtime.c
