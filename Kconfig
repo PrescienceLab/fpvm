@@ -25,11 +25,18 @@ config HAVE_MAIN
        This is for hacking around on NVM
 
 config USE_NVM
-    bool "Use NVM"
+    bool "Use NVM/FIR"
     default n
     help
        Use the NVM virtual machine for ordinary processing
        This is for hacking around on NVM
+config EXEC_MODE_JIT
+    bool "Enable JIT Compilation"
+    depends on USE_NVM
+    default n
+    help
+        Compile FIR bytecode to native machine code for direct execution.
+        If this is disabled, the NVM bytecode interpreter will be used.
 config ENABLE_NVM_LOGGING
     bool "Enable NVM Logging"
     depends on USE_NVM

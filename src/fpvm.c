@@ -1927,64 +1927,65 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   fi = decode_cache_lookup(mc, rip);
 
-  // --- JIT LOGIC START ---
-
-  // Check if the instruction is in the cache AND has already been JIT-compiled.
+#if CONFIG_EXEC_MODE_JIT
+  // JIT PATH: Check for a cached JIT function first.
   if (fi && fi->jit_func) {
     DEBUG("JIT cache hit for instruction at %p. Executing...\n", rip);
-    // Execute the cached JIT function directly.
     fi->jit_func(regs.fprs, &uc->uc_mcontext);
-    // Advance the program counter past the emulated instruction.
     rip += fi->length;
     MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
+    goto handler_done;
+  }
+#endif
 
-  } else {
-    // This block handles a cache miss or an instruction that hasn't been JIT-compiled yet.
+  // COMMON PATH (NVM & JIT cache miss): Decode and compile to FIR.
+  if (!fi) {
+    DEBUG("Instruction is not in the decode cache\n");
+    fi = fpvm_decoder_decode_inst(rip);
     if (!fi) {
-      DEBUG("Instruction is not in the decode cache\n");
-      fi = fpvm_decoder_decode_inst(rip);
-      if (!fi) {
-        ERROR("failed to decode instruction at %p\n",rip);
-        goto fail_do_trap;
-      }
-      // Doing fake bind here to capture operand sizes
-      // which is needed by the vm compilation
-      if (fpvm_decoder_bind_operands(fi, &regs)) {
-        ERROR("Cannot fake-bind operands of instruction\n");
-        goto fail_do_trap;
-      }
-      // Compile the instruction to FIR (for both NVM and JIT).
-      if (fpvm_vm_compile(fi)) {
-        ERROR("cannot compile instruction to FIR\n");
-        goto fail_do_trap;
-      }
-
-      DEBUG("successfully decoded and compiled instruction to FIR\n");
-      fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
-      
-      // Now, attempt to JIT-compile the FIR to machine code.
-      if (fpvm_jit_compile_from_fir(fi) != 0) {
-        ERROR("Failed to JIT compile; will fall back to NVM interpreter.\n");
-        // fi->jit_func will be NULL, handled below.
-      }
-
-      do_insert = 1;
+      ERROR("failed to decode instruction at %p\n",rip);
+      goto fail_do_trap;
     }
-
-    // Now execute the instruction. Prioritize JIT, fallback to NVM.
-    if (fi->jit_func) {
-        DEBUG("Executing newly JIT-compiled function for instruction at %p.\n", rip);
-        fi->jit_func(regs.fprs, &uc->uc_mcontext);
-    } else {
-        DEBUG("No JIT function available, executing with NVM interpreter.\n");
-        fpvm_vm_init(mc->vm, fi, &regs);
-        if (fpvm_vm_run(mc->vm)) {
-            ERROR("failed to execute VM successfully for instruction at %p\n", rip);
-            // This could be very bad since it could have partially completed.
-            goto fail_do_trap;
-        }
+    // Doing fake bind here to capture operand sizes
+    // which is needed by the vm compilation
+    if (fpvm_decoder_bind_operands(fi, &regs)) {
+      ERROR("Cannot fake-bind operands of instruction\n");
+      goto fail_do_trap;
     }
-    
+    if (fpvm_vm_compile(fi)) {
+      ERROR("cannot compile instruction to FIR\n");
+      goto fail_do_trap;
+    }
+    DEBUG("successfully decoded and compiled instruction to FIR\n");
+    fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
+    do_insert = 1;
+  }
+
+#if CONFIG_EXEC_MODE_JIT
+  // JIT PATH: Attempt to JIT compile and execute.
+  if (fpvm_jit_compile_from_fir(fi) == 0 && fi->jit_func) {
+      DEBUG("Executing newly JIT-compiled function for instruction at %p.\n", rip);
+      fi->jit_func(regs.fprs, &uc->uc_mcontext);
+  } else {
+      ERROR("JIT compilation failed; falling back to NVM interpreter.\n");
+      fpvm_vm_init(mc->vm, fi, &regs);
+      if (fpvm_vm_run(mc->vm)) {
+          ERROR("failed to execute VM successfully for instruction at %p\n", rip);
+          // this would be very bad since it could have partially completed, mangling stuff
+          goto fail_do_trap;
+      }
+  }
+#else
+  // NVM PATH: If JIT is not enabled, use the interpreter.
+  DEBUG("Executing with NVM interpreter.\n");
+  fpvm_vm_init(mc->vm, fi, &regs);
+  if (fpvm_vm_run(mc->vm)) {
+    ERROR("failed to execute VM successfully for instruction at %p\n", rip);
+    // this would be very bad since it could have partially completed, mangling stuff
+    goto fail_do_trap;
+  }
+#endif
+
     // Advance program counter past the instruction we just handled.
     rip += fi->length;
     MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
@@ -1993,9 +1994,10 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
       // put into the cache for next time
       decode_cache_insert(mc, fi);
     }
-  }
-  // --- JIT LOGIC END ---
-    
+
+#if CONFIG_EXEC_MODE_JIT
+handler_done:
+#endif
   // stay in state AWAIT_FPE
     
   mc->emulated_inst++;
