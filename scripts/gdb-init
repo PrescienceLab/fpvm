@@ -7,4 +7,3 @@ set env FPVM_DISABLE_PTHREADS=y
 set env FPVM_AGGRESSIVE=y
 set env LD_LIBRARY_PATH=.
 b exit
-

@@ -235,8 +235,18 @@ def run_fpvm_binary(bin: Path,
     #     cmd = ['sudo', 'perf', 'record', '-g', '-F', 'max', 'env', f'LD_PRELOAD={env["LD_PRELOAD"]}'] + cmd
     #     print(cmd)
     #     del env['LD_PRELOAD']
-    # if debug:
-    #     cmd = ['gdb', '-ix', f'{FPVM_HOME}/scripts/gdb-init'] + cmd
+    if debug:
+        gdb_cmds = [
+            '-iex', f'set env LD_PRELOAD={env["LD_PRELOAD"].replace(" ", ":")}', # LD_PRELOAD
+            '-iex', f'handle SIGUSR2 nostop pass noprint', # 
+            '-iex', f'handle SIGFPE nostop pass noprint', # 
+            # '-iex', f'handle SIGTRAP nostop pass noprint', # 
+            '-iex', f'set env FPVM_DISABLE_PTHREADS=y', # 
+            '-iex', f'set env FPVM_AGGRESSIVE=y', # 
+            '-iex', f'set env FPVM_AGGRESSIVE=y', # 
+        ]
+        cmd = ['gdb', *gdb_cmds] + cmd
+        print(cmd)
         
 
     # print(env['LD_PRELOAD'])
