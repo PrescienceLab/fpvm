@@ -2165,7 +2165,7 @@ static int bringup() {
 
   // now kick ourselves to set the sse bits; we are currently in state INIT
 
-  kill(getpid(), SIGTRAP);
+  kick_self();
 
   inited = 1;
   DEBUG("Done with setup\n");
