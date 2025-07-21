@@ -1,12 +1,61 @@
 // FIR Bytecode to Assembly Translation Pipeline
 // This leverages the existing FIR generation and translates it to assembly
-
+#define _GNU_SOURCE
 #include <dlfcn.h>
 #include <string.h>
 #include <stdarg.h>
+#include <sys/wait.h>
 #include <sys/mman.h>
-#include <fpvm/vm.h>
 #include <fpvm/fir_jit.h>
+
+// A cached pointer to the real fork() function from libc
+static pid_t (*real_fork)(void) = NULL;
+
+// A replacement for system() that executes a command in a clean child process
+int system_no_preload(const char* command) {
+    // One-time initialization of the real_fork function pointer.
+    if (!real_fork) {
+        real_fork = dlsym(RTLD_NEXT, "fork");
+        if (!real_fork) {
+            fprintf(stderr, "CRITICAL: JIT could not find real fork() function. Aborting.\n");
+            abort();
+        }
+    }
+
+    pid_t pid = real_fork();
+    if (pid == -1) {
+        perror("fork");
+        return -1;
+    }
+
+    if (pid == 0) {
+        // --- Child Process ---
+        // Unset LD_PRELOAD to prevent the child from re-preloading this library.
+        if (unsetenv("LD_PRELOAD") != 0) {
+            perror("unsetenv failed");
+            _exit(127);
+        }
+
+        execl("/bin/sh", "sh", "-c", command, NULL);
+        
+        perror("execl failed");
+        _exit(127);
+    } else {
+        // --- Parent Process ---
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            return -1;
+        }
+        
+        if (WIFEXITED(status)) {
+            return WEXITSTATUS(status);
+        } else if (WIFSIGNALED(status)) {
+            fprintf(stderr, "JIT compiler process was terminated by signal %d\n", WTERMSIG(status));
+        }
+        return -1;
+    }
+}
 
 void asm_init(asm_gen_t *gen) {
     gen->capacity = 4096;
@@ -65,8 +114,10 @@ void* compile_and_load_assembly(const char* asm_code) {
     char command[512];
     snprintf(command, sizeof(command), "gcc -shared -o %s %s", tmp_so_file, tmp_s_file);
 
-    if (system(command) != 0) {
+    if (system_no_preload(command) != 0) {
         fprintf(stderr, "Failed to compile assembly\n");
+        unlink(tmp_s_file);
+        unlink(tmp_so_file);
         return NULL;
     }
 
@@ -239,6 +290,36 @@ void translate_fir_to_assembly(uint8_t *fir_code, size_t code_size, asm_gen_t *g
                     "    movq $%p, %%rax\n"
                     "    call *%%rax\n\n",
                     func_ptr, func_ptr
+                );
+                break;
+            }
+
+            case fpvm_opcode_ld64:
+                asm_emit(gen,
+                    "    # ld64\n"
+                    "    movq (%%r14), %%rax\n"
+                    "    movq (%%rax), %%rbx\n"
+                    "    movq %%rbx, (%%r14)\n\n"
+                );
+                break;
+
+            case fpvm_opcode_iadd:
+                asm_emit(gen,
+                    "    # iadd\n"
+                    "    movq (%%r14), %%rax\n"
+                    "    addq $8, %%r14\n"
+                    "    addq %%rax, (%%r14)\n\n"
+                );
+                break;
+            
+            case fpvm_opcode_imm64: {
+                int64_t imm = *(int64_t*)pc;
+                pc += sizeof(int64_t);
+                asm_emit(gen,
+                    "    # imm64 %ld\n"
+                    "    subq $8, %%r14\n"
+                    "    movq $%ld, (%%r14)\n\n",
+                    imm, imm
                 );
                 break;
             }
