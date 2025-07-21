@@ -129,7 +129,7 @@ choice
 
     config ALT_MATH_VANILLA
         bool "Vanilla"
-	help 
+        help 
             Simply emulate using a normal instruction
             Vanilla is always included as a fallback
 
@@ -143,10 +143,14 @@ choice
     config ALT_MATH_MPFR
         bool "GNU MPFR"
 
-config MPFR_PRECISION
-    int "MPFR Precision"
-		default 200
-		depends on ALT_MATH_MPFR
+
+    config MPFR_PRECISION
+        int "MPFR Precision"
+		    default 200
+		    depends on ALT_MATH_MPFR
+
+    config ALT_MATH_EXPR_TRACE
+        bool "Expression-based thunk tracing"
 
     config ALT_MATH_RATIONAL
         bool "Rationals"
