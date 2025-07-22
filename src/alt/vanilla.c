@@ -26,6 +26,11 @@
 #define MATH_ERROR(S, ...)
 #endif
 
+#define ALLOW_FE_ROUNDING() (fpvm_allow_feround = 1)
+#define BLOCK_FE_ROUNDING() (fpvm_allow_feround = 0)
+
+extern int fpvm_allow_feround;
+
 #define BIN_OP(TYPE, ITYPE, NAME, OP, SPEC, ISPEC)                                         \
   int vanilla_##NAME##_##TYPE(                                                             \
       op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) { \
@@ -170,9 +175,10 @@ BIN_FUNC(float, uint32_t, min, minf, "%f", "%08x");
 // documentation of the instructions or test them... the current version of the
 // following does the C conversion in all cases.
 //
+// rint can raise exceptions, beware
 #define CONVERT_F2I(FTYPE, ITYPE, FSPEC, ISPEC)                                                    \
   {                                                                                                \
-    ITYPE result = (ITYPE)(*(FTYPE *)src1);                                                        \
+    ITYPE result = (ITYPE)(rint(*(FTYPE *)src1));                                                  \
     MATH_DEBUG("f2i[" #FTYPE " to " #ITYPE "](" FSPEC ") = " ISPEC " (%p)\n", (*(FTYPE *)src1), result, \
         dest);                                                                                     \
     *(ITYPE *)dest = result;                                                                       \
@@ -182,6 +188,12 @@ BIN_FUNC(float, uint32_t, min, minf, "%f", "%08x");
 // THIS DOES NOT HANDLE THE SPECIAL CASES OR RAISE EXCEPTIONS
 int vanilla_f2i_double(
     op_special_t *special, void *dest, void *src1, void *src2, void *src3, void *src4) {
+  
+  ALLOW_FE_ROUNDING();
+  int oldrmode = fegetround();
+  fesetround(special->round_mode);
+  DEBUG("Rounding set to %d\n", special->round_mode);
+
   switch (special->byte_width) {
     case 1:
       CONVERT_F2I(double, int8_t, "%lf", "%hhd");
@@ -196,6 +208,10 @@ int vanilla_f2i_double(
       return -1;
       break;
   }
+
+  // Restore
+  fesetround(oldrmode);
+  BLOCK_FE_ROUNDING();
   return 0;
 }
 

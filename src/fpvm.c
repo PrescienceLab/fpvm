@@ -91,6 +91,7 @@ volatile static int aborted = 0;  // set if the target is doing its own FPE proc
 
 volatile static int exceptmask = FE_ALL_EXCEPT;  // which C99 exceptions to handle, default all
 
+int fpvm_allow_feround = 0; // Abort FPVM on fe function call
 
 static fpvm_arch_fpregs_t fpregs_template;
 static fpvm_arch_gpregs_t gpregs_template;
@@ -695,14 +696,18 @@ int fetestexcept(int excepts) {
 int fegetround(void) {
   DEBUG("fegetround()\n");
   SHOW_CALL_STACK();
-  abort_operation("target is using fegetround");
+  if (!fpvm_allow_feround) {
+    abort_operation("target is using fegetround");
+  }
   ORIG_RETURN(fegetround);
 }
 
 int fesetround(int rounding_mode) {
   DEBUG("fesetround(0x%x)\n", rounding_mode);
   SHOW_CALL_STACK();
-  abort_operation("target is using fesetround");
+  if (!fpvm_allow_feround) {
+    abort_operation("target is using fesetround");
+  }
   ORIG_RETURN(fesetround, rounding_mode);
 }
 
@@ -2397,24 +2402,29 @@ int main(int argc, char *argv[])
   // Note that we update the mcontext each time we
   // complete an instruction in the current sequence
   // so this always reflects the current
-  // fpvm_regs_t regs;
+  fpvm_regs_t regs;
 
-  // ucontext_t uc;
-  // getcontext(&uc);
-  // regs.mcontext = &uc.uc_mcontext;
+  ucontext_t uc;
+  getcontext(&uc);
+  regs.mcontext = &uc.uc_mcontext;
 
   // // PAD: This stupidly just treats everything as SSE2
   // // and must be fixed
-  // regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
-  // regs.fpr_size = 16;
+  regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
+  regs.fpr_size = 16;
 
   // // Doing fake bind here to capture operand sizes
   // // If we do it this way, we will only bind the first time we see the instruction
   // // and otherwise keep it in the decode cache
-  // if (fpvm_decoder_bind_operands(fi, &regs)) {
-  //   ERROR("Cannot bind operands of instruction\n");
-  //   abort();
-  // }
+  if (fpvm_decoder_bind_operands(fi, &regs)) {
+    ERROR("Cannot bind operands of instruction\n");
+    abort();
+  }
+
+  if (fpvm_emulator_emulate_inst(fi, NULL, NULL, NULL, NULL)) {
+    ERROR("Cannot emulate the instruction\n");
+    abort();
+  }
 
   // // if (fpvm_vm_compile(fi)) {
   // //   ERROR("cannot compile instruction\n");

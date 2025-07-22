@@ -348,10 +348,10 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 
       special.truncate = fi->common->op_type == FPVM_OP_F2IT || fi->common->op_type == FPVM_OP_F2UT;
 
-      if (!special.truncate) {
-        ERROR("Round to nearest is not handled yet (instruction %d)\n",fi->common->op_type);
-        exit(1);
-      }
+      // if (!special.truncate) {
+      //   ERROR("Round to nearest is not handled yet (instruction %d)\n",fi->common->op_type);
+      //   exit(1);
+      // }
 
       if (fi->common->op_size == 4) {
         ERROR("Using vanilla op map for conversion instruction %d\n",fi->common->op_type);
@@ -614,6 +614,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     perf_stat_start(altmath_perf);
 #endif
     
+    special.round_mode = fi->round_mode;
+
     rc |= func(&special, dest, src1, src2, src3, src4);
     if (fi->zero_top_half_of_dest_gpr_suffering) {
       *(uint64_t *)dest &= 0x00000000FFFFFFFFULL;

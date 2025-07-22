@@ -2,6 +2,7 @@
 #define _FPVM_DECODER_
 
 #include <ucontext.h>
+#include <fenv.h>
 
 
 typedef enum {
@@ -62,10 +63,10 @@ typedef enum {
 
 typedef enum {
   FPVM_ROUND_DEFAULT=0, // current config..
-  FPVM_ROUND_NEAREST=1,
-  FPVM_ROUND_NEGATIVE=2,
-  FPVM_ROUND_POSITIVE=3,
-  FPVM_ROUND_ZERO=4,
+  FPVM_ROUND_NEAREST=FE_TONEAREST,
+  FPVM_ROUND_NEGATIVE=FE_DOWNWARD,
+  FPVM_ROUND_POSITIVE=FE_UPWARD,
+  FPVM_ROUND_ZERO=FE_TOWARDZERO,
   FPVM_ROUND_NEAREST_MAXMAG=5,
   FPVM_ROUND_DYNAMIC=6
 } fpvm_round_mode_t;
