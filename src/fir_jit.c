@@ -68,7 +68,7 @@ void asm_emit(asm_gen_t *gen, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     
-    char temp[512];
+    char temp[1024];
     int len = vsnprintf(temp, sizeof(temp), fmt, args);
     
     if (gen->size + len >= gen->capacity) {
