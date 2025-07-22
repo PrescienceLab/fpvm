@@ -71,6 +71,8 @@ extern "C" {
 // Handle using with all API
 typedef size_t csh;
 
+#define CAPSTONE_AARCH64_COMPAT_HEADER 1
+
 /// Architecture type
 typedef enum cs_arch {
 	CS_ARCH_ARM = 0,	///< ARM architecture (including Thumb, Thumb-2)
