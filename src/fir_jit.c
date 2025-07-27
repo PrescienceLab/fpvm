@@ -376,33 +376,3 @@ int translate_fir_to_asm(FILE *out, uint8_t *fir_code, size_t code_size) {
     free(gen.code);
     return 0;
 }
-
-// Integration with existing FPVM pipeline
-int fpvm_jit_compile_from_fir(fpvm_inst_t *fi) {
-    // fi->codegen already contains the FIR bytecode from fpvm_vm_x86_compile()
-    fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
-    
-    if (!builder || !builder->code) {
-        return -1;
-    }
-    
-    // Translate FIR bytecode to assembly
-    asm_gen_t gen;
-    asm_init(&gen);
-    
-    translate_fir_to_assembly(builder->code, builder->offset, &gen);
-    
-    printf("Generated assembly:\n%s\n", gen.code);
-    
-    // Compile and load the generated assembly
-    fi->jit_func = compile_and_load_assembly(gen.code);
-
-    if (fi->jit_func) {
-        printf("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
-    } else {
-        fprintf(stderr, "JIT compilation failed for instruction at %p.\n", fi->addr);
-    }
-
-    free(gen.code);
-    return fi->jit_func ? 0 : -1;
-}

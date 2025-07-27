@@ -253,6 +253,9 @@ typedef struct execution_context {
   perf_stat_t correctness_stat;
   perf_stat_t foreign_call_stat;
   perf_stat_t altmath_stat;
+  perf_stat_t fir_compile_stat;
+  perf_stat_t jit_asm_gen_stat;
+  perf_stat_t jit_compile_load_stat;
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
@@ -265,7 +268,10 @@ typedef struct execution_context {
   PRINT_PERF(c, emulate);      \
   PRINT_PERF(c, correctness);  \
   PRINT_PERF(c, foreign_call); \
-  PRINT_PERF(c, altmath); 
+  PRINT_PERF(c, altmath);      \
+  PRINT_PERF(c, fir_compile);  \
+  PRINT_PERF(c, jit_asm_gen);  \
+  PRINT_PERF(c, jit_compile_load);
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -471,6 +477,9 @@ static execution_context_t *alloc_execution_context(int tid) {
       perf_stat_init(&context[i].correctness_stat, "correctness");
       perf_stat_init(&context[i].foreign_call_stat, "foreign call");
       perf_stat_init(&context[i].altmath_stat, "altmath");
+      perf_stat_init(&context[i].fir_compile_stat, "fir_compile");
+      perf_stat_init(&context[i].jit_asm_gen_stat, "jit_asm_gen");
+      perf_stat_init(&context[i].jit_compile_load_stat, "jit_compile_load");
 #endif
       return &context[i];
     }
@@ -1877,6 +1886,41 @@ fail_do_trap:
 }
 
 
+// Integration with existing FPVM pipeline
+static int fpvm_jit_compile_from_fir(fpvm_inst_t *fi, execution_context_t *mc) {
+    // fi->codegen already contains the FIR bytecode from fpvm_vm_x86_compile()
+    fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
+    
+    if (!builder || !builder->code) {
+        return -1;
+    }
+    
+    // Translate FIR bytecode to assembly
+    asm_gen_t gen;
+    asm_init(&gen);
+    
+    START_PERF(mc, jit_asm_gen);
+    translate_fir_to_assembly(builder->code, builder->offset, &gen);
+    END_PERF(mc, jit_asm_gen);
+    
+    printf("Generated assembly:\n%s\n", gen.code);
+    
+    // Compile and load the generated assembly
+    START_PERF(mc, jit_compile_load);
+    fi->jit_func = compile_and_load_assembly(gen.code);
+    END_PERF(mc, jit_compile_load);
+
+    if (fi->jit_func) {
+        printf("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
+    } else {
+        fprintf(stderr, "JIT compilation failed for instruction at %p.\n", fi->addr);
+    }
+
+    free(gen.code);
+    return fi->jit_func ? 0 : -1;
+}
+
+
 // Attempt at handler for simple single instruction trap
 static void fp_trap_handler_nvm(ucontext_t *uc)
 {
@@ -1884,7 +1928,9 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   uint8_t *rip = (uint8_t *)MCTX_PC(&uc->uc_mcontext);
 
   // Let the garbage collector run
+  START_PERF(mc, gc);
   fpvm_gc_run();
+  END_PERF(mc, gc);
 
   // sanity check state and abort if needed
   if (!mc || mc->state != AWAIT_FPE) {
@@ -1925,7 +1971,9 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   
   DEBUG("Handling instruction (rip = %p)\n",rip);
 
+  START_PERF(mc, decode_cache);
   fi = decode_cache_lookup(mc, rip);
+  END_PERF(mc, decode_cache);
 
 #if CONFIG_EXEC_MODE_JIT
   // JIT PATH: Check for a cached JIT function first.
@@ -1941,21 +1989,29 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // COMMON PATH (NVM & JIT cache miss): Decode and compile to FIR.
   if (!fi) {
     DEBUG("Instruction is not in the decode cache\n");
+    START_PERF(mc, decode);
     fi = fpvm_decoder_decode_inst(rip);
+    END_PERF(mc, decode);
     if (!fi) {
       ERROR("failed to decode instruction at %p\n",rip);
       goto fail_do_trap;
     }
     // Doing fake bind here to capture operand sizes
     // which is needed by the vm compilation
+    START_PERF(mc, bind);
     if (fpvm_decoder_bind_operands(fi, &regs)) {
       ERROR("Cannot fake-bind operands of instruction\n");
+      END_PERF(mc, bind);
       goto fail_do_trap;
     }
+    END_PERF(mc, bind);
+    START_PERF(mc, fir_compile);
     if (fpvm_vm_compile(fi)) {
       ERROR("cannot compile instruction to FIR\n");
+      END_PERF(mc, fir_compile);
       goto fail_do_trap;
     }
+    END_PERF(mc, fir_compile);
     DEBUG("successfully decoded and compiled instruction to FIR\n");
     fpvm_builder_disas(stderr, (fpvm_builder_t*)fi->codegen);
     do_insert = 1;
@@ -1963,7 +2019,8 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
 #if CONFIG_EXEC_MODE_JIT
   // JIT PATH: Attempt to JIT compile and execute.
-  if (fpvm_jit_compile_from_fir(fi) == 0 && fi->jit_func) {
+  START_PERF(mc, emulate);
+  if (fpvm_jit_compile_from_fir(fi, mc) == 0 && fi->jit_func) {
       DEBUG("Executing newly JIT-compiled function for instruction at %p.\n", rip);
       fi->jit_func(regs.fprs, &uc->uc_mcontext);
   } else {
@@ -1971,19 +2028,24 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
       fpvm_vm_init(mc->vm, fi, &regs);
       if (fpvm_vm_run(mc->vm)) {
           ERROR("failed to execute VM successfully for instruction at %p\n", rip);
+          END_PERF(mc, emulate);
           // this would be very bad since it could have partially completed, mangling stuff
           goto fail_do_trap;
       }
   }
+  END_PERF(mc, emulate);
 #else
   // NVM PATH: If JIT is not enabled, use the interpreter.
   DEBUG("Executing with NVM interpreter.\n");
+  START_PERF(mc, emulate);
   fpvm_vm_init(mc->vm, fi, &regs);
   if (fpvm_vm_run(mc->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n", rip);
+    END_PERF(mc, emulate);
     // this would be very bad since it could have partially completed, mangling stuff
     goto fail_do_trap;
   }
+  END_PERF(mc, emulate);
 #endif
 
     // Advance program counter past the instruction we just handled.
