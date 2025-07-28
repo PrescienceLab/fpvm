@@ -14,6 +14,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <string.h>
 
 
 #define RFLAGS_CF 0x1UL
@@ -49,12 +50,27 @@
 #define EXPR_MAX_OPS 3
 typedef struct expression {
   const char *op;
+  // Unique expression ID
+  uint64_t id;
   // Cached Value
   double value;
   unsigned long depth;
   // Operands
   struct expression *ops[EXPR_MAX_OPS];
 } expr_t;
+
+
+
+
+#define ALT_IMPL_T expr_t
+#define ALT_IMPL_PFX(name) expr_##name
+#include "./wrap.inc"
+
+
+void zoop() {
+  expr_alloc();
+}
+
 
 static void print_expr(expr_t *expr, int depth) {
   if (expr == 0) {
@@ -72,7 +88,7 @@ static void print_expr(expr_t *expr, int depth) {
     return;
   }
 
-  printf("(%s", expr->op);
+  printf("(%s %zx", expr->op, *(uint64_t *)&expr->value);
 
   for (int i = 0; i < EXPR_MAX_OPS; i++) {
     if (i > 0 && expr->ops[i] == NULL) {
@@ -98,35 +114,72 @@ long expr_depth(expr_t *e) {
 }
 
 
+
+
+static FILE *get_trace_output() {
+  FILE *out = fopen("expressions.trace", "w");
+
+  // fprintf(out,
+  //     "digraph {\n"
+  //     "  node [shape=box, style=filled, fillcolor=\"#f0f0f0\", fontname=\"Courier New\"];\n"
+  //     "  edge [fontname=\"Courier New\"];\n"
+  //     "  rankdir=LR;\n"
+  //     "  bgcolor=\"#ffffff\";\n"
+  //     "  label=\"Expression Trace\";\n");
+
+  return out;
+}
+
 void expr_trace(expr_t *e) {
-  static FILE *out = fopen("expressions.scm", "w");
-  // out = stderr;
-  ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
+  static FILE *out = get_trace_output();
+
+  // if (e->op == NULL) {
+  //   fprintf(out, "  n%zu[label=\"const %zx\"];\n", e->id, *(uint64_t *)&e->value);
+  // } else {
+  //   fprintf(out, "  n%zu[label=\"%s\"]; ", e->id, e->op);
+  //   for (int i = 0; i < EXPR_MAX_OPS; i++) {
+  //     expr_t *a = e->ops[i];
+  //     if (a) {
+  //       fprintf(out, " n%zu -> n%zu;", a->id, e->id);
+  //     }
+  //   }
+  //   fprintf(out, "\n");
+  // }
 
   if (e->op == NULL) {
-    fprintf(out, "%p %lf\n", e, e->value);
-
+    // fprintf(out, "%zu const %zx\n", e->id, *(uint64_t *)&e->value);
   } else {
-    // fprintf(out, "%p (%s %llf", e, e->op, e->value);
-    // // for (int i = 0; i < EXPR_MAX_OPS; i++) {
-    // //   fprintf(out, " 0x%zx", (uint64_t)e->ops[i]);
-    // // }
-    // fprintf(out, ")\n");
+    fprintf(out, "n%zu %s c%zu", e->id, e->op, *(uint64_t *)&e->value);
+    for (int i = 0; i < EXPR_MAX_OPS; i++) {
+      expr_t *a = e->ops[i];
+      if (a) {
+        if (a->op == NULL) {
+          fprintf(out, " c%zu", *(uint64_t *)&a->value);
+        } else {
+          fprintf(out, " n%zu", a->id);
+        }
+      }
+    }
+    fprintf(out, "\n");
   }
-
-  ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
-  ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-
-  // printf("DEPTH=%16lu %16lx ", e->depth, e->depth);
-
-
-  // print_expr(e, 3);
-  // printf("\n");
 }
 
 
-expr_t *expr_constant(double value) {
-  expr_t *e = (expr_t *)fpvm_gc_alloc(sizeof(expr_t));
+static expr_t *expr_alloc(void) {
+  static long next_id = 1;
+
+  long id = next_id++;
+  auto *e = (expr_t *)fpvm_gc_alloc(sizeof(expr_t));
+
+  e->id = id;
+
+  // ...
+  return e;
+}
+
+
+static expr_t *expr_constant(double value) {
+  expr_t *e = expr_alloc();
   e->op = NULL;  // No operation, just a constant
   e->value = value;
   e->depth = 1;
@@ -138,8 +191,8 @@ expr_t *expr_constant(double value) {
   return e;
 }
 
-expr_t *expr_create1(const char *op, double value, expr_t *a) {
-  expr_t *e = (expr_t *)fpvm_gc_alloc(sizeof(expr_t));
+static expr_t *expr_create1(const char *op, double value, expr_t *a) {
+  expr_t *e = expr_alloc();
   e->op = op;
   e->value = value;
   e->depth = 1 + a->depth;
@@ -151,8 +204,8 @@ expr_t *expr_create1(const char *op, double value, expr_t *a) {
   return e;
 }
 
-expr_t *expr_create2(const char *op, double value, expr_t *a, expr_t *b) {
-  expr_t *e = (expr_t *)fpvm_gc_alloc(sizeof(expr_t));
+static expr_t *expr_create2(const char *op, double value, expr_t *a, expr_t *b) {
+  expr_t *e = expr_alloc();
   e->op = op;
   e->value = value;
   e->depth = 1 + a->depth + b->depth;
@@ -164,8 +217,8 @@ expr_t *expr_create2(const char *op, double value, expr_t *a, expr_t *b) {
   return e;
 }
 
-expr_t *expr_create3(const char *op, double value, expr_t *a, expr_t *b, expr_t *c) {
-  expr_t *e = (expr_t *)fpvm_gc_alloc(sizeof(expr_t));
+static expr_t *expr_create3(const char *op, double value, expr_t *a, expr_t *b, expr_t *c) {
+  expr_t *e = expr_alloc();
   e->op = op;
   e->value = value;
   e->depth = 1 + a->depth + b->depth + c->depth;
@@ -177,12 +230,12 @@ expr_t *expr_create3(const char *op, double value, expr_t *a, expr_t *b, expr_t 
   return e;
 }
 
-expr_t *expr_neg(expr_t *a) {
+static expr_t *expr_neg(expr_t *a) {
   return expr_create1("neg", -a->value, a);
 }
 
 
-int expr_signbit(expr_t *a) {
+static int expr_signbit(expr_t *a) {
   return a->value >= 0;  // maybe??
 }
 
@@ -194,6 +247,8 @@ void fpvm_number_init(void *ptr) {
 void fpvm_number_deinit(void *ptr) {
   // Intentionally not freeing for tracing reasons!
 }
+
+
 
 
 // if ptr points to a valid double, return that. If it points to a boxed value,
@@ -220,7 +275,6 @@ static uint64_t decode_to_double_bits(void *ptr) {
 
 // if the value being boxed is negative, state that in the NaN.
 static double expr_box(expr_t *ptr) {
-  expr_trace(ptr);
   int sign = expr_signbit(ptr);
   double value = fpvm_gc_box((void *)ptr, sign);
   if (expr_signbit(ptr)) *(uint64_t *)&value |= (1LLU << 63);
@@ -252,6 +306,15 @@ static expr_t *expr_unbox(void *double_ptr) {
 }
 
 
+extern "C" double fpvm_expr_annotate(double v, const char *value_class, int id) {
+  expr_t *e = expr_unbox(&v);
+  char buf[32];
+  snprintf(buf, sizeof(buf), "%s.%d", value_class, id);
+
+  return expr_box(expr_create1(strdup(buf), e->value, e));
+}
+
+
 #define EXPR_BINARY_OP(NAME, op, TYPE)             \
   FPVM_MATH_DECL(NAME, TYPE) {                     \
     expr_t *a = expr_unbox(src1);                  \
@@ -276,6 +339,7 @@ FPVM_MATH_DECL(max, double) {
   } else {
     *(double *)dest = expr_box(b);
   }
+  return 0;
 }
 FPVM_MATH_DECL(min, double) {
   auto a = expr_unbox(src1);
@@ -285,6 +349,7 @@ FPVM_MATH_DECL(min, double) {
   } else {
     *(double *)dest = expr_box(b);
   }
+  return 0;
 }
 
 // fused multiply and add
