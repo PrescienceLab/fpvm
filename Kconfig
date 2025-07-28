@@ -34,6 +34,7 @@ config ENABLE_NVM_LOGGING
     bool "Enable NVM Logging"
     depends on USE_NVM
     default n
+
       
 config NO_OUTPUT
     bool "Disable output"
@@ -81,6 +82,11 @@ config PERF_STATS_PERIOD
     help
         Number of FP traps between performance statistics reports
 	0 means that reports are generated only at thread end / process end
+
+config ENABLE_PULSE_PROFILING
+    bool "Enable the pulse profiler (throw fpvm.json into https://ui.perfetto.dev/)"
+    depends on PERF_STATS
+    default n
 
 config INSTR_TRACES
     bool "Instruction tracing and analysis"

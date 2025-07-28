@@ -78,7 +78,7 @@
 #include <fpvm/number_system.h>
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
-
+#include <fpvm/pulse.h>
 
 // support for kernel module
 #if CONFIG_TRAP_SHORT_CIRCUITING
@@ -2567,6 +2567,7 @@ static __attribute__((constructor )) void fpvm_init(void) {
   //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
   if (!inited) {
+    pulse_start("fpvm.json");
     // Grab the log destination
     char *log_dst = getenv("FPVM_LOG_FILE");
     if (log_dst != NULL) {
@@ -2624,6 +2625,9 @@ static void fpvm_deinit(void) {
 #else
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
+
+
+  pulse_stop();
   DEBUG("deinit\n");
   dump_execution_contexts_info();
 
