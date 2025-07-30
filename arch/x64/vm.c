@@ -186,7 +186,7 @@ static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o
     if (mo->base == X86_REG_RIP) {
       // for PC relative, it is the address of the next instruction that matters
       // so we need to add the instruction length to it
-      fpvm_build_imm8(b,fi->length);
+      fpvm_build_imm64(b, fi->length);
       fpvm_build_iadd(b);
     }
 
@@ -200,11 +200,22 @@ static void compile_mem_operand(fpvm_builder_t *b, fpvm_inst_t *fi, cs_x86_op *o
     /* } */
   } else {
     // PAD: this is probably OK, it just means there is no base register
+    fpvm_build_imm64(b, 0);
   }
 
   if (mo->index != X86_REG_INVALID) {
     // reg_map_entry_t *m = CAPSTONE_TO_MCONTEXT(mo->index);
     // addr += fr->mcontext->gregs[MCREG(m)] * mo->scale;  // assuming scale is not shift amount
+
+    // This part is a placeholder for future implementation.
+    compile_gpr_ptr(b, mo->index);
+    fpvm_build_ld64(b);
+    if (mo->scale > 1) {
+        fpvm_build_imm64(b, mo->scale);
+        // An 'fpvm_build_imul(b)' would be needed here.
+    }
+    fpvm_build_iadd(b);
+
   } else {
     // PAD: this is probably OK, it just means there is no index regiser
   }
