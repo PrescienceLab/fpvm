@@ -253,9 +253,11 @@ typedef struct execution_context {
   perf_stat_t correctness_stat;
   perf_stat_t foreign_call_stat;
   perf_stat_t altmath_stat;
+  perf_stat_t fir_emulate_stat;
   perf_stat_t fir_compile_stat;
-  perf_stat_t jit_asm_gen_stat;
-  perf_stat_t jit_compile_load_stat;
+  perf_stat_t fir_jit_asm_gen_stat;
+  perf_stat_t fir_jit_compile_load_stat;
+  perf_stat_t fir_jit_exec_stat;
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
@@ -269,9 +271,11 @@ typedef struct execution_context {
   PRINT_PERF(c, correctness);  \
   PRINT_PERF(c, foreign_call); \
   PRINT_PERF(c, altmath);      \
+  PRINT_PERF(c, fir_emulate);  \
   PRINT_PERF(c, fir_compile);  \
-  PRINT_PERF(c, jit_asm_gen);  \
-  PRINT_PERF(c, jit_compile_load);
+  PRINT_PERF(c, fir_jit_asm_gen);  \
+  PRINT_PERF(c, fir_jit_compile_load); \
+  PRINT_PERF(c, fir_jit_exec);
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -477,9 +481,11 @@ static execution_context_t *alloc_execution_context(int tid) {
       perf_stat_init(&context[i].correctness_stat, "correctness");
       perf_stat_init(&context[i].foreign_call_stat, "foreign call");
       perf_stat_init(&context[i].altmath_stat, "altmath");
+      perf_stat_init(&context[i].fir_emulate_stat, "fir_emulate");
       perf_stat_init(&context[i].fir_compile_stat, "fir_compile");
-      perf_stat_init(&context[i].jit_asm_gen_stat, "jit_asm_gen");
-      perf_stat_init(&context[i].jit_compile_load_stat, "jit_compile_load");
+      perf_stat_init(&context[i].fir_jit_asm_gen_stat, "fir_jit_asm_gen");
+      perf_stat_init(&context[i].fir_jit_compile_load_stat, "fir_jit_compile_load");
+      perf_stat_init(&context[i].fir_jit_exec_stat, "fir_jit_exec");
 #endif
       return &context[i];
     }
@@ -1899,16 +1905,16 @@ static int fpvm_jit_compile_from_fir(fpvm_inst_t *fi, execution_context_t *mc) {
     asm_gen_t gen;
     asm_init(&gen);
     
-    START_PERF(mc, jit_asm_gen);
+    START_PERF(mc, fir_jit_asm_gen);
     translate_fir_to_assembly(builder->code, builder->offset, &gen);
-    END_PERF(mc, jit_asm_gen);
+    END_PERF(mc, fir_jit_asm_gen);
     
     printf("Generated assembly:\n%s\n", gen.code);
     
     // Compile and load the generated assembly
-    START_PERF(mc, jit_compile_load);
+    START_PERF(mc, fir_jit_compile_load);
     fi->jit_func = compile_and_load_assembly(gen.code);
-    END_PERF(mc, jit_compile_load);
+    END_PERF(mc, fir_jit_compile_load);
 
     if (fi->jit_func) {
         printf("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
@@ -1979,7 +1985,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // JIT PATH: Check for a cached JIT function first.
   if (fi && fi->jit_func) {
     DEBUG("JIT cache hit for instruction at %p. Executing...\n", rip);
+
+    START_PERF(mc, fir_jit_exec);
     fi->jit_func(regs.fprs, &uc->uc_mcontext);
+    END_PERF(mc, fir_jit_exec);
+
     rip += fi->length;
     MCTX_PC(&uc->uc_mcontext) = (greg_t)rip;
     goto handler_done;
@@ -2019,33 +2029,36 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
 #if CONFIG_EXEC_MODE_JIT
   // JIT PATH: Attempt to JIT compile and execute.
-  START_PERF(mc, emulate);
+  START_PERF(mc, fir_emulate);
   if (fpvm_jit_compile_from_fir(fi, mc) == 0 && fi->jit_func) {
       DEBUG("Executing newly JIT-compiled function for instruction at %p.\n", rip);
+
+      START_PERF(mc, fir_jit_exec);
       fi->jit_func(regs.fprs, &uc->uc_mcontext);
+      END_PERF(mc, fir_jit_exec);
   } else {
       ERROR("JIT compilation failed; falling back to NVM interpreter.\n");
       fpvm_vm_init(mc->vm, fi, &regs);
       if (fpvm_vm_run(mc->vm)) {
           ERROR("failed to execute VM successfully for instruction at %p\n", rip);
-          END_PERF(mc, emulate);
+          END_PERF(mc, fir_emulate);
           // this would be very bad since it could have partially completed, mangling stuff
           goto fail_do_trap;
       }
   }
-  END_PERF(mc, emulate);
+  END_PERF(mc, fir_emulate);
 #else
   // NVM PATH: If JIT is not enabled, use the interpreter.
   DEBUG("Executing with NVM interpreter.\n");
-  START_PERF(mc, emulate);
+  START_PERF(mc, fir_emulate);
   fpvm_vm_init(mc->vm, fi, &regs);
   if (fpvm_vm_run(mc->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n", rip);
-    END_PERF(mc, emulate);
+    END_PERF(mc, fir_emulate);
     // this would be very bad since it could have partially completed, mangling stuff
     goto fail_do_trap;
   }
-  END_PERF(mc, emulate);
+  END_PERF(mc, fir_emulate);
 #endif
 
     // Advance program counter past the instruction we just handled.
