@@ -69,16 +69,19 @@ extern void riscv64_fprs_out_d(void *);
 static uint32_t riscv_get_fcsr(void) {
   uint32_t fcsr;
   __asm__ __volatile__("frcsr %0" : "=r"(fcsr) : :);
+  DEBUG("Got fcsr: %x\n", fcsr);
   return fcsr;
 }
 
 static uint32_t riscv_get_fflags_mask(void) {
   uint32_t ften;
   __asm__ __volatile__("csrr %0, 0x880" : "=r"(ften) : :);
+  DEBUG("Got fflags: %x\n", ften);
   return ften;
 }
 
 static void riscv_set_fcsr(uint32_t f) {
+  DEBUG("Setting fcsr to %x\n", f);
   uint64_t fcsr = f & 0xffffffffUL;
   // technically this will also modify the register, writing
   // the old value to it, so better safe than sorry
@@ -86,6 +89,7 @@ static void riscv_set_fcsr(uint32_t f) {
 }
 
 static void riscv_set_fflags_mask(uint32_t fflags_mask) {
+  DEBUG("Setting fflags to %x\n", fflags_mask);
   __asm__ __volatile__("csrw 0x880, %0" : : "r"(fflags_mask));
 }
 
@@ -370,6 +374,7 @@ void arch_set_trap(ucontext_t *uc, uint64_t *state) {
 }
 
 void arch_reset_trap(ucontext_t *uc, uint64_t *state) {
+  DEBUG("RESETTING TRAP!\n");
   uint32_t *target = (uint32_t *)(uc->uc_mcontext.__gregs[REG_PC]);
 
   if (state) {
@@ -399,7 +404,9 @@ void arch_reset_trap(ucontext_t *uc, uint64_t *state) {
 void arch_clear_fp_exceptions(ucontext_t *uc) {
   uint32_t *fpcsr = get_fpcsr_ptr(uc);
   if (fpcsr) {
+    DEBUG("FPCSR BEFORE clearing: %x\n", *fpcsr);
     *fpcsr &= ~FLAG_MASK;
+    DEBUG("FPCSR AFTER  clearing: %x\n", *fpcsr);
   }
 }
 
@@ -410,12 +417,14 @@ void arch_clear_fp_exceptions(ucontext_t *uc) {
  * TODO: Does Linux handle the fflags_care CSR? */
 
 void arch_mask_fp_traps(ucontext_t *uc) {
+  DEBUG("Masking OFF FP Traps!\n");
   uint32_t fflags = riscv_get_fflags_mask();
   fflags &= ~ENABLE_MASK;
   riscv_set_fflags_mask(fflags);
 }
 
 void arch_unmask_fp_traps(ucontext_t *uc) {
+  DEBUG("Unmasking ON FP Traps!\n");
   uint32_t fflags = riscv_get_fflags_mask();
   fflags |= ENABLE_MASK;
   riscv_set_fflags_mask(fflags);
