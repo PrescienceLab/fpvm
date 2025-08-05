@@ -2003,7 +2003,7 @@ int fpvm_demote_in_place(void *v) {
 static void init_arch_trap_mask(void)
 {
     arch_clear_trap_mask();
-#define SET_IF_NEED(E) if (exceptmask & E) { arch_set_trap_mask(E); }
+#define SET_IF_NEED(E) if (!(exceptmask & E)) { arch_set_trap_mask(E); }
     SET_IF_NEED(FE_INVALID);
     SET_IF_NEED(FE_DIVBYZERO);
     SET_IF_NEED(FE_OVERFLOW);
