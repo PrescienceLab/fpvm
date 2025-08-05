@@ -199,12 +199,13 @@ void vm_test_decode(fpvm_inst_t *fi) {
 
 
 
-void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs) {
+void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs, perf_stat_t *altmath_perf) {
   memset(vm, 0, sizeof(fpvm_vm_t));
   vm->mcstate = FPVM_REGS_GPRS(regs);
   vm->fpstate = FPVM_REGS_FPRS(regs);
   vm->code = ((fpvm_builder_t*)inst->codegen)->code;
   vm->sp = vm->stack;
+  vm->altmath_perf = altmath_perf;
 }
 
 #define PUSH(v) (*(vm->sp++) = (uint64_t)(v))  // Push a value to the stack
@@ -283,7 +284,10 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       dest = POP(void *);
       src1 = POP(void *);
 
+      if (vm->altmath_perf) { perf_stat_start(vm->altmath_perf); }
       error = op(&vm->special, dest, src1, NULL, NULL, NULL);
+      if (vm->altmath_perf) { perf_stat_end(vm->altmath_perf); }
+
       if (error != 0) {
         DEBUG("WARNING: OP FAILED\n");
       }
@@ -296,7 +300,10 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       src1 = POP(void *);
       src2 = POP(void *);
 
+      if (vm->altmath_perf) { perf_stat_start(vm->altmath_perf); }
       error = op(&vm->special, dest, src1, src2, NULL, NULL);
+      if (vm->altmath_perf) { perf_stat_end(vm->altmath_perf); }
+
       if (error != 0) {
         DEBUG("WARNING: OP FAILED\n");
       }
@@ -310,7 +317,10 @@ int fpvm_vm_step(fpvm_vm_t *vm) {
       src2 = POP(void *);
       src3 = POP(void *);
 
+      if (vm->altmath_perf) { perf_stat_start(vm->altmath_perf); }
       error = op(&vm->special, dest, src1, src2, src3, NULL);
+      if (vm->altmath_perf) { perf_stat_end(vm->altmath_perf); }
+
       if (error != 0) {
         DEBUG("WARNING: OP FAILED\n");
       }

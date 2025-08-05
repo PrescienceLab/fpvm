@@ -6,6 +6,7 @@
 #include <fpvm/fpvm_common.h>
 #include <fpvm/decoder.h>
 #include <fpvm/number_system.h>
+#include <fpvm/perf.h>
 
 
 #define FPVM_VM_STACK_SIZE 128
@@ -19,6 +20,8 @@ typedef struct {
   uint8_t *mcstate;
   uint8_t *fpstate;
 
+  perf_stat_t *altmath_perf;
+
 
   uint64_t *sp; // the vm's stack pointer
   uint64_t stack[FPVM_VM_STACK_SIZE];
@@ -26,7 +29,7 @@ typedef struct {
 } fpvm_vm_t;
 
 
-void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs);
+void fpvm_vm_init(fpvm_vm_t *vm, fpvm_inst_t *inst, fpvm_regs_t *regs, perf_stat_t *altmath_perf);
 // Step one instruction in the virtual machine, returning
 // 0 if no more instructions are available to be run.
 int fpvm_vm_step(fpvm_vm_t *);

@@ -2027,6 +2027,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     do_insert = 1;
   }
 
+  perf_stat_t *altmath_stat = 0;
+#if CONFIG_PERF_STATS
+  altmath_stat = &mc->altmath_stat;
+#endif
+
 #if CONFIG_EXEC_MODE_JIT
   // JIT PATH: Attempt to JIT compile and execute.
   START_PERF(mc, fir_emulate);
@@ -2038,7 +2043,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
       END_PERF(mc, fir_jit_exec);
   } else {
       ERROR("JIT compilation failed; falling back to NVM interpreter.\n");
-      fpvm_vm_init(mc->vm, fi, &regs);
+      fpvm_vm_init(mc->vm, fi, &regs, altmath_stat);
       if (fpvm_vm_run(mc->vm)) {
           ERROR("failed to execute VM successfully for instruction at %p\n", rip);
           END_PERF(mc, fir_emulate);
@@ -2051,7 +2056,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // NVM PATH: If JIT is not enabled, use the interpreter.
   DEBUG("Executing with NVM interpreter.\n");
   START_PERF(mc, fir_emulate);
-  fpvm_vm_init(mc->vm, fi, &regs);
+  fpvm_vm_init(mc->vm, fi, &regs, altmath_stat);
   if (fpvm_vm_run(mc->vm)) {
     ERROR("failed to execute VM successfully for instruction at %p\n", rip);
     END_PERF(mc, fir_emulate);
