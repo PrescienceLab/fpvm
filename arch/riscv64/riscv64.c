@@ -808,6 +808,9 @@ static void deinit_pipelined_exceptions(void)
 // been saved on the stack on entry into the handler.
 // return value is the PC of next instruction
 static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
+  uint32_t old_fflags = riscv_get_fflags_mask();
+  riscv_set_fflags_mask(~ENABLE_MASK);
+
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state
@@ -897,6 +900,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
   /* Restore the FCSR's FP event bits. */
   riscv_set_fcsr(*get_fpcsr_ptr(&fake_ucontext));
   riscv64_fprs_in_d(fake_ucontext.uc_mcontext.__fpregs.__d.__f);
+  riscv_set_fflags_mask(old_fflags);
 
   DEBUG("PPE-FPE  done\n");
 
