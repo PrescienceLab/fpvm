@@ -312,6 +312,7 @@ void translate_fir_to_assembly(uint8_t *fir_code, size_t code_size, asm_gen_t *g
                 );
                 break;
             
+            // Can add more immediate sizes as needed
             case fpvm_opcode_imm64: {
                 int64_t imm = *(int64_t*)pc;
                 pc += sizeof(int64_t);

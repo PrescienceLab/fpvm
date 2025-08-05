@@ -275,7 +275,7 @@ typedef struct execution_context {
   PRINT_PERF(c, fir_compile);  \
   PRINT_PERF(c, fir_jit_asm_gen);  \
   PRINT_PERF(c, fir_jit_compile_load); \
-  PRINT_PERF(c, fir_jit_exec);
+  PRINT_PERF(c, fir_jit_exec); // captures altmath in JIT execution path
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
