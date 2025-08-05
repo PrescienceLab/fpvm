@@ -2027,6 +2027,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     do_insert = 1;
   }
 
+  // TODO: get altmath tracking to work with the JIT
   perf_stat_t *altmath_stat = 0;
 #if CONFIG_PERF_STATS
   altmath_stat = &mc->altmath_stat;
