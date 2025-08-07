@@ -1420,7 +1420,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     // PAD: This stupidly just treats everything as SSE2
     // and must be fixed
     regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
-    regs.fpr_size = 16;
+    regs.fpr_size = FPR_SIZE;
 
 
     // bind operands
@@ -1670,13 +1670,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   regs.mcontext = &uc->uc_mcontext;
 
-  // PAD: This stupidly just treats everything as SSE2
-  // and must be fixed
   // we get the registers early since
   // we will need to do a fake bind the first
   // time we see an instruction
   regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
-  regs.fpr_size = 16;
+  regs.fpr_size = FPR_SIZE;
 
   DEBUG("Handling instruction (rip = %p)\n",rip);
 
@@ -2407,10 +2405,8 @@ int main(int argc, char *argv[])
   // getcontext(&uc);
   // regs.mcontext = &uc.uc_mcontext;
 
-  // // PAD: This stupidly just treats everything as SSE2
-  // // and must be fixed
   // regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
-  // regs.fpr_size = 16;
+  // regs.fpr_size = FPR_SIZE;
 
   // // Doing fake bind here to capture operand sizes
   // // If we do it this way, we will only bind the first time we see the instruction
@@ -2446,7 +2442,7 @@ int main(int argc, char *argv[])
   // }
 
   // regs.fprs = fpregs;
-  // regs.fpr_size = 16;
+  // regs.fpr_size = FPR_SIZE;
 
   // INFO("Register initial state\n");
   // // print_fpregs_decimal(fpregs);
