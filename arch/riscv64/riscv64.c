@@ -15,8 +15,6 @@
 #include <fpvm/arch.h>
 
 extern void trap_entry(void);
-extern void riscv64_fprs_out_d(void *);
-extern void riscv64_fprs_out_d(void *);
 
 /*
   We will handle only 64 bit riscv, though this should
@@ -849,6 +847,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
 #endif
 
   /* FIXME: We assume RISC-V D extension here! */
+  // FIXME: arch_get_fpregs_machine() eventually
   riscv64_fprs_out_d(fake_ucontext.uc_mcontext.__fpregs.__d.__f);
   fake_ucontext.uc_mcontext.__fpregs.__d.__fcsr = fcsr;
 
@@ -899,6 +898,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
   /* XXX: We assume D extension here! */
   /* Restore the FCSR's FP event bits. */
   riscv_set_fcsr(*get_fpcsr_ptr(&fake_ucontext));
+  // FIXME: arch_set_fpregs_machine() eventually
   riscv64_fprs_in_d(fake_ucontext.uc_mcontext.__fpregs.__d.__f);
   riscv_set_fflags_mask(old_fflags);
 
