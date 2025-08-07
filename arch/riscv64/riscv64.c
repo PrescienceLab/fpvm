@@ -658,21 +658,27 @@ void riscv64_fprs_in_q(void *);
 void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
 {
   fpregs->numregs=32;
-  fpregs->regsize_bytes=16;
-  fpregs->regalign_bytes=16;
-  fpregs->regsize_entries=2;
-    switch (what_fp) {
+  switch (what_fp) {
     case HAVE_F_FP:
+      fpregs->regsize_bytes=4;
+      fpregs->regalign_bytes=4;
+      fpregs->regsize_entries=1;
       if (fpregs->data) {
 	riscv64_fprs_out_f(fpregs->data);
       }
       break;
     case HAVE_D_FP:
+      fpregs->regsize_bytes=8;
+      fpregs->regalign_bytes=8;
+      fpregs->regsize_entries=1;
       if (fpregs->data) {
 	riscv64_fprs_out_d(fpregs->data);
       }
       break;
     case HAVE_Q_FP:
+      fpregs->regsize_bytes=16;
+      fpregs->regalign_bytes=16;
+      fpregs->regsize_entries=1;
       if (fpregs->data) {
 	riscv64_fprs_out_q(fpregs->data);
       }
