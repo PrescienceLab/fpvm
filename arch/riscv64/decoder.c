@@ -22,6 +22,13 @@ static csh handle;
 #define IS_FPR(r) \
   (((r) >= RISCV_REG_F0_32 && (r) <= RISCV_REG_F31_64))
 
+// In capstone, the enum for the 64bit version of the register
+// immediately follows the enum for the 32bit version.
+// For example RISCV_REG_F4_32, then RISCV_REG_F4_64
+// The following convoluted macros for finding the
+// register index encode this, and compute the same index for both
+// plus the relevant size.  In the example, "4" will get
+// computed in both cases.
 #define GET_FPR_INDEX(r) \
   (((r) - RISCV_REG_F0_32) / 2)
 
