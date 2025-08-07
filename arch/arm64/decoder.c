@@ -66,9 +66,11 @@ fpvm_op_t capstone_to_common[ARM64_INS_ENDING] = {
   [ARM64_INS_FSQRT] = FPVM_OP_SQRT,
   [ARM64_INS_FMOV] = FPVM_OP_MOVE,
 
-  // fused
-  [ARM64_INS_FMADD] = FPVM_OP_MADD,
-  [ARM64_INS_FNMSUB] = FPVM_OP_NMSUB,
+  // fused (We are matching these to x86 implementations of fused)
+  [ARM64_INS_FMADD] = FPVM_OP_MADD,     // Vd = Va + Vn*Vm
+  [ARM64_INS_FNMADD] = FPVM_OP_NMSUB,   // Vd = (-Va) + (-Vn)*Vm
+  [ARM64_INS_FMSUB] = FPVM_OP_NMADD,    // Vd = Va + (-Vn)*Vm
+  [ARM64_INS_FNMSUB] = FPVM_OP_MSUB,    // Vd = (-Va) + Vn*Vm
 
   // comparison instructions
   [ARM64_INS_FCMP] = FPVM_OP_CMP,
