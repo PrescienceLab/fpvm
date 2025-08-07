@@ -134,6 +134,9 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+// FIXME: This stupidly just treats everything as SSE2 and must be fixed
+#define FPR_SIZE 16
+
 // mcontext_t-access-specific stuff
 #define MCTX_PC(mc) ((mc)->gregs[REG_RIP])
 #define MCTX_SP(mc) ((mc)->gregs[REG_RSP])

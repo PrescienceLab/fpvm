@@ -858,10 +858,8 @@ static int correctness_handler(ucontext_t *uc, execution_context_t *mc)
 
   regs.mcontext = &uc->uc_mcontext;
 
-  // This stupidly just treats everything as SSE2
-  // and must be fixed
   regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
-  regs.fpr_size = 16;
+  regs.fpr_size = FPR_SIZE;
 
   // bind operands
   // not relevant for a call instruction

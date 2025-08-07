@@ -223,6 +223,11 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+// We assume ARM vector is supported, where each vector register is 16 bytes
+// wide and the "scalar" elements of the vector are then embedded at 0, 16, 32,
+// etc, offsets; similar to xmms on x86.
+#define FPR_SIZE 16
+
 #define MCTX_PC(mc) ((mc)->pc)
 #define MCTX_SP(mc) ((mc)->sp)
 #define MCTX_PSTATE(mc) ((mc)->pstate)

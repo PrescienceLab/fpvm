@@ -131,6 +131,13 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
+// FIXME: We assume the D extension here! The F extension says that registers
+// are 4-bytes and the Q extension says that registers are 16-bits. To further
+// complicate things, the V extension allows the elements of the vector to be
+// sized DYNAMICALLY based on the contents of a CSR. The maximum size of each
+// vector register is well-known and comes from a VLEN CSR.
+#define FPR_SIZE 8
+
 #define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
 #define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
 #define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
