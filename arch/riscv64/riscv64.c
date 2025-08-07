@@ -904,7 +904,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
 
   DEBUG("PPE-FPE  done\n");
 
-  return epc;
+  return MCTX_PC(&fake_ucontext.uc_mcontext);
 }
 
 /* ESTEPs are a pipeline-able exception cause that has been added to RISC-V for
