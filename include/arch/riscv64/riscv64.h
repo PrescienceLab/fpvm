@@ -131,15 +131,6 @@ void arch_process_deinit(void);
 int arch_thread_init(ucontext_t *uc);
 void arch_thread_deinit(void);
 
-// Registers
-#ifndef REG_PC
-#define REG_PC 32
-#endif
-
-#ifndef REG_SP
-#define REG_SP 2
-#endif
-
 #define MCTX_PC(mc) ((mc)->__gregs[REG_PC])
 #define MCTX_SP(mc) ((mc)->__gregs[REG_SP])
 #define MCTX_FPRS(mc) ((mc)->__fpregs.__d.__f)
@@ -155,7 +146,7 @@ void arch_trap_short_circuiting_deinit(void);
 
 static inline void __attribute__((always_inline)) arch_trap_short_circuiting_kick_self(void) {
     // estep instruction
-  __asm__ __volatile__(".insn 0x00300073\n\t"); 
+  __asm__ __volatile__(".insn 0x00300073\n\t");
 }
 #endif
 
