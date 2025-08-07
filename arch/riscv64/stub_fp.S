@@ -37,6 +37,7 @@ fpvm_test_instr:
    fld   f29, 0xe8(a0)
    fld   f30, 0xf0(a0)
    fld   f31, 0xf8(a0)
+   
    ret
 
 .global my_instruction
