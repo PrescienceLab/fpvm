@@ -56,7 +56,7 @@ static csh handle;
 fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     [0 ... RISCV_INS_ENDING - 1] = {FPVM_OP_UNKNOWN, 0, 0, 0},
 
-    ///Computational instructions
+    // Computational Instructions
     [RISCV_INS_FADD_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
     [RISCV_INS_FSUB_D] = {FPVM_OP_SUB, 0, 0, 8, 0},
     [RISCV_INS_FMUL_D] = {FPVM_OP_MUL, 0, 0, 8, 0},
@@ -65,11 +65,17 @@ fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     [RISCV_INS_FMIN_D] = {FPVM_OP_MIN, 0, 0, 8, 0},
     [RISCV_INS_FMAX_D] = {FPVM_OP_MAX, 0, 0, 8, 0},
 
-    //Compare instructions
+    // Compare Instructions
     [RISCV_INS_FEQ_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
     [RISCV_INS_FLE_D] = {FPVM_OP_SUB, 0, 0, 8, 0},
     [RISCV_INS_FLT_D] = {FPVM_OP_ADD, 0, 0, 8, 0},
 
+    // Fused Instructions 
+    // (Matching x86 implementation of fused, so they might map to a different fused op)
+    [RISCV_INS_FMADD_D] = {FPVM_OP_MADD, 0, 0, 8, 0},
+    [RISCV_INS_FMSUB_D] = {FPVM_OP_MSUB, 0, 0, 8, 0},
+    [RISCV_INS_FNMADD_D] = {FPVM_OP_NMSUB, 0, 0, 8, 0},
+    [RISCV_INS_FNMSUB_D] = {FPVM_OP_NMADD, 0, 0, 8, 0},
 };
 
 static char* reg_name(riscv_reg reg) {
