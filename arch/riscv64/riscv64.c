@@ -199,7 +199,16 @@ void arch_dump_gp_csr(const char *prefix, const ucontext_t *uc) {
 
 /* What floating-point extension is the core using at the time of process init?
  * NOTE: We chose a default case of having NO FP support. */
-static enum { HAVE_NO_FP, HAVE_F_FP, HAVE_D_FP, HAVE_Q_FP } what_fp = HAVE_NO_FP;
+static enum { HAVE_NO_FP, HAVE_F_FP, HAVE_D_FP, HAVE_Q_FP } what_fp =
+#if defined(__riscv_flen) && (__riscv_flen == 32)
+    HAVE_F_FP;
+#elif defined(__riscv_flen) && (__riscv_flen == 64)
+    HAVE_D_FP;
+#elif defined(__riscv_flen) && (__riscv_flen == 128)
+    HAVE_Q_FP;
+#else
+    HAVE_NO_FP;
+#endif
 
 //
 // FPR state is a union of f, d, and q state, where
