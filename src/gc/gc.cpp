@@ -342,6 +342,18 @@ extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign
   }
 }
 
+extern "C" int NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint_raw(uint64_t val, int *sign, void **result)
+{
+  gc::box b;
+  b.set_boxed(val);
+
+  if (!b.valid()) return 0;
+
+  *result = b.get(sign);
+
+  return 1;
+}
+
 extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *sign)
 {
   return fpvm_gc_unbox_from_uint((*(uint64_t*)val), sign);
@@ -350,6 +362,11 @@ extern "C" void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_ptr(void *val, int *sign)
 extern "C" void *fpvm_gc_unbox(double val, int *sign)
 {
   return fpvm_gc_unbox_from_uint(*(uint64_t*)&val,sign);
+}
+
+extern "C" int fpvm_gc_unbox_raw(double val, int *sign, void **result)
+{
+  return fpvm_gc_unbox_from_uint_raw(*(uint64_t*)&val,sign,result);
 }
 
 extern "C" int NO_TOUCH_FLOAT fpvm_gc_is_tracked_nan_from_uint(uint64_t val)

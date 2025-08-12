@@ -31,6 +31,11 @@ void     NO_TOUCH_FLOAT fpvm_gc_box_to_ptr(void *ptr, void *target, int sign);
 // alt number system needs to be aware of
 //    This is due to xor 1<<63, [value] being a way sign can be flipped
 void *fpvm_gc_unbox(double val, int *sign);
+// Same, but no tracking checks, return 0 if not a valid box
+int   fpvm_gc_unbox_raw(double val, int *sign, void **result);
+// unbox a uint64_t into a void* without tracking checks
+// return 0 if not a valid box, otherwise nonzero
+int    NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint_raw(uint64_t val, int *sign, void **result);
 // unbox a uint64_t into a void*
 void * NO_TOUCH_FLOAT fpvm_gc_unbox_from_uint(uint64_t val, int *sign);
 // unbox from a pointer to  void* (ie, is the thing pointed to a nanbox)
