@@ -71,7 +71,7 @@ fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     [RISCV_INS_FLE_D] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
     [RISCV_INS_FLT_D] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
 
-    
+
     // Fused Instructions 
     // (Matching x86 implementation of fused, so they might map to a different fused op)
     [RISCV_INS_FMADD_D] = {FPVM_OP_MADD, 0, 0, 8, 0},
@@ -238,7 +238,7 @@ static int decode_comparison(fpvm_inst_t *fi)
       ERROR("cmpxx operation but has no valid comparison type\n");
       return -1;
   }
-  return -1;
+  return 0;
 }
 
 int fpvm_decoder_init(void)
