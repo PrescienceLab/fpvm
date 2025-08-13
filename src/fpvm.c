@@ -2399,23 +2399,29 @@ int main(int argc, char *argv[])
   // Note that we update the mcontext each time we
   // complete an instruction in the current sequence
   // so this always reflects the current
-  // fpvm_regs_t regs;
+  fpvm_regs_t regs;
 
-  // ucontext_t uc;
-  // getcontext(&uc);
-  // regs.mcontext = &uc.uc_mcontext;
+  ucontext_t uc;
+  getcontext(&uc);
+  regs.mcontext = &uc.uc_mcontext;
 
-  // regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
-  // regs.fpr_size = FPR_SIZE;
+  regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
+  regs.fpr_size = FPR_SIZE;
 
-  // // Doing fake bind here to capture operand sizes
-  // // If we do it this way, we will only bind the first time we see the instruction
-  // // and otherwise keep it in the decode cache
-  // if (fpvm_decoder_bind_operands(fi, &regs)) {
-  //   ERROR("Cannot bind operands of instruction\n");
-  //   abort();
-  // }
+  // Doing fake bind here to capture operand sizes
+  // If we do it this way, we will only bind the first time we see the instruction
+  // and otherwise keep it in the decode cache
+  if (fpvm_decoder_bind_operands(fi, &regs)) {
+    ERROR("Cannot bind operands of instruction\n");
+    abort();
+  }
 
+
+  if (fpvm_emulator_emulate_inst(fi, 0,0,0,0)) {
+    ERROR("cannot emulate instruction\n");
+    abort();
+  }
+  
   // // if (fpvm_vm_compile(fi)) {
   // //   ERROR("cannot compile instruction\n");
   // //   abort();
