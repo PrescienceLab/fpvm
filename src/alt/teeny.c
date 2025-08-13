@@ -1,6 +1,20 @@
 // an implementation of tiny numbers that are directly
 // embedded in nans as opposed to having pointers to
 // them embedded in the nans
+//
+//
+// The current teeny implementation has the following requirements:
+//
+// 1) the number of exponent bits is at most 11 (this allows for
+//    straightforward conversion into doubles.  Every teeny
+//    has a representation of the same class in double)
+//
+// 2) the number of mantissa bits is at most 47 - numexp_bits - 1 bits
+//    (this allows for FPVM NaN-boxing to be be used to directly
+//    embed a teeny number in a double nan.
+//
+//
+
 
 #include <fpvm/config.h>
 
@@ -53,20 +67,28 @@
 #endif
 
 
+#define UNUSED __attribute__((unused))
+
 static int numbits_exp=CONFIG_TEENY_EXP_BITS;
 static int numbits_mant=CONFIG_TEENY_MANT_BITS;
 static int numbits_all=(1+(CONFIG_TEENY_EXP_BITS+CONFIG_TEENY_MANT_BITS));
-static int bias = ((1<<(numbits_exp-1))-1);
+static int bias = ((1<<(CONFIG_TEENY_EXP_BITS))-1);
+static uint64_t exp_bitmask=0;
+static uint64_t mant_bitmask=0;
 
 
-void fpvm_number_init(void *ptr)
+static uint64_t bitmask(const uint64_t count)
 {
-  (void)ptr;
+  return ~(-1ULL << count);
+}
+
+void fpvm_number_init(UNUSED void *ptr)
+{
   if (getenv("FPVM_TEENY_EXP_BITS")) {
     numbits_exp=atoi(getenv("FPVM_TEENY_EXP_BITS"));
   }
   if (getenv("FPVM_TEENY_MANT_BITS")) {
-    numbits_exp=atoi(getenv("FPVM_TEENY_EXP_BITS"));
+    numbits_mant=atoi(getenv("FPVM_TEENY_MANT_BITS"));
   }
   
   numbits_all = 1 + numbits_exp + numbits_mant;
@@ -81,32 +103,222 @@ void fpvm_number_init(void *ptr)
     MATH_ERROR("too many bits (%d) required, but only %d available\n",numbits_all,47);
     exit(-1);
   }
-  
+
+  bias = ((1<<(numbits_exp))-1);
+
+  exp_bitmask = bitmask(numbits_exp);
+  mant_bitmask = bitmask(numbits_mant);
+ 
   MATH_DEBUG("initialized with %d exponent (bias %d) and %d mantissa bits\n",numbits_exp,bias,numbits_mant);
 }
 
-void fpvm_number_deinit(void *ptr)
+void fpvm_number_deinit(UNUSED void *ptr)
 {
-  (void)ptr;
   MATH_DEBUG("deinited%s\n","");
 }
+
+
+
+static double double_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
+{
+  uint64_t r;
+  
+  sign &= 0x1;
+  exp &= 0x7ff;
+  mantissa &= 0xfffffffffffffUL;
+   
+  r = (sign << 63) | (exp << 52) | mantissa;
+  
+  return *(double*)&r;
+}
+
+static void double_unpack(const double d, uint64_t *sign, uint64_t *exp, uint64_t *mantissa)
+{
+  uint64_t x = *(uint64_t*)&d;
+  *sign = (x>>63) & 0x1;
+  *exp = (x>>52) & 0x7ff;
+  *mantissa = x & 0xfffffffffffffUL;
+}
+
+static int is_double_special_exp(const uint64_t exp)
+{
+  return exp == 0x7ff;
+}
+
+static int is_double_denorm_exp(const uint64_t exp)
+{
+  return exp == 0;
+}
+
+
+
+static uint64_t teeny_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
+{
+  sign &= 0x1;
+  exp &= exp_bitmask;
+  mantissa &= mant_bitmask;
+   
+  return (sign << (numbits_exp + numbits_mant)) | (exp << numbits_mant) | mantissa;
+}
+
+static void teeny_unpack(const uint64_t x, uint64_t *sign, uint64_t *exp, uint64_t *mantissa)
+{
+  *sign = (x>>(numbits_exp + numbits_mant)) & 0x1;
+  *exp = (x>>numbits_mant) & exp_bitmask;
+  *mantissa = x & mant_bitmask;
+}
+
+static int is_teeny_special_exp(const uint64_t exp)
+{
+  return exp == exp_bitmask;
+}
+
+static int is_teeny_denorm_exp(const uint64_t exp)
+{
+  return exp == 0;
+}
+
+
+static int is_teeny_nan(const uint64_t x)
+{
+  uint64_t s,e,m;
+  
+  teeny_unpack(x,&s,&e,&m);
+  
+  return is_teeny_special_exp(e) && m!=0;
+}
+
+static int is_teeny_inf(const uint64_t x)
+{
+  uint64_t s,e,m;
+  
+  teeny_unpack(x,&s,&e,&m);
+  
+  return is_teeny_special_exp(e) && m==0;
+}
+
+#define UNIMPL() do { MATH_ERROR("unimplemented code path%s!!\n",""); exit(-1); } while (0)
 
 //
 // Will return teeny number in bits 0..numbits_all-1
 // with sign, then exp, then mantissa
 //
-uint64_t teeny_encode(double src)
+static uint64_t teeny_encode(const double x)
 {
-  // NOT DONE
-  return *(uint64_t*)&src;
+  uint64_t s,e,m; // double sign, exp, mantissa
+  uint64_t r=0;   // output result bitpattern
+  uint64_t lz;    // leading zero count for teeny subnormal mantissa
+  int64_t  ube;   // unbiased teeny exponent
+  uint64_t be;    // rebiased double exponent
+
+  double_unpack(x,&s,&e,&m);
+
+  if (is_double_special_exp(e)) {
+    if (m==0) {
+      // infinity
+      return teeny_pack(s,exp_bitmask,m);
+    } else {
+      // nan - we will preserve the top bit and make sure it is nonzero
+      // top bit is signalling/nonsignaling and is preserved
+      // remaining bits are a  1 if any remaining bits in double
+      // mantissa are 1.   This means that signalling nan
+      // (top bit zero, some other bit nonzero), and quiet nan
+      // (top bit one, perhaps all other bits zero) will both
+      // turn into a nan, not an infinity
+      m = (m >> (52 - numbits_mant)) | (!!__builtin_popcountl(m & 0x7ffffffffffffUL));
+      return teeny_pack(s,exp_bitmask,m);
+    }
+  } else {
+    if (e!=0) {
+      // normal
+      ube = e - 1023;   // unbias double exp
+      be = ube + bias;  // rebias exp for teeny
+      if (be < -numbits_mant) {
+	// cannot fit, underflow to zero
+	return teeny_pack(s,0,0);
+      } else if (be < 1) {
+	// can fit as subnormal
+	UNIMPL();
+	return teeny_pack(s,0,0);
+      } else if (be < exp_bitmask) {
+	// can fit as normal
+	// m = round_double_mant(m,numbits_mantissa,&overflow);
+	UNIMPL();
+	return teeny_pack(s,0,0);
+      } else {
+	// rounds to infinity
+	return teeny_pack(s,exp_bitmask,0);
+      }
+    } else {
+      // subnormal;
+      ube = 1 - 1023;
+      be = ube + bias;
+      UNIMPL();
+      return teeny_pack(s,0,0);
+    }
+  }
 }
 
-// will decode the last 47 bits into a double
-double teeny_decode(uint64_t src)
+// convert teeny into double (will always fit given the constraints,
+// namely that numbits_exp<=11 and numbits_exp<=47-numbits_exp-1
+static double teeny_decode(const uint64_t x)
 {
-  //NOT DONE
-  return *(double*)&src;
+  uint64_t s,e,m; // teeny sign, exp, mantissa
+  uint64_t r=0;   // output result bitpattern
+  int64_t  lz;    // leading zero count for teeny subnormal mantissa
+  int64_t  ube;   // unbiased teeny exponent
+  int64_t  be;    // rebiased double exponent
+
+  teeny_unpack(x,&s,&e,&m);
+
+  if (is_teeny_special_exp(e)) {
+    // infinity or nan, just immediately build thing as a
+    // double, reusing sign and the mantissa bits we have available
+    return double_pack(s,0x7ffUL,m << (52 - numbits_mant));
+  } else {
+    if (e!=0) {
+      // normal
+      ube = e - bias; // unbias teeny exp
+      // given the constraint on the number of teeny exp bits,
+      // this must fit into a double normal
+      be = ube + 1023;  // rebias exp for double
+      return double_pack(s,be,m << (52 - numbits_mant));
+    } else { // e==0
+      if (m==0) {
+	// zero
+	return double_pack(s,0,0);
+      } else {
+	// subnormal, nonzero - mantissa has some 1
+	ube = 1 - bias;   // teeny subnormal exponent
+	be = ube + 1023;  // rebias exp for double
+	lz = __builtin_clzl(m) - (64 - numbits_mant);
+	// can we make it a normal in double?
+	// if we subtract the shift (lz+1), the biased
+	// exponent must be >=1
+	if ((be - (lz + 1)) < 1) {
+	  // nope, make subnormal, easy
+	  return double_pack(s,0,m << (52 - numbits_mant));
+	} else {
+	  // yes, make normal, note that mantissa
+	  // shifts left lz+1 slots, and then the
+	  // leading one is dropped (becomes implied)
+	  // clear current leading 1
+	  m &= ~(0x1ULL << (numbits_mant - lz - 1));
+	  // shift remaining bits over to after the
+	  // binary point in the teeny mantissa
+	  m <<= (lz + 1);
+	  // shrink the bias due to the shift
+	  be -= (lz + 1);
+	  return double_pack(s,be,m << (52 - numbits_mant));
+	}	  
+      }
+    }
+  }
+
+  return *(double*)&r;
 }
+
+  
 
 
 // if ptr points to a valid double, return that. If it points to a boxed value,
@@ -327,8 +539,6 @@ int restore_xmm(void *xmm_ptr) {
   return 0;
 }
 
-extern "C" {
-
 #define ORIG_IF_CAN(func, ...)                                                 \
   if (orig_##func) {                                                           \
     if (!DEBUG_OUTPUT) {                                                       \
@@ -456,7 +666,6 @@ void sincos(double a, double *sin_dst, double *cos_dst) {
   *sin_dst = sin(a);
   *cos_dst = cos(a);
 }
-}
 
 // ignored float implementations
 FPVM_MATH_DECL(add, float) {
@@ -527,5 +736,4 @@ FPVM_MATH_DECL(cmp, float) {
   fprintf(stderr, "teeny should not be invoked with floats");
   return 0;
 }
-
 #endif
