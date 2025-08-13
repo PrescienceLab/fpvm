@@ -2339,15 +2339,23 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 
 // x86 only at the moment
 
-extern uint8_t my_instruction[];
+//Commenting this out because I don't know why we have it this way
+//extern uint8_t my_instruction[];
+extern void my_instruction(double* regs);
 
 struct xmm {
   double low;
   double high;
 };
 
+void fpvm_dump_riscv_d(fpvm_regs_t fpregs) {
+  for (int i = 0; i < 32; i++) {
+    printf("f%d: %16.8le %016lx\n", i, ((double*)(fpregs.fprs))[i], ((uint64_t*)(fpregs.fprs))[i]);
+  }
+}
 
-void fpvm_test_instr(struct xmm *p);
+
+__volatile__ void fpvm_test_instr(struct __riscv_mc_d_ext_state *fprs);
 
 void print_fpregs_decimal(struct xmm *fpregs) {
   for (int i = 0; i < 16; i++) {
@@ -2379,7 +2387,7 @@ int main(int argc, char *argv[])
     ERROR("cannot initialize decoder\n");
     abort();
   }
-
+  
   fpvm_inst_t *fi = fpvm_decoder_decode_inst(my_instruction);
 
   if (!fi) {
@@ -2399,29 +2407,51 @@ int main(int argc, char *argv[])
   // Note that we update the mcontext each time we
   // complete an instruction in the current sequence
   // so this always reflects the current
-  // fpvm_regs_t regs;
-
-  // ucontext_t uc;
-  // getcontext(&uc);
-  // regs.mcontext = &uc.uc_mcontext;
+  fpvm_regs_t regs;
 
   // regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   // regs.fpr_size = FPR_SIZE;
 
+
+  
+  // // PAD: This stupidly just treats everything as SSE2
+  // // and must be fixed
+
   // // Doing fake bind here to capture operand sizes
   // // If we do it this way, we will only bind the first time we see the instruction
   // // and otherwise keep it in the decode cache
-  // if (fpvm_decoder_bind_operands(fi, &regs)) {
-  //   ERROR("Cannot bind operands of instruction\n");
-  //   abort();
-  // }
+  
+  ucontext_t uc;
+  getcontext(&uc);
+  regs.mcontext = &uc.uc_mcontext;
+  regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
+  regs.fpr_size = 8;
+  ((double*)(regs.fprs))[1] = 5.0;
+  ((double*)(regs.fprs))[2] = 3.0;
+  ((double*)(regs.fprs))[0] = 20.0;
 
-  // // if (fpvm_vm_compile(fi)) {
-  // //   ERROR("cannot compile instruction\n");
-  // //   abort();
-  // // }
+  
+  fpvm_test_instr(regs.fprs);
+  
+  if (fpvm_decoder_bind_operands(fi, &regs)) {
+    ERROR("Cannot bind operands of instruction\n");
+    abort();
+  }
 
-  // INFO("successfully decoded and compiled instruction\n");
+  ((long*)(regs.fprs))[3] = 0xdeadbeef;
+  fpvm_test_instr(regs.fprs);
+
+  my_instruction(regs.fprs);
+
+  fpvm_dump_riscv_d(regs);
+  
+  if (fpvm_emulator_emulate_inst(fi, NULL, NULL, NULL, NULL)) {
+    ERROR("cannot compile instruction\n");
+    abort();
+  }
+
+  INFO("successfully decoded and compiled instruction\n");
+  fpvm_dump_riscv_d(regs);
 
   // INFO("Now displaying generated code\n");
   // fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
@@ -2479,7 +2509,6 @@ int main(int argc, char *argv[])
   // // print_fpregs_decimal(fpregs);
   // fpvm_dump_xmms_double(stderr, fpregs);
 
-  // fpvm_test_instr(fpregs);
 
   // printf("\n");
 
