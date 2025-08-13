@@ -400,7 +400,7 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         }
         else {
           // Are we assuming RISCV64???
-          fi->operand_addrs[fi->operand_count] = fr->mcontext->__gregs + (64 * GET_GPR_INDEX(o->reg));
+          fi->operand_addrs[fi->operand_count] = ((void *)(fr->mcontext->__gregs)) + (GPR_SIZE * GET_GPR_INDEX(o->reg));
           fi->operand_sizes[fi->operand_count] = GPR_SIZE;
 
           UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);

@@ -7,8 +7,9 @@ fpvm_test_instr:
    // TODO:
 .global my_instruction
 my_instruction:
-   // TODO:
-   fsub.d f1, f2, f3
+	feq.d                a4, fa5, fs0
+	// TODO:
+   //fsub.d f1, f2, f3
    ret
 
 
