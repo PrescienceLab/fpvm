@@ -65,7 +65,6 @@ fpvm_inst_common_t capstone_to_common[RISCV_INS_ENDING] = {
     [RISCV_INS_FMIN_D] = {FPVM_OP_MIN, 0, 0, 8, 0},
     [RISCV_INS_FMAX_D] = {FPVM_OP_MAX, 0, 0, 8, 0},
 
-
     //Compare instructions
     [RISCV_INS_FEQ_D] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
     [RISCV_INS_FLE_D] = {FPVM_OP_CMPXX, 0, 0, 8, 0},
