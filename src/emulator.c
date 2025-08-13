@@ -634,9 +634,16 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     if (fi->common->op_type==FPVM_OP_CMPXX) {
       if (fi->common->op_size==8) {
 	*(uint64_t*)dest = !*(uint64_t*)dest - 1UL;
+#ifdef __riscv
+	*(uint64_t*)dest = !!*(uint64_t*)dest;
+#endif
       } else if (fi->common->op_size==4) {
 	*(uint32_t*)dest = !*(uint32_t*)dest - 1U;
+#ifdef __riscv
+	*(uint32_t*)dest = !!*(uint32_t*)dest;
+#endif
       }
+      
     }
 
     if (fi->common->op_type==FPVM_OP_CMP || fi->common->op_type==FPVM_OP_UCMP) {
