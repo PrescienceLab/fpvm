@@ -178,8 +178,10 @@ int arch_machine_supports_fp_traps(void) {
 
 /* Do some FP compute, set up machine state to reflect that. */
 void arch_config_machine_fp_csr_for_local(arch_fp_csr_t *old) {
+  arch_fp_csr_t fpcsr_ours;
+  fpcsr_ours.val = 0;
   arch_get_machine_fp_csr(old);
-  riscv_set_fcsr(FCSR_OURS);
+  arch_set_machine_fp_csr(&fpcsr_ours);
 }
 
 int arch_have_special_fp_csr_exception(int which) {
