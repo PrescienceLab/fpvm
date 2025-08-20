@@ -2313,6 +2313,8 @@ static void fpvm_deinit(void) {
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
   DEBUG("deinit\n");
+  arch_fp_csr_t old;
+  arch_config_machine_fp_csr_for_local(&old);
   dump_execution_contexts_info();
 
   // If a different log file was chosen, close it.
@@ -2329,6 +2331,7 @@ static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
   arch_process_deinit();
   inited = 0;
+  arch_set_machine_fp_csr(&old);
   DEBUG("done\n");
 }
 
