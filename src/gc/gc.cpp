@@ -173,7 +173,7 @@ static std::vector<gc::region> gc_find_regions() {
       // printf("region:%s", line_buf);
 
       // if (strstr(line_buf, ".so") != NULL) continue;
-      if (flags[1] == 'w') {
+      if (flags[1] == 'w' && flags[2] != 'x') {
         gc::region r;
         r.start = start;
         r.end = end;
