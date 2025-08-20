@@ -196,7 +196,12 @@ static FILE *gcLogFile = NULL;
 extern "C" unsigned fpvm_gc_run(void) {
   uint64_t now_ms = time_us() / 1000;
 
-  if (start_time == 0) start_time = now_ms;
+  /* On the very first run, we need to make sure we store the times everywhere
+   * so that we do not accidentally run when we do not mean to. */
+  if (start_time == 0) {
+    start_time = now_ms;
+    last_run_ms = now_ms;
+  }
   instructions++;
 
   if (now_ms - last_run_ms < 10000) {
