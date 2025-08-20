@@ -211,7 +211,11 @@ extern "C" unsigned fpvm_gc_run(void) {
   last_run_ms = now_ms;
   // run a mark + sweep phase
 
-  // save xmm registers to memory.
+  /* Stash xmms on the FPVM stack. */
+  /* When FPVM is finding GC regions, FPVM's GC ALSO "reflects" on FPVM's stack!
+   * This means that when FPVM is finding GC regions, it will see the xmms we
+   * stashed onto FPVM's stack so that the contents of each XMM register can be
+   * searched to potentially mark garbage. */
   uint64_t xmms[32][2];
   dumpregs(xmms);
 
