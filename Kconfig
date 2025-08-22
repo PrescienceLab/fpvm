@@ -178,7 +178,7 @@ config TEENY_MANT_BITS
 		default 16 
 		depends on ALT_MATH_TEENY
     help
-       The exponent size + mantissa size + 1 must be < 48
+       The exponent size + mantissa size + 1 must be <= 50
 
 endchoice
 
