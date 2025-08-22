@@ -2375,6 +2375,8 @@ int main(int argc, char *argv[])
 
   INFO("hello world\n");
 
+  fpvm_number_init(0);
+  
   if (fpvm_decoder_init()) {
     ERROR("cannot initialize decoder\n");
     abort();
