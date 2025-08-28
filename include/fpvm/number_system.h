@@ -117,6 +117,11 @@ FPVM_RESTORE_DECL(restore, float);
 FPVM_RESTORE_DECL(restore, double);
 void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *);
 
+// promote/demote/print for altcalc
+void altmath_promote_double_in_place(double *x);
+void altmath_demote_double_in_place(double *x);
+void altmath_print_double(double *x, char *dest, int n);
+  
 // math functions
 //  no float now
 double pow(double, double);
