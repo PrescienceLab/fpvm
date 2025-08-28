@@ -57,7 +57,7 @@ uint64_t unbox(uint64_t x)
 static void help()
 {
   printf("0x<num>              = push a specific bitpattern onto the stack\n");
-  printf("d 0x<num> | <double> = push a double onto the stack\n");
+  printf("<num>                = push a double onto the stack\n");
   printf("c                    = clone top of stack\n");
   printf("p                    = pop stack\n");
   printf("s                    = print stack\n");
@@ -128,7 +128,7 @@ int fpvm_number_alt_calc(void)
       DUP();
       continue;
     }
-    if (first(buf)=='s') {
+    if (first(buf)=='s' && strlen(first_ptr(buf))==1) {
       print_stack();
       continue;
     }
