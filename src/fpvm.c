@@ -76,6 +76,7 @@
 #include <fpvm/fpvm_fenv.h>
 #include <fpvm/fpvm_math.h>
 #include <fpvm/number_system.h>
+#include <fpvm/altcalc.h>
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
 
@@ -2159,12 +2160,20 @@ static int bringup() {
   }
 #endif
 
-  // now kick ourselves to set the sse bits; we are currently in state INIT
 
+#if CONFIG_RUN_ALT_CALC
+  if (fpvm_number_alt_calc()) {
+    INFO("early termination due to alt_calc\n");
+    return -1;
+  }
+#endif
+  
+  // now kick ourselves to set the sse bits; we are currently in state INIT
   kick_self();
 
   inited = 1;
   DEBUG("Done with setup\n");
+
   return 0;
 }
 
@@ -2379,6 +2388,14 @@ int main(int argc, char *argv[])
   INFO("hello world\n");
 
   fpvm_number_init(0);
+
+#if CONFIG_RUN_ALT_CALC
+  if (fpvm_number_alt_calc()) {
+    INFO("early termination due to alt_calc\n");
+    return -1;
+  }
+#endif
+  
   
   if (fpvm_decoder_init()) {
     ERROR("cannot initialize decoder\n");
