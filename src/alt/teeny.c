@@ -442,7 +442,6 @@ static double teeny_box(double val)
   return result;
 }
 
-// Decode an mpfr pointer from a pointer to a double
 static double teeny_unbox(double val) {
   int sign;
   uint64_t tval;
@@ -596,9 +595,63 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
 }
 
 
+
 void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
   *p = decode_to_double_bits((void*)p);
 }
+
+void altmath_demote_double_in_place(double *p)
+{
+  *p = teeny_unbox(*p);
+}
+
+void altmath_promote_double_in_place(double *p)
+{
+  *p = teeny_box(*p);
+}
+
+void altmath_print_double(double *p, char *dest, int n)
+{
+  double x = *p;
+  int sign;
+  uint64_t tval;
+  uint64_t s, e, m;
+  char *c;
+  char *ib;
+  char be[64], me[64];
+
+  if (fpvm_gc_unbox_raw(*p,&sign,(void**)&tval)) {
+    // this is one of ours
+    // reset bit 50+ before decoding
+    tval &= 0x3ffffffffffffUL;
+    teeny_unpack(tval,&s,&e,&m);
+    double result = teeny_decode(tval);
+    int resultsign = result<0;
+    if (sign != resultsign) {
+      result = -result;
+    }
+    c = e==0 ? "subnorm" : e==exp_bitmask ? m ? "nan" : "inf" : "norm";
+    ib = e==0 ? "0" : e==exp_bitmask ? "?" : "1";
+    bitize(e,numbits_exp,be);
+    bitize(m,numbits_mant,me);
+    snprintf(dest,n,"teeny %016lx unpacks to sign=%lu, exp=%016lx %s (%lu, unbiased %ld, %s), mant=%016lx %s.%s [sign=%d double=%lf]",
+	     *(uint64_t*)&x,s,e,be,e,e-bias,c,m,ib,me,sign,result);
+  } else {
+    double_unpack(*p,&s,&e,&m);
+    
+    c = e==0 ? "subnorm" : e==0x7ff ? m ? "nan" : "inf" : "norm";
+    ib = e==0 ? "0" : e==0x7ff ? "?" : "1";
+    bitize(e,11,be);
+    bitize(m,52,me);
+  
+    snprintf(dest,n,"double %016lx unpacks to sign=%lu, exp=%016lx %s (%lu, unbiased %ld, %s), mant=%016lx %s.%s [double=%lf]",
+	     *(uint64_t *)&x,s,e,be,e,e-1023,c,m,ib,me,x);
+
+  }
+}
+
+
+
 
 int restore_double(op_special_t *special, void *dest, void *src1, void *src2,
                    void *src3, void *src4) {
@@ -921,9 +974,8 @@ void fpvm_number_init(UNUSED void *ptr)
  
   MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx]\n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask);
 
-  teeny_shell();
-
-  exit(0);
+  //  teeny_shell();
+  //  exit(0);
 }
 
 void fpvm_number_deinit(UNUSED void *ptr)
