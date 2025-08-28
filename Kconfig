@@ -219,6 +219,13 @@ config HAVE_MAIN
        This compiles it with a main function
        that can be used for testing without LD_PRELOAD
 
+config RUN_ALT_CALC
+    bool "Run Alternative Arithmetic Calculator"
+    default n
+    help
+       Runs the calculator either early in main (if HAVE_MAIN)
+       or on shared library startup
+
 config USE_NVM
     bool "Use NVM"
     depends on ARCH_X64
