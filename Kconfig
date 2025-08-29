@@ -127,6 +127,12 @@ config KERNEL_SHORT_CIRCUITING
     help
        Use user-level trap handling if possible
 
+config FPTRAPALL
+    bool "Trap all floating point operations (Set CR0.TS)"
+    default n
+    help
+      Use the fptrapall kernel module to trap all floating point operations
+      by setting the CR0.TS bit.
 
 # Add your own alternative math here
 choice

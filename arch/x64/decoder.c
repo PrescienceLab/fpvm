@@ -694,7 +694,7 @@ static int decode_move(fpvm_inst_t *fi) {
   if (inst->id == X86_INS_MOV) {
     if (inst->detail->x86.operands[1].type == X86_OP_IMM) {
       // ERROR("MOV instruction with immediate source\n");
-      fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"immediate move: ");
+      // fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"immediate move: ");
       // return -1;
     }
     // fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"potential move: ");
@@ -820,6 +820,10 @@ fpvm_inst_t *fpvm_decoder_decode_inst(void *addr) {
     return 0;
   }
 
+  // TODO:
+  // We are in a signal handler right now,
+  // and with the CR0.TS changes, malloc can cause an FPE...
+  // Hmmmmm -KJH
   fpvm_inst_t *fi = malloc(sizeof(fpvm_inst_t));
   if (!fi) {
     ERROR("Can't allocate instruction\n");

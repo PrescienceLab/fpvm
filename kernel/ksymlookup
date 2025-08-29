@@ -1,0 +1,14 @@
+#! /usr/bin/sh
+
+set -u
+
+addr=$(sudo cat /proc/kallsyms | grep " $1\$" | cut -d ' ' -f1)
+
+if [ -z "$addr" ]; then
+    echo "Could not find symbol '$1'"
+    exit 1
+fi
+
+echo $addr
+exit 0
+

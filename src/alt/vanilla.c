@@ -476,7 +476,7 @@ int vanilla_cmpxx_double(
   double b = *(double *)src2;
   uint64_t r=0;
 
-  printf("special val: %d\n", special->compare_type);
+  DEBUG("special val: %d\n", special->compare_type);
   switch (special->compare_type) {
   case FPVM_INST_COMPARE_INVALID:
     ERROR("invalid compare - should not happen\n");

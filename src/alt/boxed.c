@@ -20,6 +20,13 @@
 #include <fpvm/number_system.h>
 #include <fpvm/nan_boxing.h>
 
+#ifndef CONFIG_FPTRAPALL
+#define fptrapall_clear_ts()
+#define fptrapall_set_ts()
+#else
+extern void fptrapall_set_ts(void);
+extern void fptrapall_clear_ts(void);
+#endif
 
 #if CONFIG_DEBUG_ALT_ARITH
 #define MATH_DEBUG(S, ...) DEBUG("boxed: " S, ##__VA_ARGS__)
@@ -801,28 +808,33 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 
 #define MATH_STUB_ONE(NAME, TYPE, RET, RSPEC)	 \
   RET NAME(TYPE a) {                             \
+    fptrapall_clear_ts(); \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
     UNBOX_VAL_IN_PLACE(a);			 \
     RET ori = orig_##NAME(a);                    \
     MATH_DEBUG(#NAME "(%lf) = " RSPEC "\n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);   \
+    fptrapall_set_ts(); \
     return ori;                                  \
   }
 
 #define MATH_STUB_ONE_MIXED(NAME, TYPE, RET)     \
   RET NAME(TYPE a) {                             \
+    fptrapall_clear_ts(); \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT); \
     UNBOX_VAL_IN_PLACE(a);				 \
     RET ori = orig_##NAME(a);                    \
     MATH_DEBUG(#NAME "(%lf) = %lf \n", a,ori);	 \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);  \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);   \
+    fptrapall_set_ts(); \
     return ori;                                  \
   }
 
 #define MATH_STUB_TWO(NAME, TYPE, RET)                          \
   RET NAME(TYPE a, TYPE b) {                                    \
+    fptrapall_clear_ts(); \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);                \
     UNBOX_VAL_IN_PLACE(a);						\
     UNBOX_VAL_IN_PLACE(b);						\
@@ -830,27 +842,32 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
     MATH_DEBUG(#NAME "(%lf, %lf) = %lf \n", a, b, ori);		\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                 \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                  \
+    fptrapall_set_ts(); \
     return ori;                                                 \
   }
 
 #define MATH_STUB_MIXED(NAME, TYPE1, TYPE2, RET)               \
   RET NAME(TYPE1 a, TYPE2 b) {                                 \
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
+    fptrapall_clear_ts(); \
     UNBOX_VAL_IN_PLACE(a);				       \
     RET ori = orig_##NAME(a, b);                               \
     MATH_DEBUG(#NAME "(%lf , %d) = %lf \n", a, b, ori);	       \
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);                \
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);                 \
+    fptrapall_set_ts(); \
     return ori;                                                \
   }
 
-void sincos(double a, double *sin, double *cos) {
+void sincos(double a, double *sin, double *cos) { 
+  fptrapall_clear_ts();
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   UNBOX_VAL_IN_PLACE(a);
   orig_sincos(a, sin, cos);
   MATH_DEBUG("sincos(%lf) = (%lf, %lf)\n", a, *sin, *cos);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  fptrapall_set_ts();
   return;
 }
 

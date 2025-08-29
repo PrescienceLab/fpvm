@@ -212,7 +212,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   }
 
   if (fi->common->op_type == FPVM_OP_UNKNOWN) {
-    ERROR("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
+    DEBUG("Cannot emulate instruction with unknown op type %d\n", fi->common->op_type);
     // ASSERT(0);
     return -1;
   }
@@ -511,15 +511,15 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
 	  DEBUG("handling 8 byte move\n");
           func = vanilla_op_map[fi->common->op_type][1];
         } else {
-          ERROR("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
-    return -1;
+          DEBUG("Cannot handle move instruction %d with op_size = %d (count=%d)\n", fi->common->op_type, fi->common->op_size,count);
+          return -1;
         }
       }
 
       break;
 
     default:
-      ERROR("Cannot handle unknown op type %d at %p\n", fi->common->op_type, fi->addr);
+      DEBUG("Cannot handle unknown op type %d at %p\n", fi->common->op_type, fi->addr);
       return -1;
       break;
   }

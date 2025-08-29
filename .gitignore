@@ -72,6 +72,7 @@ test/three-body/three_body_simulation
 *.so
 *.so.dbg
 *.mod.c
+*.mod
 *.i
 *.lst
 *.symtypes
