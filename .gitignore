@@ -82,3 +82,6 @@ kernel/fpvm-kmod/*.mod
 /kernel/signal-latency/exception_to_kmod_handler
 /kernel/signal-latency/exception_to_signal_handler
 /kernel/signal-latency/hw_to_kernel
+
+/kbe/estep-*
+/kbe/exception_to_signal_handler-*
