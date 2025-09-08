@@ -22,6 +22,7 @@ import random
 CACHE_DIR = os.path.expanduser('~/.cache/fpvm')
 SCRIPT_DIR = Path(os.path.realpath(os.path.dirname(__file__)))
 FPVM_HOME = SCRIPT_DIR / '../' # TODO: this FPVM_HOME thing makes distribution later really annoying
+FPVM_ARCH = os.getenv("ARCH",default="x64")
 
 # First, attempt to find where FPVM is.
 FPVM_LOCATION = None
@@ -177,11 +178,13 @@ def get_additional_wrappers(wrap_list: Path, mode: str = 'reverse') -> Path:
   with open(ch / 'wrap.c', 'w') as f:
     f.write(f'#define _GNU_SOURCE\n')
     f.write(f'#include <dlfcn.h>\n')
-    f.write(f'#include "{FPVM_HOME / "include/fpvm/fpvm_common.h"}"\n')
+    f.write(f'#include <fpvm/fpvm_common.h>\n')
     f.write(f'#include "{ch / "wrap.h"}"\n')
     f.write(f'#include "{ch / "wrap.inc"}"\n')
 
-  os.system(f'cd {ch.get()} && gcc -fPIC -shared -o {so} wrap.c wrap.S')
+    cmd = f'cd {ch.get()} && gcc -fPIC -shared -I {FPVM_HOME / "include"} -I {(FPVM_HOME / "include") / FPVM_ARCH} -o {so} wrap.c wrap.S'
+    print("COMMAND = " + cmd)
+    os.system(cmd)
 
   return so
 

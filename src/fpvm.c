@@ -1208,7 +1208,7 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 {
-    
+  fptrapall_clear_ts();
     int demotions=0;
 
     execution_context_t *mc = find_my_execution_context();
@@ -1286,7 +1286,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     SAFE_DEBUG("foreign call begins\n");
     
     END_PERF(mc, foreign_call);
-
+    
 }
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
@@ -1308,6 +1308,7 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   SAFE_DEBUG("foreign exit\n");
 
   END_PERF(mc, foreign_call);
+  fptrapall_set_ts();
 
 }
 
@@ -1744,7 +1745,7 @@ fail_do_trap:
   arch_clear_fp_exceptions(uc);
   arch_mask_fp_traps(uc);
   set_our_round_config(uc);
-  arch_reset_trap(uc,&mc->trap_state);
+  arch_set_trap(uc,&mc->trap_state);
 
   mc->state = AWAIT_TRAP;
 
@@ -2283,10 +2284,12 @@ static int bringup() {
 #endif
 
 #if CONFIG_RUN_ALT_CALC
+  fptrapall_clear_ts();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
+  fptrapall_set_ts();
 #endif
 
   // now kick ourselves to set the sse bits; we are currently in state INIT
@@ -2517,10 +2520,12 @@ int main(int argc, char *argv[])
   fpvm_number_init(0);
 
 #if CONFIG_RUN_ALT_CALC
+  fptrapall_clear_ts();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
+  fptrapall_set_ts();
 #endif
   
   

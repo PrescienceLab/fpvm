@@ -207,6 +207,7 @@ endmenu
 menu "Experimental Features"
 config FPTRAPALL
     bool "Trap all floating point operations (Set CR0.TS)"
+    depends on ARCH_X64
     default n
     help
       Use the fptrapall kernel module to trap all floating point operations

@@ -50,6 +50,17 @@
 
 #define RESET "\e[0m"
 
+// support for trap all mode - will eventually
+// get brought into arch layer
+
+#ifndef CONFIG_FPTRAPALL
+#define fptrapall_clear_ts()
+#define fptrapall_set_ts()
+#else
+extern void fptrapall_set_ts(void);
+extern void fptrapall_clear_ts(void);
+#endif
+
 //
 // TODO -> Rounding Modes
 //
@@ -697,33 +708,41 @@ int restore_xmm(void *xmm_ptr) {
 
 #define MATH_STUB_ONE(NAME, TYPE, RET)					\
   RET NAME(TYPE a) {							\
+    fptrapall_clear_ts();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = teeny_unbox(a);					\
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    return teeny_box(res);						\
+    res = teeny_box(res);						\
+    fptrapall_set_ts();							\
+    return res;								\
   }
 
 #define MATH_STUB_ONE_DEMOTE(NAME, TYPE, RET)				\
   RET NAME(TYPE a) {							\
+    fptrapall_clear_ts();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = decode_to_double((void*)&a);				\
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
+    fptrapall_set_ts();							\
     return res;								\
   }
   
 #define MATH_STUB_TWO(NAME, TYPE, RET)					\
   RET NAME(TYPE a, TYPE b) {						\
+    fptrapall_clear_ts();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = teeny_unbox(a);					\
     double src2 = teeny_unbox(b);					\
     double res = orig_##NAME(a,b);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    return teeny_box(res);						\
+    res = teeny_box(res);						\
+    fptrapall_set_ts();							\
+    return res;								\
   }
 
 MATH_STUB_TWO(pow, double, double)
@@ -754,31 +773,40 @@ MATH_STUB_ONE(atanh, double, double)
 MATH_STUB_TWO(atan2, double, double)
 
 double ldexp(double a, int b) {
+  fptrapall_clear_ts();			      
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   // hideous
   double res = src * orig_pow(2.0,(double)b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  return teeny_box(res);
+  res =  teeny_box(res);
+  fptrapall_set_ts();
+  return res;
 }
 
 long int lround(double a) {
+  fptrapall_clear_ts();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   double res = orig_lround(src);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  return teeny_box(res);
+  res = teeny_box(res);
+  fptrapall_set_ts();
+  return res;
 }
 
 double __powidf2(double a, int b) {
+  fptrapall_clear_ts();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   double res = orig___powidf2(src, b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  return teeny_box(res);
+  res = teeny_box(res);
+  fptrapall_set_ts();
+  return res;
 }
 
 // double pow(double a, double b){
@@ -890,6 +918,7 @@ void teeny_shell(void)
   double d,t,b;
   uint64_t s,e,m;
   
+  fptrapall_clear_ts();			       
   while (1) {
     printf("teeny> ");
     if (!fgets(buf,80,stdin)) {
@@ -942,6 +971,7 @@ void teeny_shell(void)
       continue;
     }
   }
+  fptrapall_set_ts();
 }
 
 

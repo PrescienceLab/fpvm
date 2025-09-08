@@ -19,6 +19,14 @@
 #include <fpvm/fpvm_ioctl.h>
 #endif
 
+#ifndef CONFIG_FPTRAPALL
+#define fptrapall_clear_ts()
+#define fptrapall_set_ts()
+#else
+extern void fptrapall_set_ts(void);
+extern void fptrapall_clear_ts(void);
+#endif
+
 
 static int mxcsrmask_base = 0x3f;  // which sse exceptions to handle, default all (using base zero)
 
@@ -188,9 +196,15 @@ void arch_reset_trap(ucontext_t *uc, uint64_t *state) {
 
 void arch_clear_fp_exceptions(ucontext_t *uc) { uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_FLAG_MASK; }
 
-void arch_mask_fp_traps(ucontext_t *uc) { uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK; }
+void arch_mask_fp_traps(ucontext_t *uc) {
+  fptrapall_clear_ts();
+  uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK;
+}
 
-void arch_unmask_fp_traps(ucontext_t *uc) { uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK; }
+void arch_unmask_fp_traps(ucontext_t *uc) {
+  uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK;
+  fptrapall_set_ts();
+}
 
 
 #define MXCSR_ROUND_DAZ_FTZ_MASK 0xe040UL
