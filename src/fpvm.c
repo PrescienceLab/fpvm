@@ -203,7 +203,7 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
-#ifdef CONFIG_FPTRAPALL
+#if CONFIG_FPTRAPALL
 
 #define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
 #define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
@@ -1058,7 +1058,7 @@ static int correctness_trap_handler(ucontext_t *uc)
     DEBUG("initialization trap received\n");
     arch_zero_fpregs(uc);
     arch_thread_init(uc);
-#ifdef CONFIG_FPTRAPALL
+#if CONFIG_FPTRAPALL
     // Register this process with the kernel module,
     // and tell it we are inside a signal handler
     fptrapall_register();
@@ -1068,7 +1068,7 @@ static int correctness_trap_handler(ucontext_t *uc)
     break;
   case AWAIT_TRAP:
     DEBUG("single stepping trap received\n");
-#ifdef CONFIG_FPTRAPALL
+#if CONFIG_FPTRAPALL
     // We need to tell the kernel module that we are in a signal
     // (It will only see #NM exceptions)
     fptrapall_mark_in_signal();
@@ -1208,7 +1208,9 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
 {
-  fptrapall_clear_ts();
+#if CONFIG_FPTRAPALL
+    fptrapall_clear_ts();
+#endif
     int demotions=0;
 
     execution_context_t *mc = find_my_execution_context();
@@ -1308,8 +1310,9 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   SAFE_DEBUG("foreign exit\n");
 
   END_PERF(mc, foreign_call);
+#if CONFIG_FPTRAPALL
   fptrapall_set_ts();
-
+#endif
 }
 
 
@@ -2284,12 +2287,16 @@ static int bringup() {
 #endif
 
 #if CONFIG_RUN_ALT_CALC
+#if CONFIG_FPTRAPALL
   fptrapall_clear_ts();
+#endif
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
+#if CONFIG_FPTRAPALL
   fptrapall_set_ts();
+#endif
 #endif
 
   // now kick ourselves to set the sse bits; we are currently in state INIT
@@ -2520,12 +2527,16 @@ int main(int argc, char *argv[])
   fpvm_number_init(0);
 
 #if CONFIG_RUN_ALT_CALC
+#if CONFIG_FPTRAPALL
   fptrapall_clear_ts();
+#endif
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
+#if CONFIG_FPTRAPALL
   fptrapall_set_ts();
+#endif
 #endif
   
   

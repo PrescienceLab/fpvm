@@ -19,12 +19,12 @@
 #include <fpvm/fpvm_ioctl.h>
 #endif
 
-#ifndef CONFIG_FPTRAPALL
-#define fptrapall_clear_ts()
-#define fptrapall_set_ts()
-#else
+#if CONFIG_FPTRAPALL
 extern void fptrapall_set_ts(void);
 extern void fptrapall_clear_ts(void);
+#else
+#define fptrapall_clear_ts()
+#define fptrapall_set_ts()
 #endif
 
 
