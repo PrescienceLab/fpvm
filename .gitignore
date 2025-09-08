@@ -51,7 +51,16 @@ analysis/workspace
 /src/additional_wrappers.S
 /compile_commands.json
 /sweep-results/
+/sweep-results*/
 
+
+# Noisy results from noisy benchmarks
+three_body_simulation_t.txt
+three_body_simulation_y.txt
+
+test/fbench/fbench
+test/ffbench/ffbench
+test/three-body/three_body_simulation
 
 # Kernel module rules:
 .*
@@ -63,6 +72,7 @@ analysis/workspace
 *.so
 *.so.dbg
 *.mod.c
+*.mod
 *.i
 *.lst
 *.symtypes
@@ -82,6 +92,6 @@ kernel/fpvm-kmod/*.mod
 /kernel/signal-latency/exception_to_kmod_handler
 /kernel/signal-latency/exception_to_signal_handler
 /kernel/signal-latency/hw_to_kernel
-
 /kbe/estep-*
 /kbe/exception_to_signal_handler-*
+/test/nas/output/

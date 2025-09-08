@@ -52,7 +52,6 @@ config RISCV_USE_ESTEP
        Not available on standard RISC-V, only RAFT-V
        The kernel module also needs to be inserted
 
-
 config NO_OUTPUT
     bool "Disable output"
     default n
@@ -99,6 +98,11 @@ config PERF_STATS_PERIOD
     help
         Number of FP traps between performance statistics reports
 	0 means that reports are generated only at thread end / process end
+
+config ENABLE_PULSE_PROFILING
+    bool "Enable the pulse profiler (throw fpvm.json into https://ui.perfetto.dev/)"
+    depends on PERF_STATS
+    default n
 
 
 config TRAP_SHORT_CIRCUITING
@@ -152,10 +156,14 @@ choice
     config ALT_MATH_MPFR
         bool "GNU MPFR"
 
-config MPFR_PRECISION
-    int "MPFR Precision"
-		default 200
-		depends on ALT_MATH_MPFR
+
+    config MPFR_PRECISION
+        int "MPFR Precision"
+		    default 200
+		    depends on ALT_MATH_MPFR
+
+    config ALT_MATH_EXPR_TRACE
+        bool "Expression-based thunk tracing"
 
     config ALT_MATH_RATIONAL
         bool "Rationals"
@@ -194,6 +202,15 @@ menu "Parameters"
       default 65537
       help
           The number of entries in the instruction decode cache
+endmenu
+
+menu "Experimental Features"
+config FPTRAPALL
+    bool "Trap all floating point operations (Set CR0.TS)"
+    default n
+    help
+      Use the fptrapall kernel module to trap all floating point operations
+      by setting the CR0.TS bit.
 endmenu
 
 menu "Developer Features"

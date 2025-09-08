@@ -79,7 +79,7 @@
 #include <fpvm/altcalc.h>
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
-
+#include <fpvm/pulse.h>
 
 
 int fpvm_setup_additional_wrappers() {
@@ -203,6 +203,100 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
+#ifdef CONFIG_FPTRAPALL
+
+#define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
+#define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
+#define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
+
+static void
+fptrapall_register(void)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_REGISTER_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '1';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+static void
+fptrapall_mark_in_signal(void) {
+	int fd = syscall(SYS_open, FPTRAPALL_IN_SIGNAL_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '1';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+void
+fptrapall_set_ts(void)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '1';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+void
+fptrapall_clear_ts(void)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '0';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+#endif
 
 static FILE *fpvm_log_file = NULL;
 #define FPVM_LOG_FILE (fpvm_log_file ? fpvm_log_file : stderr)
@@ -404,7 +498,7 @@ static __attribute__((constructor )) void fpvm_init(void);
 
 
 
-static void kick_self(void)
+static void kick_self(void) 
 {
     if (trap_sc) {
 #if CONFIG_TRAP_SHORT_CIRCUITING
@@ -964,10 +1058,22 @@ static int correctness_trap_handler(ucontext_t *uc)
     DEBUG("initialization trap received\n");
     arch_zero_fpregs(uc);
     arch_thread_init(uc);
+#ifdef CONFIG_FPTRAPALL
+    // Register this process with the kernel module,
+    // and tell it we are inside a signal handler
+    fptrapall_register();
+    fptrapall_mark_in_signal();
+#endif
     // we have completed startup of the thread
     break;
   case AWAIT_TRAP:
     DEBUG("single stepping trap received\n");
+#ifdef CONFIG_FPTRAPALL
+    // We need to tell the kernel module that we are in a signal
+    // (It will only see #NM exceptions)
+    fptrapall_mark_in_signal();
+#endif
+
     // we are completing this single step operation
     break;
   case AWAIT_FPE:
@@ -1383,9 +1489,17 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     if (!fi || IS_UNDECODABLE(fi)) {
       // The first instruction of the sequence must be decodable...
       if (instindex==0) {
+#if CONFIG_FPTRAPALL
+	// -KJH this used to be an "error" but with single stepping we can survive
+	DEBUG("Cannot decode instruction %d (rip %p) of sequence: ",instindex,rip);
+#if DEBUG_OUTPUT
+	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
+#endif
+#else
 	ERROR("Cannot decode instruction %d (rip %p) of sequence:",instindex,rip);
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
-	ASSERT(0);
+	// ASSERT(0);
+#endif
 	end_reason = TRACE_END_INSTR_UNDECODABLE;
 	// BAD
 	goto fail_do_trap;
@@ -1423,7 +1537,12 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     regs.fprs = MCTX_FPRS(&uc->uc_mcontext);
     regs.fpr_size = FPR_SIZE;
 
-
+#if CONFIG_FPTRAPALL
+#if DEBUG_OUTPUT
+    fpvm_decoder_decode_and_print_any_inst(fi->addr,stderr,"about to bind: ");
+#endif
+#endif
+    
     // bind operands
     START_PERF(mc, bind);
     if (fpvm_decoder_bind_operands(fi, &regs)) {
@@ -1433,7 +1552,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 	ERROR("Cannot bind operands of first (rip %p) of sequence: ",rip);
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
 	end_reason = TRACE_END_INSTR_UNBINDABLE;
-	ASSERT(0);
+	//ASSERT(0);
 	goto fail_do_trap;
       } else {
 	ERROR("failed to bind operands of instruction %d (rip %p) of sequence - terminating sequence and marking instruction as undecodable\n",instindex,rip);
@@ -1493,14 +1612,18 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, altmath_stat)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
-        ERROR("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
+        DEBUG("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
+#if DEBUG_OUTPUT
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
+#endif
 	end_reason = TRACE_END_INSTR_UNEMULATABLE;
-        ASSERT(0);
+        //ASSERT(0);
         goto fail_do_trap;
       } else {
 	ERROR("Failed to emulate instruction %d (rip %p) of sequence - terminating sequence and marking instruction as undecodable\n",instindex,rip);
+#if DEBUG_OUTPUT
 	fpvm_decoder_decode_and_print_any_inst(rip,stderr," ");
+#endif
 	DUMP_SEQUENCE_ENDING_INSTR();
 	// we will consider this further - if it happens often, it's probably an emulator issue
 	// however, in either case, it's not clear why we would not add the instruction to the decode
@@ -1600,7 +1723,7 @@ fail_do_trap:
   DEBUG("doing fail do trap for %p\n",rip);
 
   if (fi) {
-    ERROR("have decoded failing instruction\n");
+    DEBUG("have decoded failing instruction\n");
     // only free if we didn't find it in the decode cache...
     if (do_insert) {
       fpvm_decoder_free_inst(fi);
@@ -1685,17 +1808,17 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     DEBUG("Instruction is not in the decode cache\n");
     fi = fpvm_decoder_decode_inst(rip);
     if (!fi) {
-      ERROR("failed to decode instruction at %p\n",rip);
+      DEBUG("failed to decode instruction at %p\n",rip);
       goto fail_do_trap;
     }
     // Doing fake bind here to capture operand sizes
     // which is needed by the vm compilation
     if (fpvm_decoder_bind_operands(fi, &regs)) {
-      ERROR("Cannot fake-bind operands of instruction\n");
+      DEBUG("Cannot fake-bind operands of instruction\n");
       goto fail_do_trap;
     }
     if (fpvm_vm_compile(fi)) {
-      ERROR("cannot compile instruction\n");
+      DEBUG("cannot compile instruction\n");
       goto fail_do_trap;
     }
     DEBUG("successfully decoded and compiled instruction, which follows:\n");
@@ -1711,7 +1834,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   DEBUG("vm run\n");
   if (fpvm_vm_run(mc->vm)) {
-    ERROR("failed to execute VM successfully for instruction at %p\n");
+    DEBUG("failed to execute VM successfully for instruction at %p\n");
     // this would be very bad since it could have partially completed, mangling stuff
     goto fail_do_trap;
   }
@@ -1829,7 +1952,6 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #endif
 
   fp_trap_handler(uc);
-
   arch_set_machine_fp_csr(&oldfpcsr);
 }
 
@@ -2041,9 +2163,9 @@ static int bringup() {
   }
 
 #if !CONFIG_HAVE_MAIN
-  if (fpvm_setup_additional_wrappers()) {
-    ERROR("Some additional wrapper setup failed - ignoring\n");
-  }
+  //if (fpvm_setup_additional_wrappers()) {
+  //  ERROR("Some additional wrapper setup failed - ignoring\n");
+  //}
 #endif
 
   ORIG_IF_CAN(feclearexcept, exceptmask);
@@ -2160,14 +2282,13 @@ static int bringup() {
   }
 #endif
 
-
 #if CONFIG_RUN_ALT_CALC
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
 #endif
-  
+
   // now kick ourselves to set the sse bits; we are currently in state INIT
   kick_self();
 
@@ -2263,6 +2384,8 @@ static __attribute__((constructor )) void fpvm_init(void) {
   //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
   if (!inited) {
+
+    pulse_start("fpvm.json");
     // Grab the log destination
     char *log_dst = getenv("FPVM_LOG_FILE");
     if (log_dst != NULL) {
@@ -2307,6 +2430,7 @@ static __attribute__((constructor )) void fpvm_init(void) {
       ERROR("cannot bring up framework\n");
       return;
     }
+
     DEBUG("fpvm_init done\n");
     return;
   } else {
@@ -2321,6 +2445,9 @@ static void fpvm_deinit(void) {
 #else
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
+
+
+  pulse_stop();
   DEBUG("deinit\n");
   arch_fp_csr_t old;
   arch_config_machine_fp_csr_for_local(&old);

@@ -8,6 +8,7 @@
 
 #include <fpvm/fpvm.h>
 #include <fpvm/arch.h>
+#include <fpvm/pulse.h>
 
 typedef struct perf_stat {
   char *name;
@@ -17,6 +18,11 @@ typedef struct perf_stat {
   uint64_t sum2;
   uint64_t min_val;
   uint64_t max_val;
+
+  #ifdef CONFIG_ENABLE_PULSE_PROFILING
+  pulse_event_t pulse_event; // for pulse profiling
+  #endif
+
 } perf_stat_t;
 
 static inline void perf_stat_init(perf_stat_t *p, char *name) {
@@ -30,6 +36,9 @@ static inline void perf_stat_init(perf_stat_t *p, char *name) {
 
 static inline void NO_TOUCH_FLOAT perf_stat_start(perf_stat_t *p) {
   p->start = arch_cycle_count();
+  #ifdef CONFIG_ENABLE_PULSE_PROFILING
+  p->pulse_event.start = pulse_timestamp();
+  #endif
 }
 
 static inline void NO_TOUCH_FLOAT perf_stat_end(perf_stat_t *p) {
@@ -45,6 +54,14 @@ static inline void NO_TOUCH_FLOAT perf_stat_end(perf_stat_t *p) {
   if (dur > p->max_val) {
     p->max_val = dur;
   }
+
+
+#ifdef CONFIG_ENABLE_PULSE_PROFILING
+  p->pulse_event.name = p->name;
+  p->pulse_event.duration = pulse_timestamp() - p->pulse_event.start;
+  p->pulse_event.thread_id = 0;
+  pulse_track(&p->pulse_event);
+#endif
 }
 
 static inline void perf_stat_print(perf_stat_t *p, FILE *f, char *prefix) {
