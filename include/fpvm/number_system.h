@@ -135,6 +135,9 @@ double tan(double);
 void fpvm_number_init(void *);
 void fpvm_number_deinit(void *);
 
+void fpvm_number_system_init(void);
+void fpvm_number_system_deinit(void);
+  
 
 #ifdef __cplusplus
 }
