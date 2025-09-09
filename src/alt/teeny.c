@@ -92,7 +92,7 @@ extern void fptrapall_clear_ts(void);
 static int numbits_exp=CONFIG_TEENY_EXP_BITS;
 static int numbits_mant=CONFIG_TEENY_MANT_BITS;
 static int numbits_all=(1+(CONFIG_TEENY_EXP_BITS+CONFIG_TEENY_MANT_BITS));
-static int bias = ((1<<(CONFIG_TEENY_EXP_BITS))-1);
+static int bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1);
 static uint64_t exp_bitmask=0;
 static uint64_t mant_bitmask=0;
 
@@ -974,8 +974,11 @@ void teeny_shell(void)
   fptrapall_set_ts();
 }
 
+void fpvm_number_init(UNUSED void *x) {}
+void fpvm_number_deinit(UNUSED void *y) {}
 
-void fpvm_number_init(UNUSED void *ptr)
+
+void fpvm_number_system_init()
 {
   if (getenv("FPVM_TEENY_EXP_BITS")) {
     numbits_exp=atoi(getenv("FPVM_TEENY_EXP_BITS"));
@@ -1008,7 +1011,7 @@ void fpvm_number_init(UNUSED void *ptr)
   //  exit(0);
 }
 
-void fpvm_number_deinit(UNUSED void *ptr)
+void fpvm_number_system_deinit()
 {
   MATH_DEBUG("deinited%s\n","");
 }
