@@ -291,6 +291,19 @@ void     arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *fpcsr) { uc->uc_mc
 
    
 
+static __attribute__((noinline)) void my_memcpy(void *d, void *s, unsigned int n) 
+{
+  char *dst = d;
+  char *src = s;
+  
+  while (n) {
+    *dst++=*src++;
+    n--;
+  }
+}
+
+#define MEMCPY(d,s,n) my_memcpy(d,s,n)
+//#define MEMCPY(d,s,n) memcpy(d,s,n)
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
   int len = size > 15 ? 15 : size;
@@ -298,7 +311,7 @@ int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
   if (size < 0) {
     return -1;
   } else {
-    memcpy(dest, (const void *)uc->uc_mcontext.gregs[REG_RIP], len);
+    MEMCPY(dest, (const void *)uc->uc_mcontext.gregs[REG_RIP], len);
     return len;
   }
 }
@@ -349,16 +362,12 @@ static void mxcsr_restore(uint32_t old) {
 
 static inline void NO_TOUCH_FLOAT fxsave(void *fpvm_fpregs)
 {
-  #ifdef __x86_64__
-  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs));
-  #endif
+  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs): "memory");
 }
 
 static inline void NO_TOUCH_FLOAT fxrstor(const void *fpvm_fpregs)
 {
-  #ifdef __x86_64__
   __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
-  #endif
 }
 
 
@@ -374,7 +383,7 @@ void arch_get_fpregs(const ucontext_t *uc, fpvm_arch_fpregs_t *fpregs)
 
 void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs)
 {
-    memcpy(uc->uc_mcontext.fpregs->_xmm,fpregs->data,16*16);
+    MEMCPY(uc->uc_mcontext.fpregs->_xmm,fpregs->data,16*16);
 }
 
 // similar, but if data is null, it only fills out the metadata
@@ -388,19 +397,19 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
     if (fpregs->data) {
 	uint8_t temp[4096] __attribute__((aligned (16)));
 	fxsave(temp);
-	memcpy(fpregs->data,temp+160,16*16);
+	MEMCPY(fpregs->data,temp+160,16*16);
     }
 }
 
 void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs)
 {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
     uint8_t temp[4096] __attribute__((aligned(16)));
     fxsave(temp);
-    memcpy(temp+160,fpregs->data,16*16);
+    MEMCPY(temp+160,fpregs->data,16*16);
     fxrstor(temp);
-#pragma GCC diagnostic pop
+//#pragma GCC diagnostic pop
 }
 
 void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs)
@@ -415,7 +424,7 @@ void arch_get_gpregs(const ucontext_t *uc, fpvm_arch_gpregs_t *gpregs)
 
 void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
 {
-    memcpy(uc->uc_mcontext.gregs,gpregs->data,18*8);
+    MEMCPY(uc->uc_mcontext.gregs,gpregs->data,18*8);
 }
 
 
