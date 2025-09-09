@@ -1224,14 +1224,17 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     
     START_PERF(mc, foreign_call);
 
+    arch_fp_csr_t oldfpcsr;
+    arch_config_machine_fp_csr_for_local(&oldfpcsr);
+    
     // capture fp register state in our arch independent form
+    //SAFE_DEBUG_QUAD("fpregs_template.regalign_bytes", fpregs_template.regalign_bytes);
+    //SAFE_DEBUG_QUAD("fpregs_template.numregs", fpregs_template.numregs);
     uint8_t fpdata[fpregs_template.regalign_bytes*fpregs_template.numregs];
     fpvm_arch_fpregs_t fpregs;
     fpregs.data = fpdata;
     arch_get_fpregs_machine(&fpregs);
 
-    arch_fp_csr_t oldfpcsr;
-    arch_config_machine_fp_csr_for_local(&oldfpcsr);
   
     fpvm_regs_t regs;
 
@@ -2382,8 +2385,6 @@ static void config_round_daz_ftz(char *buf)
 
 
 
-
-
 // Called on load of preload library
 #if CONFIG_HAVE_MAIN
 static void fpvm_init(void) {
@@ -2393,8 +2394,9 @@ static __attribute__((constructor )) void fpvm_init(void) {
   INFO("init\n");
   //SAFE_DEBUG("we are not in crazy town, ostensibly\n");
 
-  if (!inited) {
 
+  if (!inited) {
+    fpvm_number_system_init();
     pulse_start("fpvm.json");
     // Grab the log destination
     char *log_dst = getenv("FPVM_LOG_FILE");
