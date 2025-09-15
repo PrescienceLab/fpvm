@@ -848,8 +848,8 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 
 #define MATH_STUB_MIXED(NAME, TYPE1, TYPE2, RET)               \
   RET NAME(TYPE1 a, TYPE2 b) {                                 \
-    ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
     fptrapall_clear_ts(); \
+    ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);               \
     UNBOX_VAL_IN_PLACE(a);				       \
     RET ori = orig_##NAME(a, b);                               \
     MATH_DEBUG(#NAME "(%lf , %d) = %lf \n", a, b, ori);	       \

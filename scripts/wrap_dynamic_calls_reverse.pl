@@ -147,10 +147,51 @@ $func\$fpvm:
 #  - switch return address to tramp address
 #  - update return addressupdate the return address to the tramp address
 
+# Create a struct arch_fpregs on the stack and stash our floating point state
+
+  subq \$(16*16), %rsp // Allocate space for the floating point registers
+  movsd %xmm0,  0x00(%rsp)
+  movsd %xmm1,  0x10(%rsp)
+  movsd %xmm2,  0x20(%rsp)
+  movsd %xmm3,  0x30(%rsp)
+  movsd %xmm4,  0x40(%rsp)
+  movsd %xmm5,  0x50(%rsp)
+  movsd %xmm6,  0x60(%rsp)
+  movsd %xmm7,  0x70(%rsp)
+  movsd %xmm8,  0x80(%rsp)
+  movsd %xmm9,  0x90(%rsp)
+  movsd %xmm10, 0xA0(%rsp)
+  movsd %xmm11, 0xB0(%rsp)
+  movsd %xmm12, 0xC0(%rsp)
+  movsd %xmm13, 0xD0(%rsp)
+  movsd %xmm14, 0xE0(%rsp)
+  movsd %xmm15, 0xF0(%rsp)
+  movq %rsp, %rcx # Pass a pointer to our floating point registers on the stack
+  movq \$(16*16), %r8 # Pass the byte size of our floating point registers
+                     # Probably a better (static) way to do this.
+
   leaq 8(%rbp), %rdi
   movq .tramp$func\@GOTPCREL(%rip), %rsi
   movq $func\@GOTPCREL(%rip), %rdx # for debugging
   call $entry
+
+  movsd 0x00(%rsp), %xmm0
+  movsd 0x10(%rsp), %xmm1
+  movsd 0x20(%rsp), %xmm2
+  movsd 0x30(%rsp), %xmm3
+  movsd 0x40(%rsp), %xmm4
+  movsd 0x50(%rsp), %xmm5
+  movsd 0x60(%rsp), %xmm6
+  movsd 0x70(%rsp), %xmm7
+  movsd 0x80(%rsp), %xmm8
+  movsd 0x90(%rsp), %xmm9
+  movsd 0xA0(%rsp), %xmm10
+  movsd 0xB0(%rsp), %xmm11
+  movsd 0xC0(%rsp), %xmm12
+  movsd 0xD0(%rsp), %xmm13
+  movsd 0xE0(%rsp), %xmm14
+  movsd 0xF0(%rsp), %xmm15
+  addq \$(16*16), %rsp
 
   popq  %r11 # undo alignment
   popq  %r9
@@ -185,6 +226,8 @@ $func\$fpvm:
   pushq %r8
   pushq %r9
   pushq %r11 # Enforce alignment
+
+  // TODO: Save floating point state if we expect any FPRS are callee saved
 
 #
 # invoke foreign_exit(addr_of_ret)

@@ -27,7 +27,6 @@ extern void fptrapall_clear_ts(void);
 #define fptrapall_set_ts()
 #endif
 
-
 static int mxcsrmask_base = 0x3f;  // which sse exceptions to handle, default all (using base zero)
 
 #define MXCSR_FLAG_MASK (mxcsrmask_base << 0)
@@ -104,7 +103,7 @@ void arch_set_machine_fp_csr(const arch_fp_csr_t *f) { set_mxcsr(f->val); }
 
 int arch_machine_supports_fp_traps(void) { return 1; }
 
-void arch_config_machine_fp_csr_for_local(arch_fp_csr_t *old) {
+void NO_TOUCH_FLOAT arch_config_machine_fp_csr_for_local(arch_fp_csr_t *old) {
   arch_get_machine_fp_csr(old);
   set_mxcsr(MXCSR_OURS);
 }
@@ -302,8 +301,8 @@ static __attribute__((noinline)) void my_memcpy(void *d, void *s, unsigned int n
   }
 }
 
-#define MEMCPY(d,s,n) my_memcpy(d,s,n)
-//#define MEMCPY(d,s,n) memcpy(d,s,n)
+//#define MEMCPY(d,s,n) my_memcpy(d,s,n)
+#define MEMCPY(d,s,n) memcpy(d,s,n)
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
   int len = size > 15 ? 15 : size;
@@ -362,12 +361,18 @@ static void mxcsr_restore(uint32_t old) {
 
 static inline void NO_TOUCH_FLOAT fxsave(void *fpvm_fpregs)
 {
-  __asm__ __volatile__("fxsave64 (%0)" :: "r"(fpvm_fpregs): "memory");
+  __asm__ __volatile__("fxsave64 (%0)" :: "r" (fpvm_fpregs) : "memory");
 }
 
-static inline void NO_TOUCH_FLOAT fxrstor(const void *fpvm_fpregs)
+static inline void fxrstor(const void *fpvm_fpregs)
 {
-  __asm__ __volatile__("fxrstor64 (%0)" :: "r"(fpvm_fpregs));
+  __asm__ __volatile__("fxrstor64 (%0)" :: "r" (fpvm_fpregs)
+	  : "memory",
+	    "xmm0",  "xmm1",  "xmm2",  "xmm3",
+	    "xmm4",  "xmm5",  "xmm6",  "xmm7",
+	    "xmm8",  "xmm9",  "xmm10", "xmm11",
+	    "xmm12", "xmm13", "xmm14", "xmm15"
+	    );
 }
 
 
@@ -388,7 +393,7 @@ void arch_set_fpregs(ucontext_t *uc, const fpvm_arch_fpregs_t *fpregs)
 
 // similar, but if data is null, it only fills out the metadata
 // if data is not null, it fills out both metadata and copies the data
-void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
+void NO_TOUCH_FLOAT arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
 {
     fpregs->numregs=16;
     fpregs->regsize_bytes=16;

@@ -146,8 +146,8 @@ void arch_thread_deinit(void);
 #define FXSAVE_ALIGN __attribute__((aligned (16)));
 #define XMM_ALIGN __attribute__((aligned (16)));
 
-#define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
-
+//#define NO_TOUCH_FLOAT __attribute__((target ("general-regs-only")))
+#define NO_TOUCH_FLOAT
 
 #if CONFIG_KERNEL_SHORT_CIRCUITING
 // special support

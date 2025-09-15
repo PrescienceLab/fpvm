@@ -81,6 +81,7 @@
 #include <fpvm/config.h>
 #include <fpvm/pulse.h>
 
+#define KICK_SIGNAL SIGUSR2
 
 int fpvm_setup_additional_wrappers() {
  return 0;
@@ -509,7 +510,7 @@ static void kick_self(void)
 	arch_kernel_short_circuiting_kick_self();
 #endif
     } else {
-	kill(gettid(), SIGTRAP);
+	kill(gettid(), KICK_SIGNAL);
     }
 }
 
@@ -1206,7 +1207,7 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 
 
-void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
+void NO_TOUCH_FLOAT __fpvm_foreign_entry(void **ret, void *tramp, void *func, void *fpdata, unsigned long fpdata_byte_len)
 {
 #if CONFIG_FPTRAPALL
     fptrapall_clear_ts();
@@ -1230,10 +1231,13 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     // capture fp register state in our arch independent form
     //SAFE_DEBUG_QUAD("fpregs_template.regalign_bytes", fpregs_template.regalign_bytes);
     //SAFE_DEBUG_QUAD("fpregs_template.numregs", fpregs_template.numregs);
+
+    /* Done in assembly -KJH
     uint8_t fpdata[fpregs_template.regalign_bytes*fpregs_template.numregs];
     fpvm_arch_fpregs_t fpregs;
     fpregs.data = fpdata;
     arch_get_fpregs_machine(&fpregs);
+    */
 
   
     fpvm_regs_t regs;
@@ -1259,8 +1263,14 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     // here and restore them from the stash in __fpvm_foreign_exit
     
     regs.mcontext = 0;                     // nothing should need this state
+
+    regs.fprs = fpdata;
+    regs.fpr_size = fpdata_byte_len;
+
+    /* Done in assembly -KJH
     regs.fprs = fpregs.data;
     regs.fpr_size = fpregs.regsize_bytes;  // note, likely bogus
+    */
 
     demotions = fpvm_emulator_demote_registers(&regs);
 
@@ -1286,7 +1296,9 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_entry(void **ret, void *tramp, void *func)
     // wrapper
     *ret = tramp;
 
+    /* Done in assembly -KJH
     arch_set_fpregs_machine(&fpregs);
+    */
     
     SAFE_DEBUG("foreign call begins\n");
     
@@ -2232,6 +2244,18 @@ static int bringup() {
   sigaddset(&sa.sa_mask, SIGTRAP);
   sigaddset(&sa.sa_mask, SIGFPE);
   ORIG_IF_CAN(sigaction, SIGTRAP, &sa, &oldsa_trap);
+
+  if(KICK_SIGNAL != SIGTRAP) {
+      DEBUG("Setting up KICK_SIGNAL handler (default mechanism)\n");
+      memset(&sa, 0, sizeof(sa));
+      sa.sa_sigaction = sigtrap_handler;
+      sa.sa_flags |= SA_SIGINFO;
+      sigemptyset(&sa.sa_mask);
+      sigaddset(&sa.sa_mask, SIGINT);
+      sigaddset(&sa.sa_mask, KICK_SIGNAL);
+      sigaddset(&sa.sa_mask, SIGFPE);
+      ORIG_IF_CAN(sigaction, KICK_SIGNAL, &sa, &oldsa_trap);
+  }
 
   DEBUG("Setting up SIGINT handler\n");
   memset(&sa, 0, sizeof(sa));
