@@ -26,10 +26,10 @@ if args.from_file is not None:
   with open(args.from_file) as f:
     for line in f:
       raw=line.strip()
-      if re.search("^\s*\#",raw) :
+      if re.search(r"^\s*\#",raw) :
 #        print('skipping comment ',raw)
         continue
-      match = re.search("^\s*(\S+)",raw)
+      match = re.search(r"^\s*(\S+)",raw)
       if (match) :
         name = match.group(1)
 #        print('adding',name)
