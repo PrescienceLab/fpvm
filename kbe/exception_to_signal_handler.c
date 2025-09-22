@@ -138,8 +138,8 @@ int main() {
 
     /* XXX: hit_handler_asm and left_handler_asm will be 0 in the case of
      * signals! You would need the kernel to populate those values for you!
-     * TODO: Make Linux populate uscratch for hit/left_handler_asm upon
-     * entry/exit to/from the kernel. */
+     * Linux populates CSR_USCRATCH for you upon entry/exit to/from the kernel
+     * on our modified kernel for hit/left_handler_asm. */
     printf("%zu,%zu,%zu,%zu,%zu,%zu\n",
            hit_inst_time, hit_handler_asm, hit_handler_time,
            left_handler_time, left_handler_asm, hit_next_inst_time);
