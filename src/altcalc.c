@@ -1,3 +1,6 @@
+
+#if CONFIG_RUN_ALT_CALC
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -272,6 +275,4 @@ int fpvm_number_alt_calc(void)
   }
 }
   
-  
-  
-
+#endif
