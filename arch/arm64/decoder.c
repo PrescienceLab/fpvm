@@ -25,22 +25,22 @@ static csh handle;
 
 // SHOULD MOVE THIS SOMEWHERE BETTER
 //
-// Find the register ID index of a capstone reg
-#define REG_IDX(r) \
-  ((r) >= ARM64_REG_X0 && (r) <= ARM64_REG_X30 ? (r) - ARM64_REG_X0 : \
-   (r) >= ARM64_REG_W0 && (r) <= ARM64_REG_W30 ? (r) - ARM64_REG_W0 : -1)
-
-#define IS_FPR(r) \
-  (((r) >= ARM64_REG_S0 && (r) <= ARM64_REG_S31) || \
+// On ARM, floating points are stored in 128-bit Vector Registers (V0-V31), but they can also be used to hold integers in vector operations.
+#define IS_VREG(r) \
+  (((r) >= ARM64_REG_H0 && (r) <= ARM64_REG_H31) || \
+   ((r) >= ARM64_REG_B0 && (r) <= ARM64_REG_B31) || \
+   ((r) >= ARM64_REG_S0 && (r) <= ARM64_REG_S31) || \
    ((r) >= ARM64_REG_D0 && (r) <= ARM64_REG_D31) || \
-   ((r) >= ARM64_REG_V0 && (r) <= ARM64_REG_V31))
+   ((r) >= ARM64_REG_Q0 && (r) <= ARM64_REG_Q31)) \
 
-#define GET_FPR_INDEX(r) \
-  (((r) >= ARM64_REG_S0 && (r) <= ARM64_REG_S31) ? ((r) - ARM64_REG_S0) : \
+#define GET_VREG_INDEX(r) \
+  (((r) >= ARM64_REG_H0 && (r) <= ARM64_REG_H31) ? ((r) - ARM64_REG_H0) : \
+   ((r) >= ARM64_REG_B0 && (r) <= ARM64_REG_B31) ? ((r) - ARM64_REG_B0) : \
+   ((r) >= ARM64_REG_S0 && (r) <= ARM64_REG_S31) ? ((r) - ARM64_REG_S0) : \
    ((r) >= ARM64_REG_D0 && (r) <= ARM64_REG_D31) ? ((r) - ARM64_REG_D0) : \
-   ((r) - ARM64_REG_V0))
+   ((r) - ARM64_REG_Q0))
 
-#define GET_FPR_SIZE(r) \
+#define GET_VREG_SIZE(r) \
   (((r) >= ARM64_REG_S0 && (r) <= ARM64_REG_S31) ? 4 : \
    ((r) >= ARM64_REG_D0 && (r) <= ARM64_REG_D31) ? 8 : \
    16) // 16 bytes for Vector
@@ -48,7 +48,10 @@ static csh handle;
 #define GET_GPR_SIZE(r) \
   (((r) >= ARM64_REG_W0 && (r) <= ARM64_REG_W30) ? 4 : \
    ((r) >= ARM64_REG_X0 && (r) <= ARM64_REG_X30) ? 8 : \
-   16) // 16 bytes for Vector
+   ((r) == ARM64_REG_SP) ? 8 : \
+   ((r) == ARM64_REG_WZR) ? 4 : \
+   ((r) == ARM64_REG_XZR) ? 8 : \
+   0)  // Invalid or unknown
 
 #define GET_GPR_INDEX(r) \
   (((r) >= ARM64_REG_W0 && (r) <= ARM64_REG_W30) ? ((r) - ARM64_REG_W0) : \
@@ -618,10 +621,10 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
     switch (o->type) {
       case ARM64_OP_REG:
 
-        if (IS_FPR(o->reg)) {
-          fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * GET_FPR_INDEX(o->reg);
+        if (IS_VREG(o->reg)) {
+          fi->operand_addrs[fi->operand_count] = fr->fprs + fr->fpr_size * GET_VREG_INDEX(o->reg);
           // Operand size needs to come from register (for the whole instruction)
-          fi->operand_sizes[fi->operand_count] = GET_FPR_SIZE(o->reg);
+          fi->operand_sizes[fi->operand_count] = GET_VREG_SIZE(o->reg);
           UPDATE_MAX_OPERAND_SIZE(fi->operand_sizes[fi->operand_count]);
           DEBUG("Mapped FPR %s to %p (size: %d bytes)\n", reg_name(o->reg),
               fi->operand_addrs[fi->operand_count], fi->operand_sizes[fi->operand_count]);
@@ -648,11 +651,11 @@ int fpvm_decoder_bind_operands(fpvm_inst_t *fi, fpvm_regs_t *fr) {
         uint64_t addr = mo->disp;
 
         if (mo->base != ARM64_REG_INVALID) {
-          addr += fr->mcontext->regs[REG_IDX(mo->base)];
+          addr += fr->mcontext->regs[GET_GPR_INDEX(mo->base)];
         }
 
         if (mo->index != ARM64_REG_INVALID) {
-          uint64_t val = fr->mcontext->regs[REG_IDX(mo->index)];
+          uint64_t val = fr->mcontext->regs[GET_GPR_INDEX(mo->index)];
           if (o->shift.type != ARM64_SFT_INVALID) {
             val <<= o->shift.value; // We assume left shifting here (LSL)
           }
