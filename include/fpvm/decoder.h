@@ -3,62 +3,76 @@
 
 #include <ucontext.h>
 
+#define FPVM_OP_XLIST(X)\
+X(ADD)\
+X(SUB)\
+X(MUL)\
+X(DIV)\
+X(MADD)\
+X(NMADD)\
+X(MSUB)\
+X(NMSUB)\
+X(SQRT)\
+X(MIN)\
+X(MAX)\
+\
+/* Comparisons */ \
+X(CMP) /* ordered compare of floats, setting rflags */ \
+X(UCMP) /* unordered compare of floats, setting rflags */ \
+        /* really the same behavior as CMP for our purposes */ \
+\
+X(CMPXX)  /* do comparison XX, write result into dest, not rflags */ \
+\
+/* float to integer conversion */ \
+X(F2I)\
+X(F2IT)  /* f2i with trunctation */ \
+X(F2U) \
+X(F2UT)  /* f2u with trunction */ \
+\
+/* integer to float conversion */ \
+X(I2F) \
+X(I2FT)  /* do we need? */ \
+X(U2F) \
+X(U2FT)  /* do we need? */ \
+\
+/* float to float conversion */ \
+X(F2F) \
+\
+/* moves are handled during sequence emulation to lengthen sequence length */ \
+/* they are also needed for correctness traps */ \
+X(MOVE) \
+\
+/* unknown why we have these - PAD */ \
+/* SHIFT_RIGHT_BYTE, */ \
+/* SHIFT_LEFT_BYTE, */ \
+/* RESTORE, */ \
+/* ROUND, */ \
+\
+/* These are used for correctness traps */ \
+X(WARN) \
+X(CALL) \
+X(UNKNOWN)
 
 typedef enum {
-  FPVM_OP_ADD = 0,
-  FPVM_OP_SUB,
-  FPVM_OP_MUL,
-  FPVM_OP_DIV,
-  FPVM_OP_MADD,
-  FPVM_OP_NMADD,
-  FPVM_OP_MSUB,
-  FPVM_OP_NMSUB,
-  FPVM_OP_SQRT,
-  FPVM_OP_MIN,
-  FPVM_OP_MAX,
-
-  // comparisons
-  FPVM_OP_CMP,    // ordered compare of floats, setting rflags
-  FPVM_OP_UCMP,   // unordered compare of floats, setting rflags
-                  // really the same behavior as CMP for our purposes
-  FPVM_OP_CMPXX,  // do comparison XX, write result into dest, not rflags
-
-  // float to integer conversion
-  FPVM_OP_F2I,
-  FPVM_OP_F2IT,  // f2i with trunctation
-  FPVM_OP_F2U,
-  FPVM_OP_F2UT,  // f2u with trunction
-
-  // integer to float conversion
-  FPVM_OP_I2F,
-  FPVM_OP_I2FT,  // do we need?
-  FPVM_OP_U2F,
-  FPVM_OP_U2FT,  // do we need?
-
-  // float to float conversion
-  FPVM_OP_F2F,
-
-  // moves are handled during sequence emulation to lengthen sequence length
-  // they are also needed for correctness traps
-  FPVM_OP_MOVE,
-
-
-  // unknown why we have these - PAD
-  // FPVM_OP_SHIFT_RIGHT_BYTE,
-  // FPVM_OP_SHIFT_LEFT_BYTE,
-  // FPVM_OP_RESTORE,
-  // FPVM_OP_ROUND,
-
-
-  // These are used for correctness traps
-  FPVM_OP_WARN,
-  FPVM_OP_CALL,
-  FPVM_OP_UNKNOWN,
+#define FPVM_DECLARE_OP_ENUM(__NAME,...)\
+  FPVM_OP_ ## __NAME,
+FPVM_OP_XLIST(FPVM_DECLARE_OP_ENUM)
+#undef FPVM_DECLARE_OP_ENUM
 
   // marker
   FPVM_OP_LAST,
 } fpvm_op_t;
 
+static inline const char *
+fpvm_op_to_string(fpvm_op_t op) {
+    switch(op) {
+#define FPVM_DECLARE_OP_TO_STRING_CASE(__NAME,...)\
+	case FPVM_OP_ ## __NAME: return "FPVM_OP_" #__NAME;
+FPVM_OP_XLIST(FPVM_DECLARE_OP_TO_STRING_CASE)
+#undef FPVM_DECLARE_OP_TO_STRING_CASE
+	default: return "FPVM_OP_UNDEFINED";
+    }
+}
 
 typedef enum {
   FPVM_ROUND_DEFAULT=0, // current config..
