@@ -375,7 +375,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_U2F:
     case FPVM_OP_I2FT:
     case FPVM_OP_U2FT:
-
+      DEBUG("Refusing to handle integer to floating point conversion instruction!\n");
+      return -1;
       // PAD: I->F conversion is currently my best guess
       // note that there are various directives that need to be handled, like
       // sizes

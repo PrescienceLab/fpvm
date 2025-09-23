@@ -43,7 +43,8 @@ static int bad(op_special_t *special, void *dest, void *src1, void *src2, void *
       _FP_BIN_OP(FPVM_OP_CMP, cmp), _FP_BIN_OP(FPVM_OP_UCMP, cmp),                              \
       _FP_BIN_OP(FPVM_OP_CMPXX, cmpxx), _FP_BIN_OP(FPVM_OP_MIN, min),                           \
       _FP_BIN_OP(FPVM_OP_MAX, max), _FP_BIN_OP(FPVM_OP_F2I, f2i), _FP_BIN_OP(FPVM_OP_F2U, f2u), \
-      _FP_BIN_OP(FPVM_OP_F2IT, f2i), _FP_BIN_OP(FPVM_OP_F2UT, f2u), _FP_BIN_OP(FPVM_OP_F2F, f2f)
+      _FP_BIN_OP(FPVM_OP_F2IT, f2i), _FP_BIN_OP(FPVM_OP_F2UT, f2u), _FP_BIN_OP(FPVM_OP_F2F, f2f), \
+      _FP_BIN_OP(FPVM_OP_I2F, i2f), _FP_BIN_OP(FPVM_OP_U2F, u2f), /* Probably BOGUS -KJH */ \
 
 #define FPVM_NUMBER_SYSTEM_INIT()                                                \
   static op_map_t op_map[FPVM_OP_LAST] = {[0 ... FPVM_OP_LAST - 1] = {bad, bad}, \
