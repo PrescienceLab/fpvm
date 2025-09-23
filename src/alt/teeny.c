@@ -587,7 +587,6 @@ int cmp_double(op_special_t *special, void *dest, void *src1, void *src2,
   double b = decode_to_double(src2);
 
   return vanilla_cmp_double(special,0,&a,&b,0,0);
-
 }
 
 
@@ -820,6 +819,7 @@ double __powidf2(double a, int b) {
 //     mpfr_tan(*dst, *src, MPFR_RNDD);
 //     return mpfr_box(dst);
 // }
+
 void sincos(double a, double *sin_dst, double *cos_dst) {
   fptrapall_clear_ts();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
@@ -832,71 +832,71 @@ void sincos(double a, double *sin_dst, double *cos_dst) {
 
 // ignored float implementations
 FPVM_MATH_DECL(add, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(sub, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(nmsub, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(msub, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(mul, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(div, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(max, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(min, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(sqrt, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(madd, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(nmadd, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(f2i, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(f2u, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(i2f, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(u2f, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(f2f, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 FPVM_MATH_DECL(cmp, float) {
-  fprintf(stderr, "teeny should not be invoked with floats");
+  fprintf(stderr, "teeny should not be invoked with floats\n");
   return 0;
 }
 
