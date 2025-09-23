@@ -411,36 +411,6 @@ static void print_teeny(const uint64_t x)
 }
 
 
-
-// if ptr points to a valid double, return that. If it points to a boxed value,
-// convert it to a double. Designed for debugging
-static double decode_to_double(void *ptr)
-{
-  double value = *(double *)ptr;
-  int sign;
-  uint64_t tval;
-  
-  if (fpvm_gc_unbox_raw(value,&sign,(void**)&tval)) {
-    // reset bit 50+ before decoding
-    tval &= 0x3ffffffffffffUL;
-    double result = teeny_decode(tval);
-    int resultsign = result<0;
-    if (sign != resultsign) {
-      return -result;
-    } else {
-      return result;
-    }
-  } else {
-    return value;
-  }
-}
-
-static uint64_t decode_to_double_bits(void *ptr)
-{
-  double v = decode_to_double(ptr);
-  return *(uint64_t*)&v;
-}
-
 // if the value being boxed is negative, state that in the NaN.
 static double teeny_box(double val)
 {
@@ -471,6 +441,21 @@ static double teeny_unbox(double val) {
     return val;
   }
 }
+
+// if ptr points to a valid double, return that. If it points to a boxed value,
+// convert it to a double. Designed for debugging
+static double decode_to_double(void *ptr)
+{
+  double value = *(double *)ptr;
+  return teeny_unbox(value);
+}
+
+static uint64_t decode_to_double_bits(void *ptr)
+{
+  double v = decode_to_double(ptr);
+  return *(uint64_t*)&v;
+}
+
 #define teeny_add(x,y,r) ((x)+(y))
 #define teeny_sub(x,y,r) ((x)-(y))
 #define teeny_mul(x,y,r) ((x)*(y))
