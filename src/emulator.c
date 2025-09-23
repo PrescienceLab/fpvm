@@ -94,7 +94,10 @@ static int fpvm_movq(op_special_t *special, void *dest, void *src1, void *src2, 
   return 0;
 }
 
-static void rflags_x86_to_arm(uint64_t* side_effect_addrs, uint64_t rflags) {};
+static void rflags_x86_to_arm(uint64_t* side_effect_addrs, uint64_t rflags) {
+    // KJH - This was empty?
+    *side_effect_addrs = rflags;
+};
 
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
 {
