@@ -9,7 +9,63 @@ fpvm_magic_trap_entry_t FPVM_MAGIC_TRAP_ENTRY_NAME = 0;
 static int (*fpvm_demote_handler)(void *) = 0;
 
 
+#if CONFIG_FPTRAPALL
 
+#define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
+#define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
+#define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
+
+
+static void
+fptrapall_set_ts(void)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '1';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+static void
+fptrapall_clear_ts(void)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	syscall(SYS_lseek, fd, 0, SEEK_SET);
+
+	uint8_t val = '0';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+}
+
+#else
+
+#define fptrapall_set_ts(...)
+#define fptrapall_clear_ts(...)
+
+#endif
 
 // We assume a 64 bit kernel with syscall support
 static inline uint64_t Syscall(
@@ -81,14 +137,16 @@ static int check_for_magic(void) {
 }
 
 void fpvm_correctness_trap_dispatch(void *pt_regs) {
+  fptrapall_clear_ts();
   if (check_for_magic()) {  // branch hint likely
     // magic trap
-    // Write(2,"MAGIC!!\n",8);
+    //Write(2,"MAGIC!!\n",8);
     FPVM_MAGIC_TRAP_ENTRY_NAME(pt_regs);
   } else {
     fprintf(stderr, "magic trap is not enabled!\n");
     exit(-1);
   }
+  fptrapall_set_ts();
 }
 
 
@@ -111,20 +169,27 @@ void fpvm_correctness_trap_dispatch(void *pt_regs) {
 #define RESET "\33[0m"
 
 static int traps = 0;
+// RENAME THIS FUNCTION NICK (Make it "correctness_trap_memory", and the other one should be
+// "correctness_trap_instruction") -PAD
 void fpvm_correctness_trap_test(
     const char *_asm, struct STATE *state, uint8_t *bytes, uint64_t *dst) {
+
+  fptrapall_clear_ts();
   if (check_for_magic()) {
+    //Write(2,"TEST!!\n",7);
     uint64_t old_val = *dst;
     if (old_val == -1) {
       // return;
     }
     if (fpvm_demote_handler(dst)) {
+      fptrapall_set_ts();
       return;
       fprintf(stderr, RED "%8d - %.16lx: " GREEN " %s" RESET "\n", traps++, state->rip, _asm);
       fprintf(stderr, "       demoted: %zx -> %zx\n", old_val, *dst);
       fflush(stderr);
     }
   }
+  fptrapall_set_ts();
   return;
   // *dst = 42;
   /* fprintf(stderr, "\t%rax    = 0x%.16lx (%p)\n", state->rax, &state->rax); */
