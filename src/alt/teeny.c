@@ -821,8 +821,13 @@ double __powidf2(double a, int b) {
 //     return mpfr_box(dst);
 // }
 void sincos(double a, double *sin_dst, double *cos_dst) {
-  *sin_dst = sin(a);
-  *cos_dst = cos(a);
+  fptrapall_clear_ts();			       
+  ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
+  double src = teeny_unbox(a);
+  orig_sincos(src, sin_dst, cos_dst);
+  ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
+  ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  fptrapall_set_ts();
 }
 
 // ignored float implementations
