@@ -95,7 +95,7 @@ static int numbits_all=(1+(CONFIG_TEENY_EXP_BITS+CONFIG_TEENY_MANT_BITS));
 static int bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1);
 static uint64_t exp_bitmask=0;
 static uint64_t mant_bitmask=0;
-
+static int too_small_away=0;
 
 static uint64_t bitmask(const uint64_t count)
 {
@@ -250,15 +250,22 @@ static uint64_t teeny_encode(const double x)
     }
   } else {
     if (e!=0) {
-      // normal
+      // input is a normal
       ube = e - 1023;   // unbias double exp
       be = ube + bias;  // rebias exp for teeny
       MATH_DEBUG("norm exp=%016lx (%lu unbiased %ld rebiased %ld)\n", e,e,ube,be);
       if (be < -numbits_mant) {
-	// cannot fit, underflow to zero
-	MATH_DEBUG("underflow to zero\n");
-	return teeny_pack(s,0,0);
+	// normal input cannot fit into teeny, underflow
+	// mantissa is by definition nonzero
+	if (too_small_away) {
+	  MATH_DEBUG("underflow to tiniest subnorm (round away from zero behavior)\n");
+	  return teeny_pack(s,0,1);
+	} else {
+	  MATH_DEBUG("underflow to zero\n");
+	  return teeny_pack(s,0,0);
+	}
       } else if ((int64_t)be < 1) {
+	// normal input becomes subnorm teeny
 	// be is in range [-numbits_mant,1)
 	// toss on the leading 1
 	m = m | 0x1000000000000UL;
@@ -271,24 +278,37 @@ static uint64_t teeny_encode(const double x)
 	MATH_DEBUG("teeny subnorm mantisa=%016lx\n",m);
 	return teeny_pack(s,0,m);
       } else if (be < exp_bitmask) {
+	// normal input becomes normal teeny
 	// just shift out the irrelevant bits
 	m >>= 52 - numbits_mant;
 	MATH_DEBUG("teeny norm mantissa=%016lx\n",m);
 	return teeny_pack(s,be,m);
       } else {
+	// normal input is too large and overflows teeny
 	MATH_DEBUG("overflow to infinity\n");
 	return teeny_pack(s,exp_bitmask,0);
       }
     } else {
-      // subnorm
+      // input is a subnormal
       ube = 1 - 1023;
       be = ube + bias;
       MATH_DEBUG("subnorm exp=%016lx (%lu unbiased %ld rebiased %ld)\n", e,e,ube,be);
       if (be < -numbits_mant) {
-	// cannot fit, underflow to zero
-	MATH_DEBUG("underflow to zero\n");
-	return teeny_pack(s,0,0);
+	// subnormal input cannot fit into teeny, underflow
+	if (m!=0) {
+	  if (too_small_away) {
+	    MATH_DEBUG("underflow to tiniest subnorm (round away from zero behavior)\n");
+	    return teeny_pack(s,0,1);
+	  } else {	    
+	    MATH_DEBUG("underflow to zero\n");
+	    return teeny_pack(s,0,0);
+	  }
+	} else {
+	  MATH_DEBUG("zero makes zero\n");
+	  return teeny_pack(s,0,0);
+	}	  
       } else if (be < 1) {
+	// subnormal input becomes subnorm teeny
 	// be is in range [-numbits_mant,1)
 	// use mantissa directly, since implicit leading bit is zero
 	//
@@ -301,15 +321,16 @@ static uint64_t teeny_encode(const double x)
 	MATH_DEBUG("teeny subnorm mantisa=%016lx\n",m);
 	return teeny_pack(s,0,m);
       } else if (be < exp_bitmask) {
+	// normal input becomes normal teeny
 	// just shift out the irrelevant bits
 	m >>= 52 - numbits_mant;
 	MATH_DEBUG("teeny norm mantissa=%016lx\n",m);
 	return teeny_pack(s,be,m);
       } else {
+	// normal input is too large and overflows teeny
 	MATH_DEBUG("overflow to infinity\n");
 	return teeny_pack(s,exp_bitmask,0);
       }
-      
     }
   }
 }
@@ -975,6 +996,9 @@ void fpvm_number_system_init()
   }
   if (getenv("FPVM_TEENY_MANT_BITS")) {
     numbits_mant=atoi(getenv("FPVM_TEENY_MANT_BITS"));
+  }
+  if (getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")) {
+    too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
   }
   
   numbits_all = 1 + numbits_exp + numbits_mant;
