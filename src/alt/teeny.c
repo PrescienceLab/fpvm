@@ -39,6 +39,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <ctype.h>
 
 
 #define RFLAGS_CF 0x1UL
