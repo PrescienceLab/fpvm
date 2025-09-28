@@ -204,11 +204,23 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
+// PAD: eventually this needs to become part of
+// the arch interface
+#define TRAPALL_OFF()
+#define TRAPALL_ON()
+
 #if CONFIG_FPTRAPALL
 
 #define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
 #define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
 #define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
+
+#undef TRAPALL_OFF
+#undef TRAPALL_ON
+#define TRAPALL_OFF() fptrapall_clear_ts()
+#define TRAPALL_ON()  fptrapall_set_ts()
+
+
 
 static void
 fptrapall_register(void)
@@ -1209,9 +1221,8 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT __fpvm_foreign_entry(void **ret, void *tramp, void *func, void *fpdata, unsigned long fpdata_byte_len)
 {
-#if CONFIG_FPTRAPALL
-    fptrapall_clear_ts();
-#endif
+    TRAPALL_OFF();
+
     int demotions=0;
 
     execution_context_t *mc = find_my_execution_context();
@@ -1325,9 +1336,8 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   SAFE_DEBUG("foreign exit\n");
 
   END_PERF(mc, foreign_call);
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+
+  TRAPALL_ON();
 }
 
 
@@ -1935,7 +1945,7 @@ void fp_trap_handler(ucontext_t *uc)
 // mechanism is used
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-
+  TRAPALL_OFF();
   arch_fp_csr_t oldfpcsr;
   arch_config_machine_fp_csr_for_local(&oldfpcsr);
   ucontext_t *uc = (ucontext_t *)priv;
@@ -1971,7 +1981,12 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #endif
 
   fp_trap_handler(uc);
+
   arch_set_machine_fp_csr(&oldfpcsr);
+
+  if (find_my_execution_context()->state==AWAIT_FPE) { 
+    TRAPALL_ON();
+  }
 }
 
 static __attribute__((destructor)) void fpvm_deinit(void);
@@ -2314,16 +2329,12 @@ static int bringup() {
 #endif
 
 #if CONFIG_RUN_ALT_CALC
-#if CONFIG_FPTRAPALL
-  fptrapall_clear_ts();
-#endif
+  TRAPALL_OFF();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+  TRAPALL_ON();
 #endif
 
   // now kick ourselves to set the sse bits; we are currently in state INIT
@@ -2482,10 +2493,13 @@ static void fpvm_deinit(void) {
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
 
+  // it is correct that we will not reenable it in this function
+  TRAPALL_OFF();
 
   pulse_stop();
   DEBUG("deinit\n");
   arch_fp_csr_t old;
+
   arch_config_machine_fp_csr_for_local(&old);
   dump_execution_contexts_info();
 
@@ -2553,16 +2567,12 @@ int main(int argc, char *argv[])
   fpvm_number_init(0);
 
 #if CONFIG_RUN_ALT_CALC
-#if CONFIG_FPTRAPALL
-  fptrapall_clear_ts();
-#endif
+  TRAPALL_OFF();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+  TRAPALL_ON();
 #endif
   
   
