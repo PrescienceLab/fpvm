@@ -222,6 +222,13 @@ config SEQ_EMULATE_IF_POSSIBLE
       is (a) unemulatable or (b) none of its operands are nan-boxed.
       This option eliminates (b), which is useful for cases where all
       instructions will trap (e.g., FPTRAPALL)
+
+config DISABLE_GC
+    bool "Avoid garbage collection if we know there is no possible garbage"
+    default n
+    help
+      Some number systems (e.g., Teeny) have their *values* nan-boxed
+      instead of pointers to their values.  In this case, no garbage is possible.
 endmenu
 
 menu "Developer Features"

@@ -1423,9 +1423,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   int seq_promotions = 0, seq_demotions = 0, seq_clobbers = 0;
 #endif
 
+#if !CONFIG_DISABLE_GC
   START_PERF(mc, gc);
   fpvm_gc_run();
   END_PERF(mc, gc);
+#endif
 
 
   if (!mc || mc->state != AWAIT_FPE) {
@@ -1790,9 +1792,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   execution_context_t *mc = find_my_execution_context();
   uint8_t *rip = (uint8_t *)MCTX_PC(&uc->uc_mcontext);
 
+#if !CONFIG_DISABLE_GC
   // Let the garbage collector run
   fpvm_gc_run();
-
+#endif
+  
   // sanity check state and abort if needed
   if (!mc || mc->state != AWAIT_FPE) {
     arch_clear_fp_exceptions(uc);
