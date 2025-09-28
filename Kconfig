@@ -180,13 +180,27 @@ config TEENY_EXP_BITS
 		depends on ALT_MATH_TEENY
     help
        The exponent size must be <12
-
+       This is the default, and can be overridden with
+       the environment variable FPVM_TEENY_EXP_BITS
+       
 config TEENY_MANT_BITS
-    int "Teeny mantissa size (bit)"
+    int "Teeny mantissa size (bits)"
 		default 16 
 		depends on ALT_MATH_TEENY
     help
        The exponent size + mantissa size + 1 must be <= 50
+       This is the default, and can be overridden with
+       the environment variable FPVM_TEENY_MANT_BITS
+
+config TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
+    boolean "Teeny round away from zero on underflow"
+		default y
+		depends on ALT_MATH_TEENY
+    help
+       When on, underflows to zero instead underflow
+       to the smallest magnitude teeny number
+       the environment variable
+       FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
 
 endchoice
 
