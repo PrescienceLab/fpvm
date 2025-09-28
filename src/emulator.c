@@ -134,6 +134,10 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
       return 0;
     }
 
+#if CONFIG_SEQ_EMULATE_IF_POSSIBLE
+    DEBUG("should emulate because sequence emulate if possible is set\n");
+    return 1;
+#else
     int i,j;
     int count = 1;
     // although src_step is not currently used, it is possible for
@@ -167,6 +171,7 @@ int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi)
     DEBUG("should not emulate - none of the %d x %d (size %u) operands are tracked\n", fi->operand_count, count, fi->common->op_size);
 
     return 0;
+#endif
   }
 }
 

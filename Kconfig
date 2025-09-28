@@ -212,6 +212,16 @@ config FPTRAPALL
     help
       Use the fptrapall kernel module to trap all floating point operations
       by setting the CR0.TS bit.
+
+config SEQ_EMULATE_IF_POSSIBLE
+    bool "Continue sequence emulation as long as instruction is emulatable"
+    depends on INSTR_SEQ_EMULATION
+    default n
+    help
+      Normally, sequence emulation halts if either the current instruction
+      is (a) unemulatable or (b) none of its operands are nan-boxed.
+      This option eliminates (b), which is useful for cases where all
+      instructions will trap (e.g., FPTRAPALL)
 endmenu
 
 menu "Developer Features"
