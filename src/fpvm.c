@@ -115,6 +115,7 @@ volatile static int kernel_sc = 0;
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
 
+static int (*orig_main)(int, char **, char **) = 0;
 static int (*orig_fork)() = 0;
 static int (*orig_pthread_create)(
     pthread_t *tid, const pthread_attr_t *attr, void *(*start)(void *), void *arg) = 0;
@@ -2350,6 +2351,38 @@ static int bringup() {
   return 0;
 }
 
+#if CONFIG_DEFER_BRINGUP_UNTIL_MAIN
+
+// main() interception code influenced by 
+// https://gist.github.com/apsun/1e144bf7639b22ff0097171fa0f8c6b1
+
+static int main_shim(int argc, char **argv, char **envp)
+{
+  DEBUG("bringing up FPVM just before main\n");
+  if (bringup()) {
+    ERROR("cannot bring up framework\n");
+  }
+  return orig_main(argc, argv, envp);
+}
+
+// Wrapper for __libc_start_main() that replaces the real main
+int __libc_start_main(int (*main)(int, char **, char **),
+		      int argc,
+		      char **argv,
+		      int (*init)(int, char **, char **),
+		      void (*fini)(void),
+		      void (*rtld_fini)(void),
+		      void *stack_end)
+{
+  orig_main = main;
+
+  typeof(&__libc_start_main) orig_libc_start_main = dlsym(RTLD_NEXT, "__libc_start_main");
+  
+  return orig_libc_start_main(main_shim, argc, argv, init, fini, rtld_fini, stack_end);
+}
+
+#endif
+
 // This should probably be specific to FPVM, but
 // when we invoke
 static void config_exceptions(char *buf) {
@@ -2477,11 +2510,14 @@ static __attribute__((constructor )) void fpvm_init(void) {
     if (getenv("FPVM_FORCE_ROUNDING")) {
       config_round_daz_ftz(getenv("FPVM_FORCE_ROUNDING"));
     }
+#if !CONFIG_DEFER_BRINGUP_UNTIL_MAIN
     if (bringup()) {
       ERROR("cannot bring up framework\n");
       return;
     }
-
+#else
+    DEBUG("deferring FPVM bringup until just before main()\n");
+#endif
     DEBUG("fpvm_init done\n");
     return;
   } else {

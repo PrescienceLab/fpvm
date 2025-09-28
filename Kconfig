@@ -229,7 +229,15 @@ config DISABLE_GC
     help
       Some number systems (e.g., Teeny) have their *values* nan-boxed
       instead of pointers to their values.  In this case, no garbage is possible.
+
+config DEFER_BRINGUP_UNTIL_MAIN
+    bool "Start FP interception just before main()"
+    default n
+    help
+      Intercept main() and use it as the point to bring up 
+      FPVM operation for the process.
 endmenu
+
 
 menu "Developer Features"
 config TOOLCHAIN_PREFIX
