@@ -30,6 +30,7 @@
 #if CONFIG_ALT_MATH_TEENY
 
 #include <assert.h>
+#include <ctype.h>
 #include <fpvm/fpvm_common.h>
 #include <fpvm/fpvm_fenv.h>
 #include <fpvm/fpvm_math.h>
