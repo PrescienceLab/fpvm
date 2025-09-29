@@ -194,6 +194,10 @@ static uint64_t last_instruction_count = 0;
 static FILE *gcLogFile = NULL;
 
 extern "C" unsigned fpvm_gc_run(void) {
+#if CONFIG_DISABLE_GC
+  return 0;
+#endif
+  
   uint64_t now_ms = time_us() / 1000;
 
   /* On the very first run, we need to make sure we store the times everywhere

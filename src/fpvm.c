@@ -115,6 +115,7 @@ volatile static int kernel_sc = 0;
 volatile static int aggressive = 0;
 volatile static int disable_pthreads = 0;
 
+static int (*orig_main)(int, char **, char **) = 0;
 static int (*orig_fork)() = 0;
 static int (*orig_pthread_create)(
     pthread_t *tid, const pthread_attr_t *attr, void *(*start)(void *), void *arg) = 0;
@@ -204,11 +205,23 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
+// PAD: eventually this needs to become part of
+// the arch interface
+#define TRAPALL_OFF()
+#define TRAPALL_ON()
+
 #if CONFIG_FPTRAPALL
 
 #define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
 #define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
 #define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
+
+#undef TRAPALL_OFF
+#undef TRAPALL_ON
+#define TRAPALL_OFF() fptrapall_clear_ts()
+#define TRAPALL_ON()  fptrapall_set_ts()
+
+
 
 static void
 fptrapall_register(void)
@@ -1209,9 +1222,8 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT __fpvm_foreign_entry(void **ret, void *tramp, void *func, void *fpdata, unsigned long fpdata_byte_len)
 {
-#if CONFIG_FPTRAPALL
-    fptrapall_clear_ts();
-#endif
+    TRAPALL_OFF();
+
     int demotions=0;
 
     execution_context_t *mc = find_my_execution_context();
@@ -1325,9 +1337,8 @@ void NO_TOUCH_FLOAT  __fpvm_foreign_exit(void **ret)
   SAFE_DEBUG("foreign exit\n");
 
   END_PERF(mc, foreign_call);
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+
+  TRAPALL_ON();
 }
 
 
@@ -1413,9 +1424,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   int seq_promotions = 0, seq_demotions = 0, seq_clobbers = 0;
 #endif
 
+#if !CONFIG_DISABLE_GC
   START_PERF(mc, gc);
   fpvm_gc_run();
   END_PERF(mc, gc);
+#endif
 
 
   if (!mc || mc->state != AWAIT_FPE) {
@@ -1780,9 +1793,11 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   execution_context_t *mc = find_my_execution_context();
   uint8_t *rip = (uint8_t *)MCTX_PC(&uc->uc_mcontext);
 
+#if !CONFIG_DISABLE_GC
   // Let the garbage collector run
   fpvm_gc_run();
-
+#endif
+  
   // sanity check state and abort if needed
   if (!mc || mc->state != AWAIT_FPE) {
     arch_clear_fp_exceptions(uc);
@@ -1935,7 +1950,7 @@ void fp_trap_handler(ucontext_t *uc)
 // mechanism is used
 //
 static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-
+  TRAPALL_OFF();
   arch_fp_csr_t oldfpcsr;
   arch_config_machine_fp_csr_for_local(&oldfpcsr);
   ucontext_t *uc = (ucontext_t *)priv;
@@ -1971,7 +1986,12 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 #endif
 
   fp_trap_handler(uc);
+
   arch_set_machine_fp_csr(&oldfpcsr);
+
+  if (find_my_execution_context()->state==AWAIT_FPE) { 
+    TRAPALL_ON();
+  }
 }
 
 static __attribute__((destructor)) void fpvm_deinit(void);
@@ -2314,16 +2334,12 @@ static int bringup() {
 #endif
 
 #if CONFIG_RUN_ALT_CALC
-#if CONFIG_FPTRAPALL
-  fptrapall_clear_ts();
-#endif
+  TRAPALL_OFF();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+  TRAPALL_ON();
 #endif
 
   // now kick ourselves to set the sse bits; we are currently in state INIT
@@ -2334,6 +2350,38 @@ static int bringup() {
 
   return 0;
 }
+
+#if CONFIG_DEFER_BRINGUP_UNTIL_MAIN
+
+// main() interception code influenced by 
+// https://gist.github.com/apsun/1e144bf7639b22ff0097171fa0f8c6b1
+
+static int main_shim(int argc, char **argv, char **envp)
+{
+  DEBUG("bringing up FPVM just before main\n");
+  if (bringup()) {
+    ERROR("cannot bring up framework\n");
+  }
+  return orig_main(argc, argv, envp);
+}
+
+// Wrapper for __libc_start_main() that replaces the real main
+int __libc_start_main(int (*main)(int, char **, char **),
+		      int argc,
+		      char **argv,
+		      int (*init)(int, char **, char **),
+		      void (*fini)(void),
+		      void (*rtld_fini)(void),
+		      void *stack_end)
+{
+  orig_main = main;
+
+  typeof(&__libc_start_main) orig_libc_start_main = dlsym(RTLD_NEXT, "__libc_start_main");
+  
+  return orig_libc_start_main(main_shim, argc, argv, init, fini, rtld_fini, stack_end);
+}
+
+#endif
 
 // This should probably be specific to FPVM, but
 // when we invoke
@@ -2462,11 +2510,14 @@ static __attribute__((constructor )) void fpvm_init(void) {
     if (getenv("FPVM_FORCE_ROUNDING")) {
       config_round_daz_ftz(getenv("FPVM_FORCE_ROUNDING"));
     }
+#if !CONFIG_DEFER_BRINGUP_UNTIL_MAIN
     if (bringup()) {
       ERROR("cannot bring up framework\n");
       return;
     }
-
+#else
+    DEBUG("deferring FPVM bringup until just before main()\n");
+#endif
     DEBUG("fpvm_init done\n");
     return;
   } else {
@@ -2482,10 +2533,13 @@ static void fpvm_deinit(void) {
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
 
+  // it is correct that we will not reenable it in this function
+  TRAPALL_OFF();
 
   pulse_stop();
   DEBUG("deinit\n");
   arch_fp_csr_t old;
+
   arch_config_machine_fp_csr_for_local(&old);
   dump_execution_contexts_info();
 
@@ -2553,16 +2607,12 @@ int main(int argc, char *argv[])
   fpvm_number_init(0);
 
 #if CONFIG_RUN_ALT_CALC
-#if CONFIG_FPTRAPALL
-  fptrapall_clear_ts();
-#endif
+  TRAPALL_OFF();
   if (fpvm_number_alt_calc()) {
     INFO("early termination due to alt_calc\n");
     return -1;
   }
-#if CONFIG_FPTRAPALL
-  fptrapall_set_ts();
-#endif
+  TRAPALL_ON();
 #endif
   
   

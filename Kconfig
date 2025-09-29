@@ -180,13 +180,27 @@ config TEENY_EXP_BITS
 		depends on ALT_MATH_TEENY
     help
        The exponent size must be <12
-
+       This is the default, and can be overridden with
+       the environment variable FPVM_TEENY_EXP_BITS
+       
 config TEENY_MANT_BITS
-    int "Teeny mantissa size (bit)"
+    int "Teeny mantissa size (bits)"
 		default 16 
 		depends on ALT_MATH_TEENY
     help
        The exponent size + mantissa size + 1 must be <= 50
+       This is the default, and can be overridden with
+       the environment variable FPVM_TEENY_MANT_BITS
+
+config TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
+    boolean "Teeny round away from zero on underflow"
+		default y
+		depends on ALT_MATH_TEENY
+    help
+       When on, underflows to zero instead underflow
+       to the smallest magnitude teeny number
+       the environment variable
+       FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
 
 endchoice
 
@@ -212,7 +226,32 @@ config FPTRAPALL
     help
       Use the fptrapall kernel module to trap all floating point operations
       by setting the CR0.TS bit.
+
+config SEQ_EMULATE_IF_POSSIBLE
+    bool "Continue sequence emulation as long as instruction is emulatable"
+    depends on INSTR_SEQ_EMULATION
+    default n
+    help
+      Normally, sequence emulation halts if either the current instruction
+      is (a) unemulatable or (b) none of its operands are nan-boxed.
+      This option eliminates (b), which is useful for cases where all
+      instructions will trap (e.g., FPTRAPALL)
+
+config DISABLE_GC
+    bool "Avoid garbage collection if we know there is no possible garbage"
+    default n
+    help
+      Some number systems (e.g., Teeny) have their *values* nan-boxed
+      instead of pointers to their values.  In this case, no garbage is possible.
+
+config DEFER_BRINGUP_UNTIL_MAIN
+    bool "Start FP interception just before main()"
+    default n
+    help
+      Intercept main() and use it as the point to bring up 
+      FPVM operation for the process.
 endmenu
+
 
 menu "Developer Features"
 config TOOLCHAIN_PREFIX

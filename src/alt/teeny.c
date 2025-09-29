@@ -30,6 +30,7 @@
 #if CONFIG_ALT_MATH_TEENY
 
 #include <assert.h>
+#include <ctype.h>
 #include <fpvm/fpvm_common.h>
 #include <fpvm/fpvm_fenv.h>
 #include <fpvm/fpvm_math.h>
@@ -96,7 +97,7 @@ static int numbits_all=(1+(CONFIG_TEENY_EXP_BITS+CONFIG_TEENY_MANT_BITS));
 static int bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1);
 static uint64_t exp_bitmask=0;
 static uint64_t mant_bitmask=0;
-static int too_small_away=0;
+static int too_small_away=CONFIG_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO;
 
 static uint64_t bitmask(const uint64_t count)
 {
@@ -1020,7 +1021,7 @@ void fpvm_number_system_init()
   exp_bitmask = bitmask(numbits_exp);
   mant_bitmask = bitmask(numbits_mant);
  
-  MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx]\n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask);
+  MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx] too_small_away=%s \n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask, too_small_away ? "y" : "n");
 
   //  teeny_shell();
   //  exit(0);
