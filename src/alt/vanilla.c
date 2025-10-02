@@ -1,5 +1,6 @@
 #include <fpvm/config.h>
 #include <math.h>
+#include <string.h>
 
 #if 1  // CONFIG_ALT_MATH_NONE
 
@@ -34,6 +35,8 @@
     MATH_DEBUG(#NAME "_" #TYPE ": " SPEC " " #OP " " SPEC " = " SPEC " [" ISPEC "] (%p)\n",     \
         *(TYPE *)src1, *(TYPE *)src2, result, *(ITYPE *)&result, dest);                    \
     *(TYPE *)dest = result;                                                                \
+                                                                                           \
+    if(strcmp(#NAME, "div") == 0 && *(double*)src2 == 0.0) { fprintf(stderr, "Division by zero!\n"); }\
                                                                                            \
     return 0;                                                                              \
   }
