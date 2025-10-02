@@ -202,6 +202,13 @@ config TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
        the environment variable
        FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO
 
+    config ALT_MATH_EXTREMA
+        bool "Extrema Checking Floats"
+	help
+	    Wrapper on Vanilla which checks for maximum and minimum values
+	    which a program actually uses.
+
+
 endchoice
 
 menu "Parameters"
