@@ -205,9 +205,7 @@ static uint64_t decode_to_double_bits(void *ptr)
 
 #define extrema_add(x,y,r) ((x)+(y))
 #define extrema_sub(x,y,r) ((x)-(y))
-#define extrema_mul(x,y,r) ({\
-    	(x)*(y);\
-	})
+#define extrema_mul(x,y,r) ((x)*(y))
 
 static void
 update_division_extrema(double num, double den) {
@@ -215,6 +213,7 @@ update_division_extrema(double num, double den) {
 static int seen_division_extrema = 0;
 static double smallest_num = 0.0;
 static double smallest_den = 0.0;
+static int seen_division_by_zero = 0;
 
     if(num < 0.0) {num = -num;}
     if(den < 0.0) {den = -den;}
@@ -235,8 +234,11 @@ static double smallest_den = 0.0;
     }
 
     if(den == 0.0) {
-	fprintf(stderr, "extrema_div: division by zero! num=%f, den=%f (raw_num=0x%lx, raw_den=0x%lx) result=%lf, raw_result=0x%lx\n",
-		num, den, raw_num, raw_den, result, raw_result);
+	if(!seen_division_by_zero) {
+	    fprintf(stderr, "extrema_div: division by zero! num=%f, den=%f (raw_num=0x%lx, raw_den=0x%lx) result=%lf, raw_result=0x%lx\n",
+	    	            num, den, raw_num, raw_den, result, raw_result);
+	    seen_division_by_zero = 1;
+	}
     }
     else if(den < smallest_den) {
 	smallest_den = den;
