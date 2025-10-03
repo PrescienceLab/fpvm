@@ -163,6 +163,20 @@ static uint64_t teeny_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
   sign &= 0x1;
   exp &= exp_bitmask;
   mantissa &= mant_bitmask;
+
+  if(exp == exp_bitmask) {
+      //if(mantissa == 0) {
+      //    // +-Inf
+      //    //fprintf(stderr, "teeny_pack: Creating an infinite value\n");
+      //} else {
+      //    // NaN
+      //    //fprintf(stderr, "teeny_pack: Creating a NaN value\n");
+      //}
+  }
+
+  //if(exp == 0 && mantissa == 0) {
+  //    //fprintf(stderr, "teeny_pack: Creating a zero value\n");
+  //}
   
   x =  (sign << (numbits_exp + numbits_mant)) | (exp << numbits_mant) | mantissa;
 
@@ -231,7 +245,101 @@ static uint64_t teeny_encode(const double x)
   double_unpack(x,&s,&e,&m);
 
   MATH_DEBUG("encode double %016lx (%lf)\n",*(uint64_t*)&x,x);
-  
+
+#define SIMPLE_ENCODE
+#ifdef SIMPLE_ENCODE
+  uint64_t mantissa = m << (64-52); // 64 bit mantissa (leading one is implied 1.XXXXXX)
+  ube = e - 1023; // 64-bit unbiased exponent
+
+  if(is_double_special_exp(e)) {
+      if(m) {
+	  // NaN
+          return teeny_pack(s,exp_bitmask,mantissa ? mantissa : 1);
+      } else {
+	  // Inf
+          return teeny_pack(s,exp_bitmask,0);
+      }
+  }
+
+  // Handle subnormal numbers
+  if(e == 0) {
+      if(mantissa != 0) {
+	  ube += 1; // the "true" exponent is one greater for subnormals
+
+	  // Shift so that the leading 1 is not implied
+	  int leading_zeros = __builtin_clzl(mantissa);
+	  mantissa <<= (leading_zeros+1);
+	  ube -= (leading_zeros+1);
+      } else {
+	  // This is actually a zero
+	  return teeny_pack(s,0,0);
+      }
+  }
+
+  be = ube + bias;
+
+  if(be >= 1) {
+      if(be < ((1UL<<numbits_exp)-1)) {
+	  // This can be represented as a normal teeny
+	  
+	  // Get the bit which will be rounded off
+	  int lost_bit = mantissa >> ((64-(numbits_mant+1)) & 1);
+
+	  // Shift the mantissa into place
+	  mantissa >>= (64-numbits_mant);
+
+	  // Rounding behavior (suspect) -KJH
+	  if(lost_bit || 1 /* Always round away from zero */) {
+	      if(mantissa == mant_bitmask) {
+		  mantissa = 0;
+		  be++;
+		  if(be == exp_bitmask) {
+		      // Rounded up to infinity
+		      MATH_DEBUG("Rounding during teeny_encode caused the generation of an infinite value!\n");
+		  }
+	      } else {
+	        mantissa += 1;
+	      }
+	  }
+
+	  if(be == 0 && mantissa == 0) {
+	      fprintf(stderr, "zero appeared in normal path\n");
+	      while(1) {}
+	  }
+	  return teeny_pack(s,be,mantissa);
+      }
+      else {
+	  // Overflow to infinity
+          return teeny_pack(s,exp_bitmask,0);
+      }
+  } else {
+      // Too small to be normal
+      // Denormalize it (Make the leading one explicit)
+      // 1.XXXXXX -> 0.1XXXXXX
+      mantissa >>= 1;
+      mantissa |= (1UL<<63);
+      // We don't need to add 1 to the exponent, because the "special case"
+      // that subnormals have the same exponent as (exp=1) already does that for us implicitly.
+
+      // Shift the extra exponent bits away (this will implicitly round to zero on underflow
+      mantissa >>= -be;
+
+      be = 0; // Mark it as subnormal
+
+      mantissa >>= (64-numbits_mant);
+
+      if(too_small_away && mantissa == 0) {
+	  mantissa = 1;
+      }
+
+      if(be == 0 && mantissa == 0) {
+	fprintf(stderr, "zero appeared in sub-normal path\n");
+	while(1) {}
+      }
+      return teeny_pack(s,be,mantissa);
+  }
+#else
+
   if (is_double_special_exp(e)) {
     if (m==0) {
       // infinity
@@ -270,7 +378,7 @@ static uint64_t teeny_encode(const double x)
 	// normal input becomes subnorm teeny
 	// be is in range [-numbits_mant,1)
 	// toss on the leading 1
-	m = m | 0x1000000000000UL;
+	m = m | (1UL<<52);
 	// shift it to eliminate bits we don't have in tiny
 	// strictly, this should round here, but as a start
 	// we will simple shift out the bits
@@ -335,6 +443,7 @@ static uint64_t teeny_encode(const double x)
       }
     }
   }
+#endif
 }
 
 // convert teeny into double (will always fit given the constraints,
@@ -348,6 +457,68 @@ static double teeny_decode(const uint64_t x)
   int64_t  be;    // rebiased double exponent
 
   teeny_unpack(x,&s,&e,&m);
+
+#define SIMPLE_DECODE
+#ifdef SIMPLE_DECODE
+
+  ube = e - bias;
+
+  if(is_teeny_special_exp(e)) {
+      if(m) {
+	  // This is a NaN
+	  return double_pack(s,(1UL<<11)-1,m);
+      } else {
+	  // This is an Inf
+	  return double_pack(s,(1UL<<11)-1,0);
+      }
+  }
+
+  int64_t mantissa = m << (64-numbits_mant); // 1.XXXXXX (still need to account for sub-normals)
+  if(e == 0) {
+      if(m == 0) {
+	  // This is exactly zero
+	  return double_pack(s,0,0);
+      } else {
+	  // This is a subnormal number
+	  ube += 1; // "true" exponent of a subnormal (exp=0) same as (exp=1)
+
+	  // Normalize it so there is an implied one
+	  lz = __builtin_clzl(mantissa);
+	  mantissa <<= (lz+1);
+	  ube -= (lz+1);
+      }
+  }
+
+  be = ube + 1023;
+
+  if(be >= ((1UL<<11)-1)) {
+      // Somehow we overflowed?
+      // (This shouldn't be possible when converting from teeny to a double
+      MATH_ERROR("teeny overflow to infinity when converting teeny to double!?\n");
+      // Return infinity but this is deeeeeply suspicious
+      return double_pack(s,(1UL<<11)-1,0);
+  }
+
+  if(be >= 1) {
+      // This can be encoded as a "normal" double
+      return double_pack(s,be,mantissa>>(64-52));
+  }
+  else {
+      // This must be encoded as a sub-normal double
+      // Make the leading one explicit
+      mantissa >>= 1;
+      mantissa |= (1UL<<63);
+      // We don't need to add 1 to the exponent, because the "special case"
+      // that subnormals have the same exponent as (exp=1) already does that for us implicitly.
+
+      // Shift the extra exponent bits away (this will implicitly round to zero on underflow
+      mantissa >>= -be;
+
+      // Create the sub-normal double
+      return double_pack(s,0,mantissa>>(64-52));
+  }
+
+#else
 
   if (is_teeny_special_exp(e)) {
     // infinity or nan, just immediately build thing as a
@@ -392,6 +563,7 @@ static double teeny_decode(const uint64_t x)
       }
     }
   }
+#endif
 }
 
 
