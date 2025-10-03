@@ -290,19 +290,7 @@ void     arch_set_fp_csr(ucontext_t *uc, const arch_fp_csr_t *fpcsr) { uc->uc_mc
 
    
 
-static __attribute__((noinline)) void my_memcpy(void *d, void *s, unsigned int n) 
-{
-  char *dst = d;
-  char *src = s;
-  
-  while (n) {
-    *dst++=*src++;
-    n--;
-  }
-}
-
-//#define MEMCPY(d,s,n) my_memcpy(d,s,n)
-#define MEMCPY(d,s,n) memcpy(d,s,n)
+#define MEMCPY(d,s,n) fpvm_safe_memcpy(d,s,n)
 
 int arch_get_instr_bytes(const ucontext_t *uc, uint8_t *dest, int size) {
   int len = size > 15 ? 15 : size;
