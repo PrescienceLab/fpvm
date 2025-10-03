@@ -692,7 +692,7 @@ FPVM_MATH_DECL(nmadd, double)
   double a = teeny_unbox(*(double*)src1);
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
-  double r = (-a) * b + c; // ROUNDING_MODE
+  double r = -(a * b) + c; // ROUNDING_MODE
   *(double *)dest = teeny_box(r);
   return 0;
 }
@@ -713,7 +713,7 @@ FPVM_MATH_DECL(nmsub, double) {
   double a = teeny_unbox(*(double*)src1);
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
-  double r = (-a) * b - c; // ROUNDING_MODE
+  double r = -(a * b) - c; // ROUNDING_MODE
   *(double *)dest = teeny_box(r);
   return 0;
 }
