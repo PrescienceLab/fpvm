@@ -916,7 +916,7 @@ int restore_xmm(void *xmm_ptr) {
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = teeny_unbox(a);					\
     double src2 = teeny_unbox(b);					\
-    double res = orig_##NAME(a,b);					\
+    double res = orig_##NAME(src1,src2);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
     res = teeny_box(res);						\
