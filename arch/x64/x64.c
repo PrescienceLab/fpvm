@@ -12,19 +12,12 @@
 #include <fpvm/fpvm.h>
 #include <fpvm/arch.h>
 #include <fpvm/fpvm_arch.h>
+#include <fpvm/trapall.h>
 
 // support for kernel module
 #if CONFIG_KERNEL_SHORT_CIRCUITING
 #include <sys/ioctl.h>
 #include <fpvm/fpvm_ioctl.h>
-#endif
-
-#if CONFIG_FPTRAPALL
-extern void fptrapall_set_ts(void);
-extern void fptrapall_clear_ts(void);
-#else
-#define fptrapall_clear_ts()
-#define fptrapall_set_ts()
 #endif
 
 static int mxcsrmask_base = 0x3f;  // which sse exceptions to handle, default all (using base zero)
@@ -196,13 +189,13 @@ void arch_reset_trap(ucontext_t *uc, uint64_t *state) {
 void arch_clear_fp_exceptions(ucontext_t *uc) { uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_FLAG_MASK; }
 
 void arch_mask_fp_traps(ucontext_t *uc) {
-  fptrapall_clear_ts();
   uc->uc_mcontext.fpregs->mxcsr |= MXCSR_MASK_MASK;
+  TRAPALL_OFF();
 }
 
 void arch_unmask_fp_traps(ucontext_t *uc) {
   uc->uc_mcontext.fpregs->mxcsr &= ~MXCSR_MASK_MASK;
-  fptrapall_set_ts();
+  TRAPALL_ON();
 }
 
 

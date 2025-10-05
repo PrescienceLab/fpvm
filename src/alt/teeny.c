@@ -37,6 +37,7 @@
 #include <fpvm/number_system.h>
 #include <fpvm/nan_boxing.h>
 #include <fpvm/gc.h>
+#include <fpvm/trapall.h>
 #include <math.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -51,17 +52,6 @@
 #define RFLAGS_OF 0x800UL
 
 #define RESET "\e[0m"
-
-// support for trap all mode - will eventually
-// get brought into arch layer
-
-#if CONFIG_FPTRAPALL
-extern void fptrapall_set_ts(void);
-extern void fptrapall_clear_ts(void);
-#else
-#define fptrapall_clear_ts()
-#define fptrapall_set_ts()
-#endif
 
 //
 // TODO -> Rounding Modes
@@ -289,7 +279,7 @@ static uint64_t teeny_encode(const double x)
 	  mantissa >>= (64-numbits_mant);
 
 	  // Rounding behavior (suspect) -KJH
-	  if(lost_bit || 1 /* Always round away from zero */) {
+	  if(lost_bit) {
 	      if(mantissa == mant_bitmask) {
 		  mantissa = 0;
 		  be++;
@@ -302,10 +292,6 @@ static uint64_t teeny_encode(const double x)
 	      }
 	  }
 
-	  if(be == 0 && mantissa == 0) {
-	      fprintf(stderr, "zero appeared in normal path\n");
-	      while(1) {}
-	  }
 	  return teeny_pack(s,be,mantissa);
       }
       else {
@@ -332,10 +318,6 @@ static uint64_t teeny_encode(const double x)
 	  mantissa = 1;
       }
 
-      if(be == 0 && mantissa == 0) {
-	fprintf(stderr, "zero appeared in sub-normal path\n");
-	while(1) {}
-      }
       return teeny_pack(s,be,mantissa);
   }
 #else
@@ -887,32 +869,32 @@ int restore_xmm(void *xmm_ptr) {
 
 #define MATH_STUB_ONE(NAME, TYPE, RET)					\
   RET NAME(TYPE a) {							\
-    fptrapall_clear_ts();						\
+    TRAPALL_OFF();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = teeny_unbox(a);					\
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
     res = teeny_box(res);						\
-    fptrapall_set_ts();							\
+    TRAPALL_ON();							\
     return res;								\
   }
 
 #define MATH_STUB_ONE_DEMOTE(NAME, TYPE, RET)				\
   RET NAME(TYPE a) {							\
-    fptrapall_clear_ts();						\
+    TRAPALL_OFF();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = decode_to_double((void*)&a);				\
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    fptrapall_set_ts();							\
+    TRAPALL_ON();							\
     return res;								\
   }
   
 #define MATH_STUB_TWO(NAME, TYPE, RET)					\
   RET NAME(TYPE a, TYPE b) {						\
-    fptrapall_clear_ts();						\
+    TRAPALL_OFF();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
     double src1 = teeny_unbox(a);					\
     double src2 = teeny_unbox(b);					\
@@ -920,7 +902,7 @@ int restore_xmm(void *xmm_ptr) {
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
     res = teeny_box(res);						\
-    fptrapall_set_ts();							\
+    TRAPALL_ON();							\
     return res;								\
   }
 
@@ -952,7 +934,7 @@ MATH_STUB_ONE(atanh, double, double)
 MATH_STUB_TWO(atan2, double, double)
 
 double ldexp(double a, int b) {
-  fptrapall_clear_ts();			      
+  TRAPALL_OFF();			      
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   // hideous
@@ -960,31 +942,31 @@ double ldexp(double a, int b) {
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   res =  teeny_box(res);
-  fptrapall_set_ts();
+  TRAPALL_ON();
   return res;
 }
 
 long int lround(double a) {
-  fptrapall_clear_ts();			       
+  TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   double res = orig_lround(src);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   res = teeny_box(res);
-  fptrapall_set_ts();
+  TRAPALL_ON();
   return res;
 }
 
 double __powidf2(double a, int b) {
-  fptrapall_clear_ts();			       
+  TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   double res = orig___powidf2(src, b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   res = teeny_box(res);
-  fptrapall_set_ts();
+  TRAPALL_ON();
   return res;
 }
 
@@ -1016,13 +998,13 @@ double __powidf2(double a, int b) {
 // }
 
 void sincos(double a, double *sin_dst, double *cos_dst) {
-  fptrapall_clear_ts();			       
+  TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
   double src = teeny_unbox(a);
   orig_sincos(src, sin_dst, cos_dst);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  fptrapall_set_ts();
+  TRAPALL_ON();
 }
 
 // ignored float implementations
@@ -1103,7 +1085,7 @@ void teeny_shell(void)
   double d,t,b;
   uint64_t s,e,m;
   
-  fptrapall_clear_ts();			       
+  TRAPALL_OFF();			       
   while (1) {
     printf("teeny> ");
     if (!fgets(buf,80,stdin)) {
@@ -1156,7 +1138,7 @@ void teeny_shell(void)
       continue;
     }
   }
-  fptrapall_set_ts();
+  TRAPALL_ON();
 }
 
 void fpvm_number_init(UNUSED void *x) {}

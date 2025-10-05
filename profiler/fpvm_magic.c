@@ -243,6 +243,26 @@ __asm__(
     // pt_regs setup
     "movq %rsp, %rdi;"
 
+    "leaq -0x100(%rsp), %rsp;" // Allocate space for the floating point registers
+    "movups %xmm0,  0x00(%rsp);"
+    "movups %xmm1,  0x10(%rsp);"
+    "movups %xmm2,  0x20(%rsp);"
+    "movups %xmm3,  0x30(%rsp);"
+    "movups %xmm4,  0x40(%rsp);"
+    "movups %xmm5,  0x50(%rsp);"
+    "movups %xmm6,  0x60(%rsp);"
+    "movups %xmm7,  0x70(%rsp);"
+    "movups %xmm8,  0x80(%rsp);"
+    "movups %xmm9,  0x90(%rsp);"
+    "movups %xmm10, 0xA0(%rsp);"
+    "movups %xmm11, 0xB0(%rsp);"
+    "movups %xmm12, 0xC0(%rsp);"
+    "movups %xmm13, 0xD0(%rsp);"
+    "movups %xmm14, 0xE0(%rsp);"
+    "movups %xmm15, 0xF0(%rsp);"
+    "movq %rsp, %rsi;" // Pass a pointer to our floating point state on the stack
+    "movq $(16*16), %rdx;" // Pass the byte size of our floating point registers
+
     // Check stack alignment
     "test $0xF, %spl;"
     "jnz fpvm_trap_entry_unaligned;"
@@ -259,6 +279,25 @@ __asm__(
     "addq $0x8, %rsp;"
 
     "fpvm_trap_entry_exit:;"
+
+    "movups 0x00(%rsp), %xmm0;" // Restore floating point registers
+    "movups 0x10(%rsp), %xmm1;" 
+    "movups 0x20(%rsp), %xmm2;"
+    "movups 0x30(%rsp), %xmm3;"
+    "movups 0x40(%rsp), %xmm4;"
+    "movups 0x50(%rsp), %xmm5;"
+    "movups 0x60(%rsp), %xmm6;"
+    "movups 0x70(%rsp), %xmm7;"
+    "movups 0x80(%rsp), %xmm8;"
+    "movups 0x90(%rsp), %xmm9;"
+    "movups 0xA0(%rsp), %xmm10;"
+    "movups 0xB0(%rsp), %xmm11;"
+    "movups 0xC0(%rsp), %xmm12;"
+    "movups 0xD0(%rsp), %xmm13;"
+    "movups 0xE0(%rsp), %xmm14;"
+    "movups 0xF0(%rsp), %xmm15;"
+    "leaq 0x100(%rsp), %rsp;"
+
     "popq %r8;"
     "popq %r9;"
     "popq %r10;"

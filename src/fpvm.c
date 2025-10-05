@@ -80,6 +80,7 @@
 #include <fpvm/fpvm_magic.h>
 #include <fpvm/config.h>
 #include <fpvm/pulse.h>
+#include <fpvm/trapall.h>
 
 #define KICK_SIGNAL SIGUSR2
 
@@ -205,113 +206,6 @@ static struct sigaction oldsa_fpe, oldsa_trap, oldsa_int, oldsa_segv;
 
 static uint64_t decode_cache_size = DEFAULT_DECODE_CACHE_SIZE;
 
-// PAD: eventually this needs to become part of
-// the arch interface
-#define TRAPALL_OFF()
-#define TRAPALL_ON()
-
-#if CONFIG_FPTRAPALL
-
-#define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
-#define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
-#define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
-
-#undef TRAPALL_OFF
-#undef TRAPALL_ON
-#define TRAPALL_OFF() fptrapall_clear_ts()
-#define TRAPALL_ON()  fptrapall_set_ts()
-
-
-
-static void
-fptrapall_register(void)
-{
-	int fd = syscall(SYS_open, FPTRAPALL_REGISTER_PATH, O_WRONLY);
-	if(fd < 0) {
-		perror("open");
-		syscall(SYS_exit, fd);
-	}
-
-	syscall(SYS_lseek, fd, 0, SEEK_SET);
-
-	uint8_t val = '1';
-	long written = syscall(SYS_write, fd, &val, sizeof(val));
-
-        if (written < 0) {
-            perror("write");
-	    syscall(SYS_exit, (int)written);
-        }
-
-	syscall(SYS_close, fd);
-}
-
-static void
-fptrapall_mark_in_signal(void) {
-	int fd = syscall(SYS_open, FPTRAPALL_IN_SIGNAL_PATH, O_WRONLY);
-	if(fd < 0) {
-		perror("open");
-		syscall(SYS_exit, fd);
-	}
-
-	syscall(SYS_lseek, fd, 0, SEEK_SET);
-
-	uint8_t val = '1';
-	long written = syscall(SYS_write, fd, &val, sizeof(val));
-
-        if (written < 0) {
-            perror("write");
-	    syscall(SYS_exit, (int)written);
-        }
-
-	syscall(SYS_close, fd);
-}
-
-void
-fptrapall_set_ts(void)
-{
-	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
-	if(fd < 0) {
-		perror("open");
-		syscall(SYS_exit, fd);
-	}
-
-	syscall(SYS_lseek, fd, 0, SEEK_SET);
-
-	uint8_t val = '1';
-	long written = syscall(SYS_write, fd, &val, sizeof(val));
-
-        if (written < 0) {
-            perror("write");
-	    syscall(SYS_exit, (int)written);
-        }
-
-	syscall(SYS_close, fd);
-}
-
-void
-fptrapall_clear_ts(void)
-{
-	int fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
-	if(fd < 0) {
-		perror("open");
-		syscall(SYS_exit, fd);
-	}
-
-	syscall(SYS_lseek, fd, 0, SEEK_SET);
-
-	uint8_t val = '0';
-	long written = syscall(SYS_write, fd, &val, sizeof(val));
-
-        if (written < 0) {
-            perror("write");
-	    syscall(SYS_exit, (int)written);
-        }
-
-	syscall(SYS_close, fd);
-}
-
-#endif
-
 static FILE *fpvm_log_file = NULL;
 #define FPVM_LOG_FILE (fpvm_log_file ? fpvm_log_file : stderr)
 
@@ -366,19 +260,28 @@ typedef struct execution_context {
   perf_stat_t correctness_stat;
   perf_stat_t foreign_call_stat;
   perf_stat_t altmath_stat;
+  perf_stat_t single_step_inst_stat;
+  perf_stat_t set_ts_stat;
+  perf_stat_t clear_ts_stat;
+  perf_stat_t mark_in_signal_stat;
 
 #define START_PERF(c, x) perf_stat_start(&c->x##_stat)
 #define END_PERF(c, x) perf_stat_end(&c->x##_stat)
 #define PRINT_PERF(c, x) { char _buf[256]; sprintf(_buf,"fpvm info(%8d): perf: ",(c)->tid); perf_stat_print(&(c)->x##_stat, FPVM_LOG_FILE, _buf); }
-#define PRINT_PERFS(c)         \
-  PRINT_PERF(c, gc);           \
-  PRINT_PERF(c, decode_cache); \
-  PRINT_PERF(c, decode);       \
-  PRINT_PERF(c, bind);         \
-  PRINT_PERF(c, emulate);      \
-  PRINT_PERF(c, correctness);  \
-  PRINT_PERF(c, foreign_call); \
-  PRINT_PERF(c, altmath);
+#define PRINT_PERFS(c)             \
+  PRINT_PERF(c, gc);               \
+  PRINT_PERF(c, decode_cache);     \
+  PRINT_PERF(c, decode);           \
+  PRINT_PERF(c, bind);             \
+  PRINT_PERF(c, emulate);          \
+  PRINT_PERF(c, correctness);      \
+  PRINT_PERF(c, foreign_call);     \
+  PRINT_PERF(c, altmath);          \
+  PRINT_PERF(c, single_step_inst); \
+  PRINT_PERF(c, set_ts);           \
+  PRINT_PERF(c, clear_ts);         \
+  PRINT_PERF(c, mark_in_signal);
+
 #else
 #define START_PERF(c, x)
 #define END_PERF(c, x)
@@ -482,6 +385,10 @@ static execution_context_t *alloc_execution_context(int tid) {
       perf_stat_init(&context[i].correctness_stat, "correctness");
       perf_stat_init(&context[i].foreign_call_stat, "foreign call");
       perf_stat_init(&context[i].altmath_stat, "altmath");
+      perf_stat_init(&context[i].single_step_inst_stat, "single_step_inst");
+      perf_stat_init(&context[i].set_ts_stat, "set_ts");
+      perf_stat_init(&context[i].clear_ts_stat, "clear_ts");
+      perf_stat_init(&context[i].mark_in_signal_stat, "mark_in_signal");
 #endif
       return &context[i];
     }
@@ -1052,6 +959,7 @@ static int correctness_trap_handler(ucontext_t *uc)
     DEBUG("Aborting: mc=%p, mc->state=%d\n",mc,mc?mc->state:-1);
     arch_clear_fp_exceptions(uc);
     arch_mask_fp_traps(uc);
+    TRAPALL_OFF();
     arch_set_round_config(uc,orig_round_config);
     if (!mc) {
       // this may end badly
@@ -1075,20 +983,20 @@ static int correctness_trap_handler(ucontext_t *uc)
 #if CONFIG_FPTRAPALL
     // Register this process with the kernel module,
     // and tell it we are inside a signal handler
-    fptrapall_register();
-    fptrapall_mark_in_signal();
+    fptrapall_register(); // This marks us as in a signal
 #endif
     // we have completed startup of the thread
     break;
   case AWAIT_TRAP:
     DEBUG("single stepping trap received\n");
+    // we are completing this single step operation
 #if CONFIG_FPTRAPALL
     // We need to tell the kernel module that we are in a signal
     // (It will only see #NM exceptions)
-    fptrapall_mark_in_signal();
+    if(inited) {
+        fptrapall_mark_in_signal();
+    }
 #endif
-
-    // we are completing this single step operation
     break;
   case AWAIT_FPE:
     // this must be a correctness trap from the patched binary
@@ -1112,8 +1020,14 @@ static int correctness_trap_handler(ucontext_t *uc)
 
   arch_clear_fp_exceptions(uc);            // exceptions cleared
   arch_unmask_fp_traps(uc);                // exceptions unmasked
+  TRAPALL_ON();
+
   set_our_round_config(uc);
   arch_reset_trap(uc,&mc->trap_state);    // traps disabled
+
+  if(mc->state == AWAIT_TRAP) {
+      END_PERF(mc, single_step_inst);
+  }
 
   mc->state = AWAIT_FPE;
 
@@ -1152,18 +1066,16 @@ static void *magic_page=0;
 // This is to handle e9patch's lea instruction
 #define MAGIC_TRAP_INSTRUCTION_SIZE 8
 
-void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
+void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv, void *fpdata, size_t fpsize)
 {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state
   ucontext_t fake_ucontext;
 
-  // capture fp register state in our arch independent form
-  uint8_t fpdata[fpregs_template.regalign_bytes*fpregs_template.numregs];
   fpvm_arch_fpregs_t fpregs;
   fpregs.data = fpdata;
-  arch_get_fpregs_machine(&fpregs);
+  fpregs.regsize_bytes = fpsize;
 
   // we will not modify this
   arch_fp_csr_t fpcsr;
@@ -1196,7 +1108,11 @@ void NO_TOUCH_FLOAT fpvm_magic_trap_entry(void *priv)
   
   // and copy the FP regs back out
   arch_get_fpregs(&fake_ucontext,&fpregsout);
-  arch_set_fpregs_machine(&fpregsout);
+
+  // Copy back onto the stack
+  // (The assembly routine will actually restore
+  //  the registers)
+  memcpy(fpdata, fpregsout.data, fpsize);
   
   return;
 }
@@ -1222,11 +1138,11 @@ static  void hard_fail_show_foreign_func(char *str, void *func)
 
 void NO_TOUCH_FLOAT __fpvm_foreign_entry(void **ret, void *tramp, void *func, void *fpdata, unsigned long fpdata_byte_len)
 {
-    TRAPALL_OFF();
-
     int demotions=0;
 
     execution_context_t *mc = find_my_execution_context();
+
+    TRAPALL_OFF();
 
     SAFE_DEBUG("foreign entry\n");
 
@@ -1434,10 +1350,11 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   if (!mc || mc->state != AWAIT_FPE) {
     arch_clear_fp_exceptions(uc);
     arch_mask_fp_traps(uc);           
+    TRAPALL_OFF();
     arch_set_round_config(uc,orig_round_config);
     if (mc) {
       arch_reset_trap(uc,&mc->trap_state);
-      abort_operation("Caught FP trap while not in AWAIT_TRAP\n");
+      abort_operation("Caught FP trap while not in AWAIT_FPE\n");
     } else {
       arch_reset_trap(uc,0);
       abort_operation("Cannot find execution context during sigfpvm_handler exec");
@@ -1752,6 +1669,8 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   // of a sequence could not be decoded, bound, or emulated
 fail_do_trap:
 
+  START_PERF(mc, single_step_inst);
+
   DEBUG("doing fail do trap for %p\n",rip);
 
   if (fi) {
@@ -1775,6 +1694,7 @@ fail_do_trap:
   // done
   arch_clear_fp_exceptions(uc);
   arch_mask_fp_traps(uc);
+  TRAPALL_OFF();
   set_our_round_config(uc);
   arch_set_trap(uc,&mc->trap_state);
 
@@ -1802,6 +1722,7 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   if (!mc || mc->state != AWAIT_FPE) {
     arch_clear_fp_exceptions(uc);
     arch_mask_fp_traps(uc);
+    TRAPALL_OFF();
     arch_set_round_config(uc, orig_round_config);
     if (mc) {
       arch_reset_trap(uc,&mc->trap_state);
@@ -1922,6 +1843,7 @@ fail_do_trap:
   // done
   arch_clear_fp_exceptions(uc);
   arch_mask_fp_traps(uc);
+  TRAPALL_OFF();
   set_our_round_config(uc);
   arch_set_trap(uc,&mc->trap_state);
 
@@ -1949,8 +1871,8 @@ void fp_trap_handler(ucontext_t *uc)
 // Entry point for FP Trap when the SIGFPE (normal kernel delivery)
 // mechanism is used
 //
-static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
-  TRAPALL_OFF();
+static void sigfpe_handler(int sig, siginfo_t *si, void *priv)
+{
   arch_fp_csr_t oldfpcsr;
   arch_config_machine_fp_csr_for_local(&oldfpcsr);
   ucontext_t *uc = (ucontext_t *)priv;
@@ -1989,8 +1911,9 @@ static void sigfpe_handler(int sig, siginfo_t *si, void *priv) {
 
   arch_set_machine_fp_csr(&oldfpcsr);
 
-  if (find_my_execution_context()->state==AWAIT_FPE) { 
-    TRAPALL_ON();
+  execution_context_t *mc = find_my_execution_context();
+  if (mc->state==AWAIT_TRAP) { 
+    TRAPALL_OFF();
   }
 }
 
@@ -2533,6 +2456,8 @@ static void fpvm_deinit(void) {
 static __attribute__((destructor)) void fpvm_deinit(void) {
 #endif
 
+  execution_context_t *mc = find_my_execution_context();
+
   // it is correct that we will not reenable it in this function
   TRAPALL_OFF();
 
@@ -2742,3 +2667,114 @@ int main(int argc, char *argv[])
   return 0;
 }
 #endif
+
+#if CONFIG_FPTRAPALL
+
+#include <stdint.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <sys/user.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <sys/file.h>
+
+#define FPTRAPALL_REGISTER_PATH "/sys/kernel/fptrapall/register"
+#define FPTRAPALL_TS_PATH "/sys/kernel/fptrapall/ts"
+#define FPTRAPALL_IN_SIGNAL_PATH "/sys/kernel/fptrapall/in_signal"
+
+static int ts_fd = -1;
+static int mark_sig_fd = -1;
+
+static int ts_is_set = -1;
+
+void
+fptrapall_register(execution_context_t *mc)
+{
+	int fd = syscall(SYS_open, FPTRAPALL_REGISTER_PATH, O_WRONLY);
+	if(fd < 0) {
+		perror("open");
+		syscall(SYS_exit, fd);
+	}
+
+	uint8_t val = '1';
+	long written = syscall(SYS_write, fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+
+	syscall(SYS_close, fd);
+
+	ts_fd = syscall(SYS_open, FPTRAPALL_TS_PATH, O_WRONLY);
+	if(ts_fd < 0) {
+		perror("open");
+		syscall(SYS_exit, ts_fd);
+	}
+
+	mark_sig_fd = syscall(SYS_open, FPTRAPALL_IN_SIGNAL_PATH, O_WRONLY);
+	if(mark_sig_fd < 0) {
+		perror("open");
+		syscall(SYS_exit, mark_sig_fd);
+	}
+
+	fptrapall_mark_in_signal();
+	fptrapall_set_ts();
+}
+
+void
+fptrapall_mark_in_signal(void)
+{
+    execution_context_t *mc = find_my_execution_context();
+    START_PERF(mc, mark_in_signal);
+    uint8_t val = '1';
+    long written = syscall(SYS_write, mark_sig_fd, &val, sizeof(val));
+    
+    if (written < 0) {
+        perror("write");
+        syscall(SYS_exit, (int)written);
+    }
+    END_PERF(mc, mark_in_signal);
+}
+
+void
+fptrapall_set_ts(void)
+{
+    execution_context_t *mc = find_my_execution_context();
+    if(ts_is_set != 1) {
+        START_PERF(mc, set_ts);
+	uint8_t val = '1';
+	long written = syscall(SYS_write, ts_fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+	
+	ts_is_set = 1;
+        END_PERF(mc, set_ts);
+    }
+}
+
+void
+fptrapall_clear_ts(void)
+{
+    execution_context_t *mc = find_my_execution_context();
+    if(ts_is_set != 0) {
+        START_PERF(mc, clear_ts);
+	uint8_t val = '0';
+	long written = syscall(SYS_write, ts_fd, &val, sizeof(val));
+
+        if (written < 0) {
+            perror("write");
+	    syscall(SYS_exit, (int)written);
+        }
+	ts_is_set = 0;
+        END_PERF(mc, clear_ts);
+    }
+}
+
+#endif
+
