@@ -171,6 +171,7 @@ choice
 
     config ALT_MATH_TEENY
         bool "Teeny Floats"
+	depends on !MAGIC_CORRECTNESS_TRAP
         help
             These are small floats that can be directly encoded into a nan
 
