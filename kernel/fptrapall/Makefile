@@ -2,7 +2,8 @@
 default:
 	@
 
-KPATH := /lib/modules/`uname -r`/build
+CURDIR:=$(shell pwd)
+KPATH := /lib/modules/$(shell uname -r)/build
 
 obj-m := fptrapall.o
 

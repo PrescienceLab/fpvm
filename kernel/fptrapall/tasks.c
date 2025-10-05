@@ -146,7 +146,7 @@ fptrapall_task_sched_in(struct preempt_notifier *notifier, int cpu)
 {
     struct fptrapall_task_state *state;
 
-    pr_info("fptrapall_task_sched_in\n");
+    //pr_info("fptrapall_task_sched_in\n");
 
     state = container_of(notifier, struct fptrapall_task_state, notif);
 
@@ -160,7 +160,7 @@ fptrapall_task_sched_out(
 {
 //    struct fptrapall_task_state *state;
 
-    pr_info("fptrapall_task_sched_out\n");
+    //pr_info("fptrapall_task_sched_out\n");
 
 //    state = container_of(notifier, struct fptrapall_task_state, notif);
 
@@ -211,7 +211,7 @@ restore_sigcontext_callback(unsigned long ip, unsigned long parent_ip,
     }
 
     if(fptrapall_task_registered()) {
-	pr_info("fptrapall sigreturn pid=%d\n", task_pid_nr(current));
+	//pr_info("fptrapall sigreturn pid=%d\n", task_pid_nr(current));
 	fptrapall_task_clear(FPTRAPALL_TASK_IN_SIGNAL);
     }
 

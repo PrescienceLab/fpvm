@@ -107,7 +107,7 @@ static bool patched_handle_xfd_event(struct pt_regs *regs)
         if (cr0 & X86_CR0_TS) {
             /* Try to fix it up and carry on. */
             write_cr0(cr0 & ~X86_CR0_TS);
-            pr_warn("Kernel mode #NM exception clearing TS bit (address=%p)\n", dna_patch_error_get_trap_addr(regs));
+            //pr_warn("Kernel mode #NM exception clearing TS bit (address=%p)\n", dna_patch_error_get_trap_addr(regs));
 	} else {
             /*
              * Something terrible happened, we have to panic instead of "die"-ing because "die" is un-exported
@@ -120,7 +120,7 @@ static bool patched_handle_xfd_event(struct pt_regs *regs)
 	    pr_warn("User-mode #NM exception occurred during signal handler... (Unexpected)\n");
 	}
         /* Deliver a signal to user-mode (with TS clear now) */
-	pr_info("Delivering CR0.TS=1 SIGFPE (pid=%d)\n", (int)task_pid_nr(current));
+	//pr_info("Delivering CR0.TS=1 SIGFPE (pid=%d)\n", (int)task_pid_nr(current));
 	fptrapall_task_set(FPTRAPALL_TASK_IN_SIGNAL);
         dna_patch_do_error_trap(regs, 0, "device not available", X86_TRAP_NM, SIGFPE,
     	                        FPE_FLTINV, dna_patch_error_get_trap_addr(regs));
