@@ -2728,6 +2728,7 @@ void
 fptrapall_mark_in_signal(void)
 {
     execution_context_t *mc = find_my_execution_context();
+    if(mc == NULL) {return;} // We aren't registered yet
     START_PERF(mc, mark_in_signal);
     uint8_t val = '1';
     long written = syscall(SYS_write, mark_sig_fd, &val, sizeof(val));
@@ -2743,6 +2744,7 @@ void
 fptrapall_set_ts(void)
 {
     execution_context_t *mc = find_my_execution_context();
+    if(mc == NULL) {return;} // We aren't registered yet
     if(ts_is_set != 1) {
         START_PERF(mc, set_ts);
 	uint8_t val = '1';
@@ -2762,6 +2764,7 @@ void
 fptrapall_clear_ts(void)
 {
     execution_context_t *mc = find_my_execution_context();
+    if(mc == NULL) {return;} // We aren't registered yet
     if(ts_is_set != 0) {
         START_PERF(mc, clear_ts);
 	uint8_t val = '0';

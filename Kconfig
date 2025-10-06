@@ -252,6 +252,8 @@ config DEFER_BRINGUP_UNTIL_MAIN
     help
       Intercept main() and use it as the point to bring up 
       FPVM operation for the process.
+
+      NOTE: If any foreign function calls occur before main() this will cause a hard failure.
 endmenu
 
 
