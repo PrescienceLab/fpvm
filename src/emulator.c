@@ -209,7 +209,7 @@ static void extend_write(fpvm_inst_t *fi, void *dest, void *src, int ds, int ss)
 }
 
 
-int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf) {
+int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf, int *inst_was_useful) {
   uint64_t rflagstemp = 0;
   
   if (CONFIG_DEBUG) {
@@ -254,6 +254,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   switch (fi->common->op_type) {
       // unary
     case FPVM_OP_SQRT:
+      *inst_was_useful = 1;
       dest = fi->operand_addrs[0];
       src1 = fi->operand_addrs[1];
 
@@ -277,6 +278,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_DIV:
     case FPVM_OP_MIN:
     case FPVM_OP_MAX:
+      *inst_was_useful = 1;
       // operands are in the intel order...
       if (fi->operand_count == 2) {
         dest = fi->operand_addrs[0];
@@ -309,6 +311,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_NMADD:
     case FPVM_OP_MSUB:
     case FPVM_OP_NMSUB:
+      *inst_was_useful = 1;
       // PAD: we may need to remap the operand order here for instructions
       // that support this (e.g. madd213 vs madd123)
       if (fi->operand_count == 4) {
@@ -339,6 +342,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_F2U:
     case FPVM_OP_F2IT:
     case FPVM_OP_F2UT:
+      *inst_was_useful = 1;
 
       // PAD: F->I conversion is currently my best guess
       // note that there are various directives that need to be handled, like
@@ -380,6 +384,8 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     case FPVM_OP_U2F:
     case FPVM_OP_I2FT:
     case FPVM_OP_U2FT:
+      *inst_was_useful = 1;
+
       DEBUG("Refusing to handle integer to floating point conversion instruction!\n");
       return -1;
       // PAD: I->F conversion is currently my best guess
@@ -409,6 +415,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       break;
 
     case FPVM_OP_F2F:
+      *inst_was_useful = 1;
 
       // PAD: F->F conversion is currently my best guess
       // note that this should be simpler that I<->F
@@ -434,6 +441,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       // 2 operand comparisons
     case FPVM_OP_CMP:
     case FPVM_OP_UCMP:
+      *inst_was_useful = 1;
       if (fi->operand_count == 2) {
         dest = fi->operand_addrs[0];
         src1 = fi->operand_addrs[0];
@@ -467,6 +475,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
     // 2 operand comparisons that encode a specific compare
     // that writes back to the destination (SSE)
     case FPVM_OP_CMPXX:
+      *inst_was_useful = 1;
       if (fi->operand_count == 2) {
         dest = fi->operand_addrs[0];
         src1 = fi->operand_addrs[0];
@@ -497,6 +506,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       break;
 
    case FPVM_OP_MOVE:
+      *inst_was_useful = 0; // Moves are emulated for performance
+			    // (sequence emulation), not because
+			    // we apply an alt math
       dest = fi->operand_addrs[0];
       src1 = fi->operand_addrs[1];
 
@@ -542,6 +554,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
       break;
 
     default:
+      *inst_was_useful = 0;
       DEBUG("Cannot handle unknown op type %s at %p\n", fpvm_op_to_string(fi->common->op_type), fi->addr);
       return -1;
       break;

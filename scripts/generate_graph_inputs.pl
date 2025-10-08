@@ -100,16 +100,18 @@ if ($have_telem) {
     open(G,">$amortcount") or die "cannot open $amortcount\n";
     print G "".join("\t","benchmark", "factors", "fptraps", "promotions", "clobbers", "demotions", "correctnesstraps", "foreigncalls", "correctnessdemotions"),"\n";
     $numinst=$tel_fpvm{instructionsemulated};
+    $numusefulinst=$tel_fpvm{usefulinstructionsemulated};
+    $numextraneousinst=$tel_fpvm{extraneousinstructionsemulated};
     print G join("\t",
 		 $benchmark,
 		 $factors,
-		 div_clamp($tel_fpvm{fptraps},$numinst),
-		 div_clamp($tel_fpvm{promotions},$numinst),
-		 div_clamp($tel_fpvm{clobbers},$numinst),
-		 div_clamp($tel_fpvm{demotions},$numinst),
-		 div_clamp($tel_fpvm{correctnesstraps},$numinst),
-		 div_clamp($tel_fpvm{correctnessforeigncalls},$numinst),
-		 div_clamp($tel_fpvm{correctnessdemotions},$numinst)
+		 div_clamp($tel_fpvm{fptraps},$numusefulinst),
+		 div_clamp($tel_fpvm{promotions},$numusefulinst),
+		 div_clamp($tel_fpvm{clobbers},$numusefulinst),
+		 div_clamp($tel_fpvm{demotions},$numusefulinst),
+		 div_clamp($tel_fpvm{correctnesstraps},$numusefulinst),
+		 div_clamp($tel_fpvm{correctnessforeigncalls},$numusefulinst),
+		 div_clamp($tel_fpvm{correctnessdemotions},$numusefulinst)
 	), "\n";
     close(G);
 }
@@ -135,18 +137,21 @@ if ($have_perf) {
     print G "".join("\t","benchmark", "factors", "hardware", "kernel", "decodecache", "decoder", "binder", "emulator", "garbage", "foreigncall", "correcttrap","total")."\n";
     print G join("\t", $benchmark, $factors)."\t";
     $numfpe=$tel_fpvm{fptraps};
+    $numsinglestep=$tel_fpvm{singlesteptraps};
     $numcor=$tel_fpvm{correctnesstraps};
     $numfor=$tel_fpvm{correctnessforeigncalls};
     $numinst=$tel_fpvm{instructionsemulated};
-    $hw = div_clamp($hw_to_kernel*$numfpe,$numinst);
-    $kern = div_clamp($kernel_to_user*$numfpe,$numinst);
-    $decache = div_clamp($perf_fpvm{decodecache}{sum},$numinst);
-    $decode = div_clamp($perf_fpvm{decoder}{sum},$numinst);
-    $bind = div_clamp($perf_fpvm{bind}{sum},$numinst);
-    $emul = div_clamp($perf_fpvm{emulate}{sum},$numinst);
-    $gc = div_clamp($perf_fpvm{garbagecollector}{sum},$numinst);
-    $fcall = div_clamp($perf_fpvm{foreigncall}{sum}+$call_wrap*$numfor,$numinst);
-    $corr = div_clamp($perf_fpvm{correctness}{sum}+($hw_to_kernel+$kernel_to_user)*$numcor,$numinst);
+    $numusefulinst=$tel_fpvm{usefulinstructionsemulated};
+    $numextraneousinst=$tel_fpvm{extraneousinstructionsemulated};
+    $hw = div_clamp($hw_to_kernel*($numfpe-$numsinglestep),$numusefulinst);
+    $kern = div_clamp($kernel_to_user*($numfpe-$numsinglestep),$numusefulinst);
+    $decache = div_clamp($perf_fpvm{decodecache}{sum},$numusefulinst);
+    $decode = div_clamp($perf_fpvm{decoder}{sum},$numusefulinst);
+    $bind = div_clamp($perf_fpvm{bind}{sum},$numusefulinst);
+    $emul = div_clamp($perf_fpvm{emulate}{sum},$numusefulinst);
+    $gc = div_clamp($perf_fpvm{garbagecollector}{sum},$numusefulinst);
+    $fcall = div_clamp($perf_fpvm{foreigncall}{sum}+$call_wrap*$numfor,$numusefulinst);
+    $corr = div_clamp($perf_fpvm{correctness}{sum}+($hw_to_kernel+$kernel_to_user)*$numcor,$numusefulinst);
     $total = $hw+$kern+$decache+$decode+$bind+$emul+$gc+$fcall+$corr;
     print G join("\t",$hw,$kern,$decache,$decode,$bind,$emul,$gc,$fcall,$corr,$total)."\n";
     close(G);

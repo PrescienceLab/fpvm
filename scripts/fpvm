@@ -40,7 +40,6 @@ HW_TO_KERNEL_TIME=200 # cycles
 KERNEL_TO_USER_TIME=1950 # cycles for SIGFPE, 478 for kernel module
 # call wrap at 40 or 50   (this should be the cost of a double indirect call, I think, which I have not measured yet)
 
-
 # on roquefort
 KERNEL_TO_USER_TIME=5889
 
@@ -345,6 +344,8 @@ def get_telemetry(file: Path):
         p = p.strip()
         p = re.sub(r'\(.*\)', '', p)
         match = re.match(r'^\d+', p)
+        if match is None:
+            continue
         val = int(match.group())
         remainder = p[len(match.group()):].strip().replace(' ', '_')
         t[remainder] = val
@@ -388,6 +389,76 @@ def div_clamp(a, b):
     return a / b
   return 0
 
+
+def analyze_benchmark_dir(name, output, run_name, run_idx):
+
+  print(f"Analyzing benchmark={name}, output_dir={output}, run_name={run_name}, run_idx={run_idx}")
+
+  output = Path(output).absolute()
+  # Make sure the result dir is valid
+  os.makedirs(output, exist_ok=True)
+
+  usages = []
+  amortized = []
+
+  factor = f'{run_name}_{run_idx}'
+  log = output / f'{factor}.fpvm_log'
+
+  try:
+    t = get_telemetry(log)
+    pd.DataFrame([t]).to_csv(output / f'{factor}_telem.csv', index=False)
+
+    perf_metrics = get_performance(log)
+    pd.DataFrame(perf_metrics).to_csv(output / f'{factor}_perf.csv', index=False)
+
+    # Create a nicer version of the perf data for use here:
+    perf = {}
+    for metric in perf_metrics:
+      perf[metric['name']] = metric
+    amor = {}
+
+    numfpe = t.get('fp_traps', 0)
+    numsinglestep = t.get('single_step_traps', 0)
+    numcor = t.get('correctness_traps', 0)
+    numfor = t.get('correctness_foreign_calls', 0)
+    numinst = t.get('instructions_emulated', 0)
+    numusefulinst = t.get('useful_instructions_emulated', 0)
+    numextraneousinst = t.get('extraneous_instructions_emulated', 0)
+
+    amor['name'] = name
+    amor['run'] = run_name
+    amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*(numfpe-numsinglestep),numusefulinst);
+    amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*(numfpe-numsinglestep),numusefulinst);
+    amor['decache'] = div_clamp(perf['decode_cache']['sum'],numusefulinst);
+    amor['decode'] = div_clamp(perf['decoder']['sum'],numusefulinst);
+    amor['bind'] = div_clamp(perf['bind']['sum'],numusefulinst);
+    amor['emul'] = div_clamp(perf['emulate']['sum'],numusefulinst);
+    amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numusefulinst);
+    amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numusefulinst);
+    amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numusefulinst);
+
+    amor['set_ts'] = div_clamp(perf['set_ts']['sum'],numusefulinst);
+    amor['clear_ts'] = div_clamp(perf['clear_ts']['sum'],numusefulinst);
+    amor['mark_in_signal'] = div_clamp(perf['mark_in_signal']['sum'],numusefulinst);
+    amor['single_step_hw'] = div_clamp(HW_TO_KERNEL_TIME*(numsinglestep),numusefulinst);
+    amor['single_step_kern'] = div_clamp(KERNEL_TO_USER_TIME*(numsinglestep),numusefulinst);
+
+    total_names = ['hw','kern','decache','decode','bind','emul','gc','fcall','corr','set_ts','clear_ts','mark_in_signal','single_step_hw','single_step_kern']
+    amor['total'] = sum([(amor[name] if name in amor.keys() else 0.0) for name in total_names]);
+
+    amortized.append(amor)
+
+  except Exception as e:
+    print(e)
+    print("failed to get amortized timing information. Maybe you turned it off?")
+    raise e
+
+  amor_csv_path = output / f'{run_name}_amortized.csv'
+  print(f"Creating {amor_csv_path} out of {amortized}")
+  pd.DataFrame(amortized).to_csv(amor_csv_path, index=False)
+  # Use peter's script to generate the graph inputs
+  os.system(f'cd {output} && generate_graph_inputs.pl {name} {factor} {HW_TO_KERNEL_TIME} {KERNEL_TO_USER_TIME} {CALL_WRAP_TIME} baseline_0.fpvm_log {log}')
+  # ...
 
 def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1, baseline=True, only_baseline=False):
   bin = path_expand(binary)
@@ -457,22 +528,33 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
           amor = {}
 
           numfpe = t.get('fp_traps', 0)
+          numsinglestep = t.get('single_step_traps', 0)
           numcor = t.get('correctness_traps', 0)
           numfor = t.get('correctness_foreign_calls', 0)
           numinst = t.get('instructions_emulated', 0)
+          numusefulinst = t.get('useful_instructions_emulated', 0)
+          numextraneousinst = t.get('extraneous_instructions_emulated', 0)
 
           amor['name'] = name
           amor['run'] = run_name
-          amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*numfpe,numinst);
-          amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*numfpe,numinst);
-          amor['decache'] = div_clamp(perf['decode_cache']['sum'],numinst);
-          amor['decode'] = div_clamp(perf['decoder']['sum'],numinst);
-          amor['bind'] = div_clamp(perf['bind']['sum'],numinst);
-          amor['emul'] = div_clamp(perf['emulate']['sum'],numinst);
-          amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numinst);
-          amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numinst);
-          amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numinst);
-          amor['total'] = amor['hw']+amor['kern']+amor['decache']+amor['decode']+amor['bind']+amor['emul']+amor['gc']+amor['fcall']+amor['corr'];
+          amor['hw'] = div_clamp(HW_TO_KERNEL_TIME*(numfpe-numsinglestep),numusefulinst);
+          amor['kern'] = div_clamp(KERNEL_TO_USER_TIME*(numfpe-numsinglestep),numusefulinst);
+          amor['decache'] = div_clamp(perf['decode_cache']['sum'],numusefulinst);
+          amor['decode'] = div_clamp(perf['decoder']['sum'],numusefulinst);
+          amor['bind'] = div_clamp(perf['bind']['sum'],numusefulinst);
+          amor['emul'] = div_clamp(perf['emulate']['sum'],numusefulinst);
+          amor['gc'] = div_clamp(perf['garbage_collector']['sum'],numusefulinst);
+          amor['fcall'] = div_clamp(perf['foreign_call']['sum']+CALL_WRAP_TIME*numfor,numusefulinst);
+          amor['corr'] = div_clamp(perf['correctness']['sum']+(HW_TO_KERNEL_TIME+KERNEL_TO_USER_TIME)*numcor,numusefulinst);
+
+          amor['set_ts'] = div_clamp(perf['set_ts']['sum'],numusefulinst);
+          amor['clear_ts'] = div_clamp(perf['clear_ts']['sum'],numusefulinst);
+          amor['mark_in_signal'] = div_clamp(perf['mark_in_signal']['sum'],numusefulinst);
+          amor['single_step_hw'] = div_clamp(HW_TO_KERNEL_TIME*(2*numsinglestep),numusefulinst); # We fault once per single step: initial SIGFPE then again for a SIGTRAP
+          amor['single_step_kern'] = div_clamp(KERNEL_TO_USER_TIME*(2*numsinglestep),numusefulinst);
+
+          total_names = ['hw','kern','decache','decode','bind','emul','gc','fcall','corr','set_ts','clear_ts','mark_in_signal','single_step_hw','single_step_kern']
+          amor['total'] = sum([(amor[name] if name in amor.keys() else 0.0) for name in total_names]);
 
           amortized.append(amor)
         except Exception as e:
@@ -486,7 +568,7 @@ def run_benchmark_binary(name, output, binary, argv, fpvm=FPVM_LOCATION, count=1
     if use_fpvm:
       pd.DataFrame(amortized).to_csv(output / f'{run_name}_amortized.csv', index=False)
       # Use peter's script to generate the graph inputs
-      os.system(f'cd {output} && generate_graph_inputs.pl {name} {factor} {HW_TO_KERNEL_TIME} {KERNEL_TO_USER_TIME} {CALL_WRAP_TIME} {factor}.fpvm_log {log}')
+      os.system(f'cd {output} && generate_graph_inputs.pl {name} {factor} {HW_TO_KERNEL_TIME} {KERNEL_TO_USER_TIME} {CALL_WRAP_TIME} baseline_0.fpvm_log {log}')
   # ...
 
 def cmd_benchmark(args):
@@ -498,6 +580,11 @@ def cmd_benchmark(args):
                        count=args.count,
                        baseline=True)
 
+def cmd_analyze_benchmark(args):
+  analyze_benchmark_dir(args.name,
+                        args.output,
+                        'fpvm_magic',
+                        0)
 
 
 # build FPVM for all the different configurations using test/sweep/base_config (if needed)
@@ -535,7 +622,8 @@ def cmd_sweep(args):
     # First things first, this is the baseline configuration we will use for each compilation
     base_config = [
         'CONFIG_ARCH_X64=y',
-        'CONFIG_MAGIC_CORRECTNESS_TRAP=y', # TODO: used to be an under-test
+        'CONFIG_INSTR_SEQ_EMULATION=y',
+        #'CONFIG_MAGIC_CORRECTNESS_TRAP=y', # TODO: used to be an under-test
     ]
 
     telemetry_configs = [
@@ -544,15 +632,15 @@ def cmd_sweep(args):
         #     # "CONFIG_TELEMETRY_PROMOTIONS=y",
         #     # "CONFIG_TELEMETRY_PERIOD=0",
         # ]),
-        # ('telem_perf', [
-        #     "CONFIG_TELEMETRY=y",
+         ('telem_perf', [
+             "CONFIG_TELEMETRY=y",
         #     "CONFIG_TELEMETRY_PROMOTIONS=y",
-        #     "CONFIG_TELEMETRY_PERIOD=0",
-        #     "CONFIG_PERF_STATS=y",
-        #     "CONFIG_PERF_STATS_PERIOD=0",
+             "CONFIG_TELEMETRY_PERIOD=0",
+             "CONFIG_PERF_STATS=y",
+             "CONFIG_PERF_STATS_PERIOD=0",
         #     # "CONFIG_INSTR_TRACES=n",
         #     # "CONFIG_INSTR_TRACES_PERIOD=0"
-        # ]),
+         ]),
         ('instruction_traces', [
             # "CONFIG_TELEMETRY=n",
             # "CONFIG_TELEMETRY_PROMOTIONS=n",
@@ -566,19 +654,20 @@ def cmd_sweep(args):
 
     alt_math_configs = [
         # Run boxed first so we can see results quicker
-        ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
+        # ('boxed', ['CONFIG_ALT_MATH_BOXED_IEEE=y']),
         # Then run vanilla for the information it provides
         # ('vanilla', ['CONFIG_ALT_MATH_VANILLA=y']),
         # ('mpfr', [
         #     'CONFIG_ALT_MATH_MPFR=y',
         #     'CONFIG_MPFR_PRECISION=200'
         # ]),
+        ('teeny', ['CONFIG_ALT_MATH_TEENY=y']),
     ]
 
 
     under_test = [
-        'CONFIG_INSTR_SEQ_EMULATION=y',
-        'CONFIG_TRAP_SHORT_CIRCUITING=y',
+        #'CONFIG_INSTR_SEQ_EMULATION=y',
+        #'CONFIG_TRAP_SHORT_CIRCUITING=y',
     ]
 
 
@@ -697,6 +786,10 @@ if __name__ == '__main__':
   p.add_argument('argv', nargs=argparse.REMAINDER, help='Arguments to the binary')
   p.set_defaults(func=cmd_benchmark)
 
+  p = sub.add_parser('analyze', help='re-run analysis script on benchmark output')
+  p.add_argument('name', help='Name of the benchmark')
+  p.add_argument('output', help='Directory where benchmark outputs were written')
+  p.set_defaults(func=cmd_analyze_benchmark)
 
   # # The patch subcommand
   # p = sub.add_parser('patch', help='patch a binary')

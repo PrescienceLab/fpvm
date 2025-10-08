@@ -10,7 +10,7 @@
 // or would cause an exception that FPVM can handle)
 int fpvm_emulator_should_emulate_inst(fpvm_inst_t *fi);
 // takes a bound instruction and emulates it
-int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf);
+int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions, int *clobbers, perf_stat_t *altmath_perf, int *inst_was_useful);
 // handle a problematic, bound instruction that has been
 // flagged by the static analysis and patcher
 typedef enum {

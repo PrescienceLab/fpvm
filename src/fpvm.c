@@ -221,14 +221,17 @@ typedef struct execution_context {
   arch_fp_csr_t foreign_return_fpcsr; 
   void         *foreign_return_addr;
 
-  uint64_t fp_traps;
+  uint64_t fp_traps; // Number of actual SIGFPE which occur
+  uint64_t useful_emulated_insts; // The number of "useful" emulated instructions
+  uint64_t extraneous_emulated_insts;
+  uint64_t emulated_insts; // Should just be the sum of useful and extraneous
+  uint64_t single_step_traps; // The number of instructions which result in a single step trap
   uint64_t promotions;
   uint64_t demotions;
   uint64_t clobbers;           // overwriting one of our nans
   uint64_t correctness_traps;
   uint64_t correctness_foreign_calls;
   uint64_t correctness_demotions;
-  uint64_t emulated_inst;
 
   fpvm_inst_t **decode_cache;  // chaining hash - array of pointers to instructions
   uint64_t decode_cache_size;
@@ -291,9 +294,70 @@ typedef struct execution_context {
 
 
 #if CONFIG_TELEMETRY_PROMOTIONS
-#define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, %lu promotions, %lu demotions, %lu clobbers, %lu correctness traps, %lu correctness foreign calls, %lu correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->promotions, (c)->demotions, (c)->clobbers, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->correctness_demotions, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) \
+  fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: "\
+	                 "%lu fp traps, "\
+	                 "%lu promotions, "\
+			 "%lu demotions, "\
+			 "%lu clobbers, "\
+			 "%lu correctness traps, "\
+			 "%lu correctness foreign calls, "\
+			 "%lu correctness demotions, "\
+			 "%lu instructions emulated (~%lu per trap), "\
+			 "%lu useful instructions emulated (~%lu per trap), "\
+			 "%lu extraneous instructions emulated (~%lu per trap), "\
+			 "%lu decode cache hits, "\
+			 "%lu unique instructions, "\
+			 "%lu single step traps\n",\
+			 (c)->tid,\
+			 (c)->fp_traps,\
+			 (c)->promotions,\
+			 (c)->demotions,\
+			 (c)->clobbers,\
+			 (c)->correctness_traps,\
+			 (c)->correctness_foreign_calls,\
+			 (c)->correctness_demotions,\
+			 (c)->emulated_insts,\
+			 DIVU((c)->emulated_insts,(c)->fp_traps),\
+			 (c)->useful_emulated_insts, \
+			 DIVU((c)->useful_emulated_insts,(c)->fp_traps), \
+			 (c)->extraneous_emulated_insts, \
+			 DIVU((c)->extraneous_emulated_insts,(c)->fp_traps), \
+			 (c)->decode_cache_hits,\
+			 (c)->decode_cache_unique,\
+			 (c)->single_step_traps\
+			)
 #else
-#define PRINT_TELEMETRY(c) fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: %lu fp traps, -1 promotions, -1 demotions, -1 clobbers, %lu correctness traps, %lu correctness foreign calls, -1 correctness demotions, %lu instructions emulated (~%lu per trap), %lu decode cache hits, %lu unique instructions\n",(c)->tid, (c)->fp_traps, (c)->correctness_traps, (c)->correctness_foreign_calls, (c)->emulated_inst, DIVU((c)->emulated_inst,(c)->fp_traps), (c)->decode_cache_hits, (c)->decode_cache_unique)
+#define PRINT_TELEMETRY(c) \
+  fprintf(FPVM_LOG_FILE, "fpvm info(%8d): telemetry: " \
+	                 "%lu fp traps, " \
+			 "-1 promotions, " \
+			 "-1 demotions, " \
+			 "-1 clobbers, " \
+			 "%lu correctness traps, " \
+			 "%lu correctness foreign calls, " \
+			 "-1 correctness demotions, " \
+			 "%lu instructions emulated (~%lu per trap), " \
+			 "%lu useful instructions emulated (~%lu per trap), " \
+			 "%lu extraneous instructions emulated (~%lu per trap), " \
+			 "%lu decode cache hits, " \
+			 "%lu unique instructions, " \
+			 "%lu single step traps" \
+	                 "\n", \
+			 (c)->tid, \
+			 (c)->fp_traps, \
+			 (c)->correctness_traps, \
+			 (c)->correctness_foreign_calls, \
+			 (c)->emulated_insts, \
+			 DIVU((c)->emulated_insts,(c)->fp_traps), \
+			 (c)->useful_emulated_insts, \
+			 DIVU((c)->useful_emulated_insts,(c)->fp_traps), \
+			 (c)->extraneous_emulated_insts, \
+			 DIVU((c)->extraneous_emulated_insts,(c)->fp_traps), \
+			 (c)->decode_cache_hits, \
+			 (c)->decode_cache_unique, \
+			 (c)->single_step_traps\
+                        )
 #endif
 
 } execution_context_t;
@@ -1020,15 +1084,16 @@ static int correctness_trap_handler(ucontext_t *uc)
 
   arch_clear_fp_exceptions(uc);            // exceptions cleared
   arch_unmask_fp_traps(uc);                // exceptions unmasked
-  TRAPALL_ON();
 
   set_our_round_config(uc);
   arch_reset_trap(uc,&mc->trap_state);    // traps disabled
 
   if(mc->state == AWAIT_TRAP) {
+      // This doesn't account for the sigreturn
       END_PERF(mc, single_step_inst);
   }
 
+  TRAPALL_ON();
   mc->state = AWAIT_FPE;
 
   //DEBUG("correctness handling done for thread %lu context %p state %d rc %d\n",gettid(),mc,mc->state,rc);
@@ -1405,6 +1470,8 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
   for (instindex=0;CONFIG_INSTR_SEQ_EMULATION || instindex<1; instindex++) {
 
+    int inst_was_useful = 0;
+
     DEBUG("Handling instruction %d (rip %p) of sequence\n",instindex,rip);
 
     if (instindex>0 && !ON_SAME_PAGE(rip+14,start_rip)) {
@@ -1558,7 +1625,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     altmath_stat = &mc->altmath_stat;
 #endif
 
-    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, altmath_stat)) {
+    if (fpvm_emulator_emulate_inst(fi, &inst_promotions, &inst_demotions, &inst_clobbers, altmath_stat, &inst_was_useful)) {
       END_PERF(mc, emulate);
       if (instindex == 0) {
         DEBUG("Failed to emulate first instruction (rip %p) of sequence - doing trap: ",rip);
@@ -1625,7 +1692,12 @@ static void fp_trap_handler_emu(ucontext_t *uc)
 
     // stay in state AWAIT_FPE
 
-    mc->emulated_inst++;
+    if(inst_was_useful) {
+	mc->useful_emulated_insts++;
+    } else {
+	mc->extraneous_emulated_insts++;
+    }
+    mc->emulated_insts++;
 
 
   }
@@ -1659,6 +1731,8 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   DEBUG("sequence had %d promotions, %d demotions, and %d clobbers\n", seq_promotions, seq_demotions, seq_clobbers);
 #endif
 
+  mc->fp_traps++;
+
   DEBUG("FPE succesfully done (emulated sequence of %d instructions)\n",instindex);
 
   arch_clear_fp_exceptions(uc); 
@@ -1669,7 +1743,7 @@ static void fp_trap_handler_emu(ucontext_t *uc)
   // of a sequence could not be decoded, bound, or emulated
 fail_do_trap:
 
-  START_PERF(mc, single_step_inst);
+  mc->single_step_traps++;
 
   DEBUG("doing fail do trap for %p\n",rip);
 
@@ -1692,9 +1766,13 @@ fail_do_trap:
 
   // switch to trap mode, so we can re-enable FP traps after this instruction is
   // done
+
+  TRAPALL_OFF();
+
+  START_PERF(mc, single_step_inst);
+
   arch_clear_fp_exceptions(uc);
   arch_mask_fp_traps(uc);
-  TRAPALL_OFF();
   set_our_round_config(uc);
   arch_set_trap(uc,&mc->trap_state);
 
@@ -1734,8 +1812,6 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
     ASSERT(0);
     return;
   }
-
-  mc->fp_traps++;
 
 #if 0 && DEBUG_OUTPUT
 #define DUMP_CUR_INSTR() fpvm_decoder_print_inst(fi, stderr);
@@ -1815,9 +1891,12 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
 
   // stay in state AWAIT_FPE
 
-  mc->emulated_inst++;
+  mc->emulated_insts++;
+  mc->useful_emulated_insts++;
 
   DEBUG("FPE succesfully done (emulated one instruction)\n");
+
+  mc->fp_traps++;
 
   arch_clear_fp_exceptions(uc);        // exceptions cleared
 
@@ -1826,6 +1905,10 @@ static void fp_trap_handler_nvm(ucontext_t *uc)
   // we should only get here if the instruction
   // could not be handled
 fail_do_trap:
+
+  mc->single_step_traps++;
+
+  START_PERF(mc, single_step_inst);
 
   DEBUG("doing fail do trap for %p\n",rip);
 
@@ -1996,13 +2079,16 @@ static int bringup_execution_context(int tid) {
   c->foreign_return_addr=&fpvm_panic;
   c->aborting_in_trap = 0;
   c->fp_traps = 0;
+  c->single_step_traps = 0;
   c->demotions = 0;
   c->promotions = 0;
   c->clobbers = 0;
   c->correctness_traps = 0;
   c->correctness_foreign_calls = 0;
   c->correctness_demotions = 0;
-  c->emulated_inst = 0;
+  c->emulated_insts = 0;
+  c->useful_emulated_insts = 0;
+  c->extraneous_emulated_insts = 0;
   c->decode_cache = malloc(sizeof(fpvm_inst_t *) * decode_cache_size);
   if (!c->decode_cache) {
     ERROR("Cannot allocate code cache for context\n");

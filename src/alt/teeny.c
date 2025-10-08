@@ -473,10 +473,10 @@ static double teeny_decode(const uint64_t x)
 
   be = ube + 1023;
 
-  if(be >= ((1UL<<11)-1)) {
+  if(be >= (int64_t)((1UL<<11)-1)) {
       // Somehow we overflowed?
       // (This shouldn't be possible when converting from teeny to a double
-      MATH_ERROR("teeny overflow to infinity when converting teeny to double!?\n");
+      MATH_ERROR("teeny overflow to infinity when converting teeny to double!? be=%ld, ube=%ld\n", be, ube);
       // Return infinity but this is deeeeeply suspicious
       return double_pack(s,(1UL<<11)-1,0);
   }
