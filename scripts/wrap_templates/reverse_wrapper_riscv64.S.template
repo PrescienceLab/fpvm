@@ -1,0 +1,261 @@
+# RISC-V 64-bit reverse wrapper template
+#
+# Calling convention (RISC-V LP64D ABI):
+#   Integer args: a0-a7 (x10-x17)
+#   FP args: fa0-fa7 (f10-f17)
+#   Return: a0-a1 (int), fa0-fa1 (FP)
+#   Temporaries: t0-t6 (x5-x7, x28-x31)
+#   Saved: s0-s11 (x8-x9, x18-x27) - including fp/s0
+#   Callee-saved FP: fs0-fs11 (f8-f9, f18-f27)
+#   Stack pointer: sp (x2)
+#   Return address: ra (x1)
+#   Stack alignment: 16 bytes
+#
+# The wrapper function does the following:
+#
+# 1. Save return address and frame pointer
+# 2. Save integer argument registers (a0-a7)
+# 3. Save all 32 FP registers (f0-f31)
+# 4. Call __fpvm_foreign_entry to:
+#    - Demote FP argument registers to FPVM precision
+#    - Modify return address to point to trampoline
+# 5. Restore registers (with demoted FP values)
+# 6. Tail-jump to real function
+#
+# The trampoline:
+# 1. Save registers
+# 2. Call __fpvm_foreign_exit to:
+#    - Restore FPVM state
+#    - Fix return address back to original caller
+# 3. Restore registers
+# 4. Return to original caller
+#
+# Note: RISC-V has 32 FP registers (vs x86-64's 16), requiring 256 bytes
+# Reference: https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/master/riscv-cc.adoc
+#
+
+.weak $FUNC$
+.globl $FUNC$$fpvm
+$FUNC$$fpvm:
+  # Save return address and create frame
+  addi sp, sp, -16
+  sd   ra, 8(sp)
+  sd   s0, 0(sp)        # s0 is the frame pointer (fp)
+  addi s0, sp, 16
+
+  # Save integer argument registers (a0-a7)
+  addi sp, sp, -64
+  sd   a0,  0(sp)
+  sd   a1,  8(sp)
+  sd   a2, 16(sp)
+  sd   a3, 24(sp)
+  sd   a4, 32(sp)
+  sd   a5, 40(sp)
+  sd   a6, 48(sp)
+  sd   a7, 56(sp)
+
+  # Save temporary registers we'll use
+  addi sp, sp, -16
+  sd   t0, 0(sp)
+  sd   t1, 8(sp)
+
+  # Save all 32 FP registers (f0-f31)
+  # Each register is 8 bytes (double), total 256 bytes
+  addi sp, sp, -256
+  fsd  f0,    0(sp)
+  fsd  f1,    8(sp)
+  fsd  f2,   16(sp)
+  fsd  f3,   24(sp)
+  fsd  f4,   32(sp)
+  fsd  f5,   40(sp)
+  fsd  f6,   48(sp)
+  fsd  f7,   56(sp)
+  fsd  f8,   64(sp)
+  fsd  f9,   72(sp)
+  fsd  f10,  80(sp)
+  fsd  f11,  88(sp)
+  fsd  f12,  96(sp)
+  fsd  f13, 104(sp)
+  fsd  f14, 112(sp)
+  fsd  f15, 120(sp)
+  fsd  f16, 128(sp)
+  fsd  f17, 136(sp)
+  fsd  f18, 144(sp)
+  fsd  f19, 152(sp)
+  fsd  f20, 160(sp)
+  fsd  f21, 168(sp)
+  fsd  f22, 176(sp)
+  fsd  f23, 184(sp)
+  fsd  f24, 192(sp)
+  fsd  f25, 200(sp)
+  fsd  f26, 208(sp)
+  fsd  f27, 216(sp)
+  fsd  f28, 224(sp)
+  fsd  f29, 232(sp)
+  fsd  f30, 240(sp)
+  fsd  f31, 248(sp)
+
+  # Call __fpvm_foreign_entry(void **ret, void *tramp, void *func,
+  #                           void *fpdata, unsigned long fpdata_byte_len)
+  
+  # a0 = address of return address on stack
+  addi a0, s0, 8
+  
+  # a1 = trampoline address
+.Lpcrel_tramp_$FUNC$:
+  auipc t0, %got_pcrel_hi(.tramp$FUNC$)
+  ld    a1, %pcrel_lo(.Lpcrel_tramp_$FUNC$)(t0)
+  
+  # a2 = function address (for debugging)
+.Lpcrel_func_$FUNC$:
+  auipc t0, %got_pcrel_hi($FUNC$)
+  ld    a2, %pcrel_lo(.Lpcrel_func_$FUNC$)(t0)
+  
+  # a3 = pointer to saved FP registers
+  mv   a3, sp
+  
+  # a4 = size of FP save area (256 bytes)
+  li   a4, 256
+  
+  # Call the entry hook
+  call __fpvm_foreign_entry@plt
+
+  # Restore FP registers (now with demoted values!)
+  fld  f0,    0(sp)
+  fld  f1,    8(sp)
+  fld  f2,   16(sp)
+  fld  f3,   24(sp)
+  fld  f4,   32(sp)
+  fld  f5,   40(sp)
+  fld  f6,   48(sp)
+  fld  f7,   56(sp)
+  fld  f8,   64(sp)
+  fld  f9,   72(sp)
+  fld  f10,  80(sp)
+  fld  f11,  88(sp)
+  fld  f12,  96(sp)
+  fld  f13, 104(sp)
+  fld  f14, 112(sp)
+  fld  f15, 120(sp)
+  fld  f16, 128(sp)
+  fld  f17, 136(sp)
+  fld  f18, 144(sp)
+  fld  f19, 152(sp)
+  fld  f20, 160(sp)
+  fld  f21, 168(sp)
+  fld  f22, 176(sp)
+  fld  f23, 184(sp)
+  fld  f24, 192(sp)
+  fld  f25, 200(sp)
+  fld  f26, 208(sp)
+  fld  f27, 216(sp)
+  fld  f28, 224(sp)
+  fld  f29, 232(sp)
+  fld  f30, 240(sp)
+  fld  f31, 248(sp)
+  addi sp, sp, 256
+
+  # Restore temporary registers
+  ld   t1, 8(sp)
+  ld   t0, 0(sp)
+  addi sp, sp, 16
+
+  # Restore integer argument registers
+  ld   a7, 56(sp)
+  ld   a6, 48(sp)
+  ld   a5, 40(sp)
+  ld   a4, 32(sp)
+  ld   a3, 24(sp)
+  ld   a2, 16(sp)
+  ld   a1,  8(sp)
+  ld   a0,  0(sp)
+  addi sp, sp, 64
+
+  # Restore frame and return address
+  ld   s0, 0(sp)
+  ld   ra, 8(sp)
+  addi sp, sp, 16
+
+  # Tail-jump to the real function
+  # Load function address and jump
+.Lpcrel_tail_$FUNC$:
+  auipc t0, %got_pcrel_hi($FUNC$)
+  ld    t0, %pcrel_lo(.Lpcrel_tail_$FUNC$)(t0)
+  jr    t0
+
+
+# Trampoline - catches return from the foreign function
+.tramp$FUNC$:
+  # Create frame and save return address
+  addi sp, sp, -16
+  sd   ra, 8(sp)
+  sd   s0, 0(sp)
+  addi s0, sp, 16
+
+  # Save integer return values and argument registers
+  addi sp, sp, -64
+  sd   a0,  0(sp)
+  sd   a1,  8(sp)
+  sd   a2, 16(sp)
+  sd   a3, 24(sp)
+  sd   a4, 32(sp)
+  sd   a5, 40(sp)
+  sd   a6, 48(sp)
+  sd   a7, 56(sp)
+
+  # Save FP callee-save registers
+  addi sp, sp, -96
+  fsd   fs0, 0(sp)
+  fsd   fs1, 8(sp)
+  fsd   fs2, 16(sp)
+  fsd   fs3, 24(sp)
+  fsd   fs4, 32(sp)
+  fsd   fs5, 40(sp)
+  fsd   fs6, 48(sp)
+  fsd   fs7, 56(sp)
+  fsd   fs8, 64(sp)
+  fsd   fs8, 72(sp)
+  fsd   fs9, 80(sp)
+  fsd  fs10, 88(sp)
+  fsd  fs11, 96(sp)
+
+  # Call __fpvm_foreign_exit(void **ret)
+  # This will update FP state and fix return address
+  
+  # a0 = address of return address
+  addi a0, s0, 8
+  call __fpvm_foreign_exit@plt
+
+  # Restore FP callee-save registers
+  fld   fs0, 0(sp)
+  fld   fs1, 8(sp)
+  fld   fs2, 16(sp)
+  fld   fs3, 24(sp)
+  fld   fs4, 32(sp)
+  fld   fs5, 40(sp)
+  fld   fs6, 48(sp)
+  fld   fs7, 56(sp)
+  fld   fs8, 64(sp)
+  fld   fs9, 72(sp)
+  fld  fs10, 80(sp)
+  fld  fs11, 88(sp)
+  addi sp, sp, 96
+
+  # Restore integer registers
+  ld   a7, 56(sp)
+  ld   a6, 48(sp)
+  ld   a5, 40(sp)
+  ld   a4, 32(sp)
+  ld   a3, 24(sp)
+  ld   a2, 16(sp)
+  ld   a1,  8(sp)
+  ld   a0,  0(sp)
+  addi sp, sp, 64
+
+  # Restore frame
+  ld   s0, 0(sp)
+  ld   ra, 8(sp)      # This was modified by foreign_exit!
+  addi sp, sp, 16
+
+  # Return to original caller
+  ret
