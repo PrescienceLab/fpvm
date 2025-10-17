@@ -1,0 +1,158 @@
+#
+# x86-64 reverse wrapper template
+# 
+# Calling convention (System V AMD64 ABI):
+#   Integer args: rdi, rsi, rdx, rcx, r8, r9
+#   FP args: xmm0-xmm7
+#   Varargs: rax = number of vector registers used
+#   Return: rax (int), rdx:rax (128-bit int), xmm0-xmm1 (FP)
+#   Scratch: rax, r10, r11
+#   Stack alignment: 16 bytes before call
+#
+# The wrapper function does the following:
+#
+# 1. Save integer argument registers (including rax)
+# 2. Save all FP registers (xmm0-xmm15)
+# 3. Call __fpvm_foreign_entry to:
+#    - Demote FP argument registers to FPVM precision
+#    - Modify return address to point to trampoline
+# 4. Restore registers (with demoted FP values)
+# 5. Tail-call to real function
+#
+# The trampoline:
+# 1. Save registers
+# 2. Call __fpvm_foreign_exit to:
+#    - Restore FPVM state
+#    - Fix return address back to original caller
+# 3. Restore registers
+# 4. Return to original caller
+#
+# Reference: https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf
+#
+
+.weak $FUNC$
+.globl $FUNC$$fpvm
+$FUNC$$fpvm:
+  pushq %rbp            # Create new stack frame
+  mov %rsp, %rbp        # Set base pointer for easy reference
+
+  pushq %rax            # Number of vector registers used in call (varargs)
+  pushq %rdi            # 1st integer arg
+  pushq %rsi            # 2nd integer arg
+  pushq %rdx            # 3rd integer arg
+  pushq %rcx            # 4th integer arg
+  pushq %r8             # 5th integer arg
+  pushq %r9             # 6th integer arg
+  pushq %r11            # Enforce stack alignment
+
+# Note: r11 is a temporary register, not saved by callee
+# rbx, r12, r13, r14, r15 are callee-save (not used here)
+# xmm0 is 1st FP arg and return value
+# xmm1 is 2nd FP arg and return value
+# xmm2-7 are 3rd through 8th FP args
+
+# Allocate space for FP registers and save them
+# 16 registers × 16 bytes each = 256 bytes (0x100)
+
+  leaq -0x100(%rsp), %rsp
+  movups %xmm0,  0x00(%rsp)
+  movups %xmm1,  0x10(%rsp)
+  movups %xmm2,  0x20(%rsp)
+  movups %xmm3,  0x30(%rsp)
+  movups %xmm4,  0x40(%rsp)
+  movups %xmm5,  0x50(%rsp)
+  movups %xmm6,  0x60(%rsp)
+  movups %xmm7,  0x70(%rsp)
+  movups %xmm8,  0x80(%rsp)
+  movups %xmm9,  0x90(%rsp)
+  movups %xmm10, 0xA0(%rsp)
+  movups %xmm11, 0xB0(%rsp)
+  movups %xmm12, 0xC0(%rsp)
+  movups %xmm13, 0xD0(%rsp)
+  movups %xmm14, 0xE0(%rsp)
+  movups %xmm15, 0xF0(%rsp)
+
+# Call __fpvm_foreign_entry(void **ret, void *tramp, void *func, 
+#                           void *fpdata, unsigned long fpdata_byte_len)
+  
+  leaq 8(%rbp), %rdi              # arg1: pointer to return address on stack
+  movq .tramp$FUNC$@GOTPCREL(%rip), %rsi  # arg2: trampoline address
+  movq $FUNC$@GOTPCREL(%rip), %rdx        # arg3: function address (for debugging)
+  movq %rsp, %rcx                 # arg4: pointer to saved FP registers
+  movq $(16*16), %r8              # arg5: 256 bytes (size of FP save area)
+  call *__fpvm_foreign_entry@GOTPCREL(%rip)
+
+# Restore FP registers (now with demoted values!)
+  movups 0x00(%rsp), %xmm0
+  movups 0x10(%rsp), %xmm1
+  movups 0x20(%rsp), %xmm2
+  movups 0x30(%rsp), %xmm3
+  movups 0x40(%rsp), %xmm4
+  movups 0x50(%rsp), %xmm5
+  movups 0x60(%rsp), %xmm6
+  movups 0x70(%rsp), %xmm7
+  movups 0x80(%rsp), %xmm8
+  movups 0x90(%rsp), %xmm9
+  movups 0xA0(%rsp), %xmm10
+  movups 0xB0(%rsp), %xmm11
+  movups 0xC0(%rsp), %xmm12
+  movups 0xD0(%rsp), %xmm13
+  movups 0xE0(%rsp), %xmm14
+  movups 0xF0(%rsp), %xmm15
+  leaq 0x100(%rsp), %rsp
+
+# Restore integer registers
+  popq  %r11
+  popq  %r9
+  popq  %r8
+  popq  %rcx
+  popq  %rdx
+  popq  %rsi
+  popq  %rdi
+  popq  %rax
+
+  # Tear down the frame
+  popq %rbp
+
+  # Tail-call to the real function
+  jmp $FUNC$
+
+	
+# Trampoline - catches return from the foreign function
+.tramp$FUNC$:
+  pushq $0              # Alignment (maintain 16-byte alignment)
+  movq %rsp, %rdi       # Point to the return address slot
+  pushq %rbp            # Create frame
+  mov %rsp, %rbp
+
+  pushq %rax            # Save return value
+  pushq %rdi
+  pushq %rsi
+  pushq %rdx
+  pushq %rcx
+  pushq %r8
+  pushq %r9
+  pushq %r11            # Enforce alignment
+
+  # TODO: Save floating point state if any FPRs are callee-saved
+
+# Call __fpvm_foreign_exit(void **ret)
+# This will:
+#  - Update FP state (e.g., mxcsr)
+#  - Modify return address back to the original caller
+
+  leaq 8(%rbp), %rdi
+  call *__fpvm_foreign_exit@GOTPCREL(%rip)
+
+  popq  %r11
+  popq  %r9
+  popq  %r8
+  popq  %rcx
+  popq  %rdx
+  popq  %rsi
+  popq  %rdi
+  popq  %rax
+
+  # Tear down frame and return to original caller
+  popq %rbp
+  ret

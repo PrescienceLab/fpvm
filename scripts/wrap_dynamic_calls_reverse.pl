@@ -1,15 +1,16 @@
-#!/usr/bin/perl -w                                                                             
+#!/usr/bin/perl -w
 
-$#ARGV==1 or die "usage: wrap_dynamic_calls_reverse.pl funclist exec\n";
+use File::Basename;
+
+$script_dir = dirname(__FILE__);
+
+$#ARGV >= 1 or die "usage: wrap_dynamic_calls_reverse.pl funclist exec [arch]\n";
 
 $lf=shift;
 $stem=shift;
+$arch = shift || $ENV{'FPVM_ARCH'} || 'x64';
 
 $preorig="__fpvm_orig_";
-
-
-$entry = "*__fpvm_foreign_entry\@GOTPCREL(%rip)";
-$exit = "*__fpvm_foreign_exit\@GOTPCREL(%rip)";
 
 open(L,"$lf") or die "cannot open $lf\n";
 while (<L>) {
@@ -59,203 +60,34 @@ print H "\n";
 close(H);
 
     
+# Load the architecture-specific template
+$template_file = "$script_dir/wrap_templates/reverse_wrapper_$arch.S.template";
+if (!-f $template_file) {
+    die "Architecture template not found: $template_file\n" .
+        "Supported architectures should have templates in scripts/wrap_templates/\n";
+}
+
+open(TMPL,"$template_file") or die "cannot open $template_file\n";
+$template = do { local $/; <TMPL> };
+close(TMPL);
 
 open(S,">$stem.S") or die "cannot open $stem.S\n";
 
 print S "# This file is auto-generated and\n";
-print S "# conforms with include/fpvm/additional_wrappers.h\n\n";
+print S "# conforms with include/fpvm/additional_wrappers.h\n";
+print S "# Architecture: $arch\n\n";
 
-#                                                                                             
-#       rdi, rsi, rdx, rcx, r8, r9, xmm0..xmm7 => rax or rdx::rax or xmm0::xmm1
-#          for varargs, rax is INPUT as well, passing number
-#          of vector registers used
-#       scratch: rax, r10, r11  (rax, r11 safest, r10 
-#       mxcsr partially preserved across boundary
-#          control => callee-save
-#          status  => caller-save (not preserved)
-#                                                                                             
-#     
-#
-#
-# https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf
-#
-# The wrapper function does the following steps:
-#
-# 1. save integer argument registers (including rax)
-# 2. allocate space for mxcsr restore
-# 3. stack align for call
-#    call site rsp must be 16 (or 32) aligned
-#    so that at entry to function, we are off by 8 (ret addr)
-# 4. invoke runtime for demotion of machine xmms
-#       RT code must not use SSE
-#       RT returns mxcsr to use on exit
-# 5. stash mxcsr for return
-# 6. restore integer argument registers, including rax
-# 7. invoke original function (must have alignment right)
-# 8. load mxcsr from stash
-# 9. unwind and return
-#
-#
-# Planned stack frame:
-#
-# ret                     (-0)
-# rbp stash        <= rbp (-8)   ** OK
-# mxcsr_stash (8)         (-16)
-# rax                     (-24)
-# rdi                     (-32)
-# rsi                     (-40)
-# rdx                     (-48)
-# rcx                     (-56)
-# r8                      (-64)
-# r9                      (-72)
-# <blank*1>               (-80)  ** OK, caller at -80 (16*5)
-# <blank*10>             (-160)  ** OK, caller at -160 (32*5) [maybe]
-#
-#
-# 
+# Generate wrapper for each function by instantiating the template
 foreach $func (@funcs) {
+    $wrapper_code = $template;
 
-    print S <<ENDS
+    # Replace template variables
+    $wrapper_code =~ s/\$FUNC\$/$func/g;
 
-.weak $func
-.globl $func\$fpvm
-$func\$fpvm:
-  pushq %rbp            # temporary new stack frame
-  mov %rsp, %rbp        # with rbp so we can easily reference
-
-  pushq %rax            # number of vector registers used in call
-  pushq %rdi            # 1st arg
-  pushq %rsi            # 2nd arg
-  pushq %rdx            # 3rd arg
-  pushq %rcx            # 4th arg
-  pushq %r8             # 5th arg
-  pushq %r9             # 6th arg
-  pushq %r11            # Enforce alignment of stack
-
-# r11 is a temporary reg not saved
-# note that rbx, r12,r13,r14,r15 are callee save, but we will not use them
-# r15 is GOT base pointer (optionally)
-# xmm0 is 1st float arg and return
-# xmm1 is 2nd float arg and return	
-# xmm2..7 are 3rd through 8th float args
-
-# invoke foreign_entry(addr_of_ret,addr_of_tramp,addr_of_func)
-# this will
-#  - demote argument registers
-#  - configure mxcsr and other FPVM state appropriately
-#  - stash state as needed
-#  - switch return address to tramp address
-#  - update return addressupdate the return address to the tramp address
-
-# Create a struct arch_fpregs on the stack and stash our floating point state
-
-  leaq -0x100(%rsp), %rsp // Allocate space for the floating point registers
-  movups %xmm0,  0x00(%rsp)
-  movups %xmm1,  0x10(%rsp)
-  movups %xmm2,  0x20(%rsp)
-  movups %xmm3,  0x30(%rsp)
-  movups %xmm4,  0x40(%rsp)
-  movups %xmm5,  0x50(%rsp)
-  movups %xmm6,  0x60(%rsp)
-  movups %xmm7,  0x70(%rsp)
-  movups %xmm8,  0x80(%rsp)
-  movups %xmm9,  0x90(%rsp)
-  movups %xmm10, 0xA0(%rsp)
-  movups %xmm11, 0xB0(%rsp)
-  movups %xmm12, 0xC0(%rsp)
-  movups %xmm13, 0xD0(%rsp)
-  movups %xmm14, 0xE0(%rsp)
-  movups %xmm15, 0xF0(%rsp)
-  movq %rsp, %rcx # Pass a pointer to our floating point registers on the stack
-  movq \$(16*16), %r8 # Pass the byte size of our floating point registers
-                     # Probably a better (static) way to do this.
-
-  leaq 8(%rbp), %rdi
-  movq .tramp$func\@GOTPCREL(%rip), %rsi
-  movq $func\@GOTPCREL(%rip), %rdx # for debugging
-  call $entry
-
-  movups 0x00(%rsp), %xmm0
-  movups 0x10(%rsp), %xmm1
-  movups 0x20(%rsp), %xmm2
-  movups 0x30(%rsp), %xmm3
-  movups 0x40(%rsp), %xmm4
-  movups 0x50(%rsp), %xmm5
-  movups 0x60(%rsp), %xmm6
-  movups 0x70(%rsp), %xmm7
-  movups 0x80(%rsp), %xmm8
-  movups 0x90(%rsp), %xmm9
-  movups 0xA0(%rsp), %xmm10
-  movups 0xB0(%rsp), %xmm11
-  movups 0xC0(%rsp), %xmm12
-  movups 0xD0(%rsp), %xmm13
-  movups 0xE0(%rsp), %xmm14
-  movups 0xF0(%rsp), %xmm15
-  leaq 0x100(%rsp), %rsp
-
-  popq  %r11 # undo alignment
-  popq  %r9
-  popq  %r8
-  popq  %rcx
-  popq  %rdx
-  popq  %rsi
-  popq  %rdi
-  popq  %rax
-
-  # Tear down the frame
-  popq %rbp
-
-  # Simply jump (tail-call) to the 'real' func
-  jmp $func
-
-# for testing
-#  jmp __fpvm_f_debug;
-	
-# the original function  will return here...
-.tramp$func:
-  pushq \$0         # The return address (alignment)
-  movq %rsp, %rdi  # Point to the ret addr slot
-  pushq %rbp       # make a frame
-  mov %rsp, %rbp
-
-  pushq %rax
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  pushq %r8
-  pushq %r9
-  pushq %r11 # Enforce alignment
-
-  // TODO: Save floating point state if we expect any FPRS are callee saved
-
-#
-# invoke foreign_exit(addr_of_ret)
-#  
-# This will update the FP state (e.g., mxcsr)
-# and modify the return address back to the original
-# which was captured earlier
-#
-  leaq 8(%rbp), %rdi
-  call $exit
-
-  popq  %r11 # undo alignment
-  popq  %r9
-  popq  %r8
-  popq  %rcx
-  popq  %rdx
-  popq  %rsi
-  popq  %rdi
-  popq  %rax
-
-# Calgon, take us away (back to the original caller)
-
-  popq %rbp        # tear down frame
-  ret
-	
-	
-ENDS
-;
+    print S $wrapper_code;
+    print S "\n";
 }
 
 close(S);
+
+print STDERR "Generated wrappers for " . scalar(@funcs) . " functions using $arch architecture\n";
