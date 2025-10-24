@@ -688,6 +688,7 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
     default:
       ERROR("cannot copy out fpregs on machine without FP\n");
   }
+  fpregs->caller_save = 0b11110000000000111111110011111111ul;
 }
 
 

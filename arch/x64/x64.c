@@ -385,6 +385,7 @@ void NO_TOUCH_FLOAT arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
 	fxsave(temp);
 	MEMCPY(fpregs->data,temp+160,16*16);
     }
+    fpregs->caller_save = ~0ul;
 }
 
 void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs)

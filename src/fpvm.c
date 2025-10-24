@@ -1265,7 +1265,9 @@ void NO_TOUCH_FLOAT __fpvm_foreign_entry(void **ret, void *tramp, void *func, vo
     regs.fpr_size = fpregs.regsize_bytes;  // note, likely bogus
     */
 
-    demotions = fpvm_emulator_demote_registers(&regs);
+
+    // TODO this needs to only demote caller-save registers, need to pass list? arch? something.
+    demotions = fpvm_emulator_demote_registers(&regs, &fpregs_template);
 
     if (demotions<0) {
 	abort_operation("demotions in foreign call somehow failed\n");

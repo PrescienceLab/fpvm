@@ -801,7 +801,7 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   -mvzeroupper                		[enabled]
  */
 
-int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
+int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr, fpvm_arch_fpregs_t *template)
 {
   int demotions=0;
   SAFE_DEBUG("handling fp register demotions\n");
@@ -812,14 +812,16 @@ int NO_TOUCH_FLOAT fpvm_emulator_demote_registers(fpvm_regs_t *fr)
   for (i = 0, addr = (uint64_t *)fr->fprs;
        i < 16*2;
        i++, addr++) {
-    // invoke the altmath package to convert numbers back to doubles
-    uint64_t old = *addr;
-    restore_double_in_place(addr);
-    //    DEBUG("%d %p from %016lx to %016lx (%s)\n",i,addr,old,*addr,*addr!=old ? "DEMOTED" : "not demoted");
+    if ((template->caller_save << i) & 1) {
+      // invoke the altmath package to convert numbers back to doubles
+      uint64_t old = *addr;
+      restore_double_in_place(addr);
+      //    DEBUG("%d %p from %016lx to %016lx (%s)\n",i,addr,old,*addr,*addr!=old ? "DEMOTED" : "not demoted");
 #if CONFIG_TELEMETRY_PROMOTIONS
-    demotions += *addr!= old;
+      demotions += *addr!= old;
 #endif
-    (void)old;
+      (void)old;
+    }
   }
   SAFE_DEBUG("demotions done\n");
   return demotions;

@@ -33,7 +33,6 @@
 #define IS_FPR(r) (IS_NORMAL_FPR(r) || IS_AVX512_MASK(r) || IS_X87(r) || IS_X87_80(r) || IS_MMX(r))
 
 
-
 // HACK
 FPVM_NUMBER_SYSTEM_INIT();
 

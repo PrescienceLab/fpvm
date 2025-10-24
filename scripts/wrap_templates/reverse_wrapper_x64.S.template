@@ -54,6 +54,8 @@ $FUNC$$fpvm:
 # Allocate space for FP registers and save them
 # 16 registers × 16 bytes each = 256 bytes (0x100)
 
+# TODO are we sure that these are all caller-save?
+
   leaq -0x100(%rsp), %rsp
   movups %xmm0,  0x00(%rsp)
   movups %xmm1,  0x10(%rsp)

@@ -39,6 +39,7 @@ typedef struct {
     uint32_t regsize_bytes;
     uint32_t regalign_bytes;
     uint32_t regsize_entries; // number of doubles per register
+    uint64_t caller_save;
     void    *data; 
 } fpvm_arch_fpregs_t;
 
