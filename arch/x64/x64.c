@@ -381,9 +381,9 @@ void NO_TOUCH_FLOAT arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
     fpregs->regalign_bytes=16;
     fpregs->regsize_entries=2;
     if (fpregs->data) {
-	uint8_t temp[4096] __attribute__((aligned (16)));
-	fxsave(temp);
-	MEMCPY(fpregs->data,temp+160,16*16);
+        uint8_t temp[4096] __attribute__((aligned (16)));
+        fxsave(temp);
+        MEMCPY(fpregs->data,temp+160,16*16);
     }
     fpregs->caller_save = ~0ul;
 }

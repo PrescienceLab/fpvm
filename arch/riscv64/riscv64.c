@@ -666,7 +666,7 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
       fpregs->regalign_bytes=4;
       fpregs->regsize_entries=1;
       if (fpregs->data) {
-	riscv64_fprs_out_f(fpregs->data);
+        riscv64_fprs_out_f(fpregs->data);
       }
       break;
     case HAVE_D_FP:
@@ -674,7 +674,7 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
       fpregs->regalign_bytes=8;
       fpregs->regsize_entries=1;
       if (fpregs->data) {
-	riscv64_fprs_out_d(fpregs->data);
+        riscv64_fprs_out_d(fpregs->data);
       }
       break;
     case HAVE_Q_FP:
@@ -682,12 +682,13 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs)
       fpregs->regalign_bytes=16;
       fpregs->regsize_entries=1;
       if (fpregs->data) {
-	riscv64_fprs_out_q(fpregs->data);
+        riscv64_fprs_out_q(fpregs->data);
       }
       break;
     default:
       ERROR("cannot copy out fpregs on machine without FP\n");
   }
+  
   fpregs->caller_save = 0b11110000000000111111110011111111ul;
 }
 

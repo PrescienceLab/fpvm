@@ -456,6 +456,7 @@ void arch_get_fpregs_machine(fpvm_arch_fpregs_t *fpregs) {
   if (fpregs->data) {
     arm64_fprs_out(fpregs->data);
   }
+  fpregs->caller_save = 0xFFFFFFFFAAAAFFFFul;
 }
 
 void arch_set_fpregs_machine(const fpvm_arch_fpregs_t *fpregs) {
