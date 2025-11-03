@@ -1,0 +1,176 @@
+# ARM64 (AArch64) reverse wrapper template
+#
+# Calling convention (ARM64 AAPCS64):
+#   Integer args: x0-x7 (w0-w7 for 32-bit)
+#   FP args: v0-v7 (d0-d7 for double, s0-s7 for float)
+#   Return: x0-x1 (int), v0-v1 (FP)
+#   Temporaries: x9-x15
+#   Callee-saved: x19-x28
+#   Frame pointer: x29 (fp)
+#   Link register: x30 (lr)
+#   Stack pointer: sp
+#   Stack alignment: 16 bytes
+#
+# The wrapper function does the following:
+#
+# 1. Save link register and frame pointer
+# 2. Save integer argument registers (x0-x7)
+# 3. Save all 32 FP registers (v0-v31, each 128 bits)
+# 4. Call __fpvm_foreign_entry to:
+#    - Demote FP argument registers to FPVM precision
+#    - Modify return address to point to trampoline
+# 5. Restore registers (with demoted FP values)
+# 6. Branch to real function
+#
+# The trampoline:
+# 1. Save registers
+# 2. Call __fpvm_foreign_exit to:
+#    - Restore FPVM state
+#    - Fix return address back to original caller
+# 3. Restore registers
+# 4. Return to original caller
+#
+# Note: ARM64 has 32 FP registers (v0-v31), each 128 bits, requiring 512 bytes
+# Reference: https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst
+#
+
+.weak $FUNC$
+.globl $FUNC$$fpvm
+$FUNC$$fpvm:
+  # Save link register and frame pointer, create frame
+  stp   x29, x30, [sp, #-16]!
+  mov   x29, sp
+
+  # Save integer argument registers (x0-x7)
+  stp   x0, x1, [sp, #-16]!
+  stp   x2, x3, [sp, #-16]!
+  stp   x4, x5, [sp, #-16]!
+  stp   x6, x7, [sp, #-16]!
+
+  # Save temporary registers we'll use (x9, x10)
+  stp   x9, x10, [sp, #-16]!
+
+  # Save all 32 FP registers (v0-v31)
+  # Each register is 128 bits (16 bytes), total 512 bytes
+  sub   sp, sp, #512
+  stp   q0, q1,   [sp, #0x000]
+  stp   q2, q3,   [sp, #0x020]
+  stp   q4, q5,   [sp, #0x040]
+  stp   q6, q7,   [sp, #0x060]
+  stp   q8, q9,   [sp, #0x080]
+  stp   q10, q11, [sp, #0x0a0]
+  stp   q12, q13, [sp, #0x0c0]
+  stp   q14, q15, [sp, #0x0e0]
+  stp   q16, q17, [sp, #0x100]
+  stp   q18, q19, [sp, #0x120]
+  stp   q20, q21, [sp, #0x140]
+  stp   q22, q23, [sp, #0x160]
+  stp   q24, q25, [sp, #0x180]
+  stp   q26, q27, [sp, #0x1a0]
+  stp   q28, q29, [sp, #0x1c0]
+  stp   q30, q31, [sp, #0x1e0]
+
+  # Call __fpvm_foreign_entry(void **ret, void *tramp, void *func,
+  #                           void *fpdata, unsigned long fpdata_byte_len)
+  
+  # x0 = address of link register on stack (return address)
+  add   x0, x29, #8
+  
+  # x1 = trampoline address
+  adrp  x9, .tramp$FUNC$
+  add   x1, x9, :lo12:.tramp$FUNC$
+  
+  # x2 = function address (for debugging)
+  adrp  x9, $FUNC$
+  add   x2, x9, :lo12:$FUNC$
+  
+  # x3 = pointer to saved FP registers
+  mov   x3, sp
+  
+  # x4 = size of FP save area (512 bytes)
+  mov   x4, #512
+  
+  # Call the entry hook
+  bl    __fpvm_foreign_entry
+
+  # Restore FP registers (now with demoted values!)
+  ldp   q0, q1,   [sp, #0x000]
+  ldp   q2, q3,   [sp, #0x020]
+  ldp   q4, q5,   [sp, #0x040]
+  ldp   q6, q7,   [sp, #0x060]
+  ldp   q8, q9,   [sp, #0x080]
+  ldp   q10, q11, [sp, #0x0a0]
+  ldp   q12, q13, [sp, #0x0c0]
+  ldp   q14, q15, [sp, #0x0e0]
+  ldp   q16, q17, [sp, #0x100]
+  ldp   q18, q19, [sp, #0x120]
+  ldp   q20, q21, [sp, #0x140]
+  ldp   q22, q23, [sp, #0x160]
+  ldp   q24, q25, [sp, #0x180]
+  ldp   q26, q27, [sp, #0x1a0]
+  ldp   q28, q29, [sp, #0x1c0]
+  ldp   q30, q31, [sp, #0x1e0]
+  add   sp, sp, #512
+
+  # Restore temporary registers
+  ldp   x9, x10, [sp], #16
+
+  # Restore integer argument registers
+  ldp   x6, x7, [sp], #16
+  ldp   x4, x5, [sp], #16
+  ldp   x2, x3, [sp], #16
+  ldp   x0, x1, [sp], #16
+
+  # Restore frame and link register
+  ldp   x29, x30, [sp], #16
+
+  # Branch to the real function
+  adrp  x9, $FUNC$
+  add   x9, x9, :lo12:$FUNC$
+  br    x9
+
+
+# Trampoline - catches return from the foreign function
+.tramp$FUNC$:
+  # Save link register and frame pointer, create frame
+  stp   x29, x30, [sp, #-16]!
+  mov   x29, sp
+
+  # Save integer return/argument registers (x0-x7)
+  stp   x0, x1, [sp, #-16]!
+  stp   x2, x3, [sp, #-16]!
+  stp   x4, x5, [sp, #-16]!
+  stp   x6, x7, [sp, #-16]!
+
+  # Save FP callee-saved registers (v8-v15, per AAPCS64)
+  sub   sp, sp, #128
+  stp   q8, q9,   [sp, #0x00]
+  stp   q10, q11, [sp, #0x20]
+  stp   q12, q13, [sp, #0x40]
+  stp   q14, q15, [sp, #0x60]
+
+  # Call __fpvm_foreign_exit(void **ret)
+  # This will update FP state and fix return address
+  
+  # x0 = address of link register
+  add   x0, x29, #8
+  bl    __fpvm_foreign_exit
+
+  # Restore FP callee-saved registers
+  ldp   q8, q9,   [sp, #0x00]
+  ldp   q10, q11, [sp, #0x20]
+  ldp   q12, q13, [sp, #0x40]
+  ldp   q14, q15, [sp, #0x60]
+  add   sp, sp, #128
+
+  # Restore integer registers
+  ldp   x6, x7, [sp], #16
+  ldp   x4, x5, [sp], #16
+  ldp   x2, x3, [sp], #16
+  ldp   x0, x1, [sp], #16
+
+  # Restore frame and link register (modified by foreign_exit!)
+  ldp   x29, x30, [sp], #16
+
+  # Return to original caller
+  ret
