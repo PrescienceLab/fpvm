@@ -888,18 +888,18 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   }
 
 
-  if (fi->common->op_type == FPVM_OP_CALL) {
-    DEBUG("handling problematic call instruction (SHOULD NOT HAPPEN WITH WRAPPERS)\n");
-    int rc = fpvm_emulator_demote_registers(fr);
-    if (rc<0) {
-      ERROR("demotions failed\n");
-      return FPVM_CORRECT_ERROR;
-    }
-#if CONFIG_TELEMETRY_PROMOTIONS
-    *demotions += rc;
-#endif
-    return FPVM_CORRECT_CONTINUE;
-  }
+//   if (fi->common->op_type == FPVM_OP_CALL) {
+//     DEBUG("handling problematic call instruction (SHOULD NOT HAPPEN WITH WRAPPERS)\n");
+//     int rc = fpvm_emulator_demote_registers(fr);
+//     if (rc<0) {
+//       ERROR("demotions failed\n");
+//       return FPVM_CORRECT_ERROR;
+//     }
+// #if CONFIG_TELEMETRY_PROMOTIONS
+//     *demotions += rc;
+// #endif
+//     return FPVM_CORRECT_CONTINUE;
+//   }
 
   if (fi->common->op_type == FPVM_OP_WARN) {
     ERROR("instruction decodes to warning type, treating as move - this is LIKELY BOGUS\n");
