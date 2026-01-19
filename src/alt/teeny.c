@@ -223,8 +223,6 @@ static int is_teeny_inf(const uint64_t x)
 // Will return teeny number in bits 0..numbits_all-1
 // with sign, then exp, then mantissa
 //
-// BAD: all rounding is trunctation
-//
 static uint64_t teeny_encode(const double x)
 {
   uint64_t s,e,m; // double sign, exp, mantissa
@@ -236,8 +234,6 @@ static uint64_t teeny_encode(const double x)
 
   MATH_DEBUG("encode double %016lx (%lf)\n",*(uint64_t*)&x,x);
 
-#define SIMPLE_ENCODE
-#ifdef SIMPLE_ENCODE
   uint64_t mantissa = m << (64-52); // 64 bit mantissa (leading one is implied 1.XXXXXX)
   ube = e - 1023; // 64-bit unbiased exponent
 
@@ -320,112 +316,6 @@ static uint64_t teeny_encode(const double x)
 
       return teeny_pack(s,be,mantissa);
   }
-#else
-
-  if (is_double_special_exp(e)) {
-    if (m==0) {
-      // infinity
-      MATH_DEBUG("infinity\n");
-      return teeny_pack(s,exp_bitmask,m);
-    } else {
-      // nan - we will preserve the top bit and make sure it is nonzero
-      // top bit is signalling/nonsignaling and is preserved
-      // remaining bits are a  1 if any remaining bits in double
-      // mantissa are 1.   This means that signalling nan
-      // (top bit zero, some other bit nonzero), and quiet nan
-      // (top bit one, perhaps all other bits zero) will both
-      // turn into a nan, not an infinity
-      MATH_DEBUG("nan mantissa=%016lx\n",m);
-      m = (m >> (52 - numbits_mant)) | (!!__builtin_popcountl(m & 0x7ffffffffffffUL));
-      MATH_DEBUG("teeny nan mantissa=%016lx\n",m);
-      return teeny_pack(s,exp_bitmask,m);
-    }
-  } else {
-    if (e!=0) {
-      // input is a normal
-      ube = e - 1023;   // unbias double exp
-      be = ube + bias;  // rebias exp for teeny
-      MATH_DEBUG("norm exp=%016lx (%lu unbiased %ld rebiased %ld)\n", e,e,ube,be);
-      if (be < -numbits_mant) {
-	// normal input cannot fit into teeny, underflow
-	// mantissa is by definition nonzero
-	if (too_small_away) {
-	  MATH_DEBUG("underflow to tiniest subnorm (round away from zero behavior)\n");
-	  return teeny_pack(s,0,1);
-	} else {
-	  MATH_DEBUG("underflow to zero\n");
-	  return teeny_pack(s,0,0);
-	}
-      } else if ((int64_t)be < 1) {
-	// normal input becomes subnorm teeny
-	// be is in range [-numbits_mant,1)
-	// toss on the leading 1
-	m = m | (1UL<<52);
-	// shift it to eliminate bits we don't have in tiny
-	// strictly, this should round here, but as a start
-	// we will simple shift out the bits
-	m >>= -be + 1;
-	// now shift it to place (52 -> numbits_mant)
-	m >>= 52 - numbits_mant;
-	MATH_DEBUG("teeny subnorm mantisa=%016lx\n",m);
-	return teeny_pack(s,0,m);
-      } else if (be < exp_bitmask) {
-	// normal input becomes normal teeny
-	// just shift out the irrelevant bits
-	m >>= 52 - numbits_mant;
-	MATH_DEBUG("teeny norm mantissa=%016lx\n",m);
-	return teeny_pack(s,be,m);
-      } else {
-	// normal input is too large and overflows teeny
-	MATH_DEBUG("overflow to infinity\n");
-	return teeny_pack(s,exp_bitmask,0);
-      }
-    } else {
-      // input is a subnormal
-      ube = 1 - 1023;
-      be = ube + bias;
-      MATH_DEBUG("subnorm exp=%016lx (%lu unbiased %ld rebiased %ld)\n", e,e,ube,be);
-      if (be < -numbits_mant) {
-	// subnormal input cannot fit into teeny, underflow
-	if (m!=0) {
-	  if (too_small_away) {
-	    MATH_DEBUG("underflow to tiniest subnorm (round away from zero behavior)\n");
-	    return teeny_pack(s,0,1);
-	  } else {	    
-	    MATH_DEBUG("underflow to zero\n");
-	    return teeny_pack(s,0,0);
-	  }
-	} else {
-	  MATH_DEBUG("zero makes zero\n");
-	  return teeny_pack(s,0,0);
-	}	  
-      } else if (be < 1) {
-	// subnormal input becomes subnorm teeny
-	// be is in range [-numbits_mant,1)
-	// use mantissa directly, since implicit leading bit is zero
-	//
-	// shift it to eliminate bits we don't have in tiny
-	// strictly, this should round here, but as a start
-	// we will simple shift out the bits
-	m >>= -be + 1;
-	// now shift it to place (52 -> numbits_mant)
-	m >>= 52 - numbits_mant;
-	MATH_DEBUG("teeny subnorm mantisa=%016lx\n",m);
-	return teeny_pack(s,0,m);
-      } else if (be < exp_bitmask) {
-	// normal input becomes normal teeny
-	// just shift out the irrelevant bits
-	m >>= 52 - numbits_mant;
-	MATH_DEBUG("teeny norm mantissa=%016lx\n",m);
-	return teeny_pack(s,be,m);
-      } else {
-	// normal input is too large and overflows teeny
-	MATH_DEBUG("overflow to infinity\n");
-	return teeny_pack(s,exp_bitmask,0);
-      }
-    }
-  }
-#endif
 }
 
 // convert teeny into double (will always fit given the constraints,
@@ -439,9 +329,6 @@ static double teeny_decode(const uint64_t x)
   int64_t  be;    // rebiased double exponent
 
   teeny_unpack(x,&s,&e,&m);
-
-#define SIMPLE_DECODE
-#ifdef SIMPLE_DECODE
 
   ube = e - bias;
 
@@ -499,53 +386,6 @@ static double teeny_decode(const uint64_t x)
       // Create the sub-normal double
       return double_pack(s,0,mantissa>>(64-52));
   }
-
-#else
-
-  if (is_teeny_special_exp(e)) {
-    // infinity or nan, just immediately build thing as a
-    // double, reusing sign and the mantissa bits we have available
-    return double_pack(s,0x7ffUL,m << (52 - numbits_mant));
-  } else {
-    if (e!=0) {
-      // normal
-      ube = e - bias; // unbias teeny exp
-      // given the constraint on the number of teeny exp bits,
-      // this must fit into a double normal
-      be = ube + 1023;  // rebias exp for double
-      return double_pack(s,be,m << (52 - numbits_mant));
-    } else { // e==0
-      if (m==0) {
-	// zero
-	return double_pack(s,0,0);
-      } else {
-	// subnormal, nonzero - mantissa has some 1
-	ube = 1 - bias;   // teeny subnormal exponent
-	be = ube + 1023;  // rebias exp for double
-	lz = __builtin_clzl(m) - (64 - numbits_mant);
-	// can we make it a normal in double?
-	// if we subtract the shift (lz+1), the biased
-	// exponent must be >=1
-	if ((be - (lz + 1)) < 1) {
-	  // nope, make subnormal, easy
-	  return double_pack(s,0,m << (52 - numbits_mant));
-	} else {
-	  // yes, make normal, note that mantissa
-	  // shifts left lz+1 slots, and then the
-	  // leading one is dropped (becomes implied)
-	  // clear current leading 1
-	  m &= ~(0x1ULL << (numbits_mant - lz - 1));
-	  // shift remaining bits over to after the
-	  // binary point in the teeny mantissa
-	  m <<= (lz + 1);
-	  // shrink the bias due to the shift
-	  be -= (lz + 1);
-	  return double_pack(s,be,m << (52 - numbits_mant));
-	}	  
-      }
-    }
-  }
-#endif
 }
 
 
