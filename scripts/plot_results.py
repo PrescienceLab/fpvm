@@ -35,7 +35,7 @@ def plot_trace_length_dist(output_path):
     # df = pd.DataFrame(parsed_data, columns=['benchmark', 'length', 'count'])
     # sns.scatterplot(df, x='length', y='count', hue='benchmark')
     # plt.savefig(f'{output_path}/trace_length_dist.pdf', format='pdf')
-    #
+    # 
     # return
 
 
