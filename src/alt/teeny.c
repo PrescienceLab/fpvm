@@ -81,6 +81,12 @@
 
 #define UNUSED __attribute__((unused))
 
+struct unpacked_teeny {
+    uint64_t sign; // 0 -> positive 1 -> negative
+    uint64_t exp; // biased exponent (stored in low order bits)
+    uint64_t mantissa; // 64-bit mantissa (low order bits may be rounded)
+};
+
 static int numbits_exp=CONFIG_TEENY_EXP_BITS;
 static int numbits_mant=CONFIG_TEENY_MANT_BITS;
 static int numbits_all=(1+(CONFIG_TEENY_EXP_BITS+CONFIG_TEENY_MANT_BITS));
@@ -146,10 +152,14 @@ static int is_double_denorm_exp(const uint64_t exp)
 
 
 
-static uint64_t teeny_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
+static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 {
   uint64_t x;
-  
+
+  uint64_t sign = unpacked.sign;
+  uint64_t exp = unpacked.exp;
+  uint64_t mantissa = unpacked.mantissa;
+
   sign &= 0x1;
   exp &= exp_bitmask;
   mantissa &= mant_bitmask;
@@ -176,11 +186,11 @@ static uint64_t teeny_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
 
 }
 
-static void teeny_unpack(const uint64_t x, uint64_t *sign, uint64_t *exp, uint64_t *mantissa)
+static void teeny_unpack(const uint64_t x, struct unpacked_teeny *unpacked)
 {
-  *sign = (x>>(numbits_exp + numbits_mant)) & 0x1;
-  *exp = (x>>numbits_mant) & exp_bitmask;
-  *mantissa = x & mant_bitmask;
+  unpacked->sign = (x>>(numbits_exp + numbits_mant)) & 0x1;
+  unpacked->exp = (x>>numbits_mant) & exp_bitmask;
+  unpacked->mantissa = x & mant_bitmask;
   //  MATH_DEBUG("teeny %016lx unpacks to sign=%lu, exp=%016lx (%lu, unbiased %ld, %s), mant=%016lx\n",
   //	     x,*sign,*exp,*exp,((int64_t)*exp)-bias,
   //	     *exp==0 ? "subnorm" : *exp==exp_bitmask ? *mantissa ? "nan" : "inf" : "norm", *mantissa);
@@ -201,20 +211,16 @@ static int is_teeny_denorm_exp(const uint64_t exp)
 
 static int is_teeny_nan(const uint64_t x)
 {
-  uint64_t s,e,m;
-  
-  teeny_unpack(x,&s,&e,&m);
-  
-  return is_teeny_special_exp(e) && m!=0;
+  struct unpacked_teeny unpacked;
+  teeny_unpack(x,&unpacked); 
+  return is_teeny_special_exp(unpacked.exp) && unpacked.mantissa!=0;
 }
 
 static int is_teeny_inf(const uint64_t x)
 {
-  uint64_t s,e,m;
-  
-  teeny_unpack(x,&s,&e,&m);
-  
-  return is_teeny_special_exp(e) && m==0;
+  struct unpacked_teeny unpacked;
+  teeny_unpack(x,&unpacked); 
+  return is_teeny_special_exp(unpacked.exp) && unpacked.mantissa==0;
 }
 
 #define UNIMPL() do { MATH_ERROR("unimplemented code path%s!!\n",""); exit(-1); } while (0)
@@ -238,13 +244,17 @@ static uint64_t teeny_encode(const double x)
   ube = e - 1023; // 64-bit unbiased exponent
 
   if(is_double_special_exp(e)) {
+      struct unpacked_teeny unpacked;
+      unpacked.sign = s;
+      unpacked.exp = exp_bitmask;
       if(m) {
 	  // NaN
-          return teeny_pack(s,exp_bitmask,mantissa ? mantissa : 1);
+	  unpacked.mantissa = mantissa ? mantissa : 1;
       } else {
 	  // Inf
-          return teeny_pack(s,exp_bitmask,0);
+	  unpacked.mantissa = 0;
       }
+      return teeny_pack(unpacked);
   }
 
   // Handle subnormal numbers
@@ -258,7 +268,12 @@ static uint64_t teeny_encode(const double x)
 	  ube -= (leading_zeros+1);
       } else {
 	  // This is actually a zero
-	  return teeny_pack(s,0,0);
+	  const struct unpacked_teeny zero = {
+	      .sign = s,
+	      .exp = 0,
+	      .mantissa = 0,
+	  };
+	  return teeny_pack(zero);
       }
   }
 
@@ -287,12 +302,21 @@ static uint64_t teeny_encode(const double x)
 	        mantissa += 1;
 	      }
 	  }
-
-	  return teeny_pack(s,be,mantissa);
+	  struct unpacked_teeny unpacked = {
+	      .sign = s,
+	      .exp = be,
+	      .mantissa = mantissa,
+	  };
+	  return teeny_pack(unpacked);
       }
       else {
 	  // Overflow to infinity
-          return teeny_pack(s,exp_bitmask,0);
+	  struct unpacked_teeny inf = {
+	      .sign = s,
+	      .exp = exp_bitmask,
+	      .mantissa = 0,
+	  };
+          return teeny_pack(inf);
       }
   } else {
       // Too small to be normal
@@ -314,7 +338,12 @@ static uint64_t teeny_encode(const double x)
 	  mantissa = 1;
       }
 
-      return teeny_pack(s,be,mantissa);
+      struct unpacked_teeny subnormal = {
+	  .sign = s,
+	  .exp = be,
+	  .mantissa = mantissa,
+      };
+      return teeny_pack(subnormal);
   }
 }
 
@@ -328,7 +357,11 @@ static double teeny_decode(const uint64_t x)
   int64_t  ube;   // unbiased teeny exponent
   int64_t  be;    // rebiased double exponent
 
-  teeny_unpack(x,&s,&e,&m);
+  struct unpacked_teeny unpacked;
+  teeny_unpack(x,&unpacked);
+  s = unpacked.sign;
+  e = unpacked.exp;
+  m = unpacked.mantissa;
 
   ube = e - bias;
 
@@ -414,7 +447,11 @@ static void print_teeny(const uint64_t x)
   char *ib;
   char be[64], me[64];
   
-  teeny_unpack(x,&s,&e,&m);
+  struct unpacked_teeny unpacked;
+  teeny_unpack(x,&unpacked);
+  s = unpacked.sign;
+  e = unpacked.exp;
+  m = unpacked.mantissa;
 
   c = e==0 ? "subnorm" : e==exp_bitmask ? m ? "nan" : "inf" : "norm";
   ib = e==0 ? "0" : e==exp_bitmask ? "?" : "1";
@@ -636,7 +673,11 @@ void altmath_print_double(double *p, char *dest, int n)
     // this is one of ours
     // reset bit 50+ before decoding
     tval &= 0x3ffffffffffffUL;
-    teeny_unpack(tval,&s,&e,&m);
+    struct unpacked_teeny unpacked;
+    teeny_unpack(tval,&unpacked);
+    s = unpacked.sign;
+    e = unpacked.exp;
+    m = unpacked.mantissa;
     double result = teeny_decode(tval);
     int resultsign = result<0;
     if (sign != resultsign) {
