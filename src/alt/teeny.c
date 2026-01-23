@@ -289,7 +289,7 @@ static int is_teeny_inf(const uint64_t x)
 // Will return teeny number in bits 0..numbits_all-1
 // with sign, then exp, then mantissa
 //
-static uint64_t teeny_encode(const double x, int type_index)
+static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t round_mode)
 {
   uint64_t s,e,m; // double sign, exp, mantissa
   uint64_t lz;    // leading zero count for teeny subnormal mantissa
@@ -534,9 +534,9 @@ static void print_teeny(const uint64_t x)
 
 
 // if the value being boxed is negative, state that in the NaN.
-static double teeny_box(double val, int type_index)
+static double teeny_box(double val, int type_index, fpvm_round_mode_t round_mode)
 {
-  uint64_t tval = teeny_encode(val, type_index);
+  uint64_t tval = teeny_encode(val, type_index, round_mode);
   // set bit 50 to make sure it's not a "null pointer"
   tval |= (0x1UL << 50);
   uint64_t sign = val<0;
@@ -591,7 +591,7 @@ static uint64_t decode_to_double_bits(void *ptr)
     double a = teeny_unbox(*(double*)src1);				\
     double b = teeny_unbox(*(double*)src2);				\
     dst = teeny_##OP(a,b,ROUNDING_MODE);				\
-    *(double *)dest = teeny_box(dst, TEENY_DEFAULT_TYPE);					\
+    *(double *)dest = teeny_box(dst, TEENY_DEFAULT_TYPE, special->round_mode);					\
     return 0;								\
   }
 
@@ -609,7 +609,7 @@ FPVM_MATH_DECL(madd, double)
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
   double r = a * b + c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE);
+  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
   return 0;
 }
 
@@ -620,7 +620,7 @@ FPVM_MATH_DECL(nmadd, double)
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
   double r = -(a * b) + c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE);
+  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
   return 0;
 }
 
@@ -631,7 +631,7 @@ FPVM_MATH_DECL(msub, double)
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
   double r = a * b - c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE);
+  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
   return 0;
 }
 
@@ -641,7 +641,7 @@ FPVM_MATH_DECL(nmsub, double) {
   double b = teeny_unbox(*(double*)src2);
   double c = teeny_unbox(*(double*)src3);
   double r = -(a * b) - c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE);
+  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
   return 0;
 }
 
@@ -674,7 +674,7 @@ int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
                 void *src3, void *src4) {
   double a = teeny_unbox(*(double*)src1);
   double r = sqrt(a);
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE);
+  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
   return 0;
 }
 
@@ -724,7 +724,8 @@ void altmath_demote_double_in_place(double *p)
 
 void altmath_promote_double_in_place(double *p)
 {
-  *p = teeny_box(*p, TEENY_DEFAULT_TYPE);
+  // TODO Can't get rounding mode here?
+  *p = teeny_box(*p, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
 }
 
 void altmath_print_double(double *p, char *dest, int n)
@@ -825,7 +826,7 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, TEENY_DEFAULT_TYPE);						\
+    res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -851,7 +852,7 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1,src2);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, TEENY_DEFAULT_TYPE);						\
+    res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -891,7 +892,8 @@ double ldexp(double a, int b) {
   double res = src * orig_pow(2.0,(double)b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  res =  teeny_box(res, TEENY_DEFAULT_TYPE);
+  // TODO Can't get rounding mode here?
+  res =  teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -903,7 +905,8 @@ long int lround(double a) {
   double res = orig_lround(src);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  res = teeny_box(res, TEENY_DEFAULT_TYPE);
+  // TODO Can't get rounding mode here?
+  res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -915,7 +918,8 @@ double __powidf2(double a, int b) {
   double res = orig___powidf2(src, b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
-  res = teeny_box(res, TEENY_DEFAULT_TYPE);
+  // TODO Can't get rounding mode here?
+  res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -1053,10 +1057,12 @@ void teeny_shell(void)
       }
       // convert to teeny, then convert back
       print_double(d);
-      ti = teeny_encode(d, TEENY_DEFAULT_TYPE);
+      // TODO: Rounding properly
+      ti = teeny_encode(d, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
       t = *(double*)&ti;
       print_teeny(ti);
-      b = teeny_box(d, TEENY_DEFAULT_TYPE);
+      // TODO: Rounding properly
+      b = teeny_box(d, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
       bi = *(uint64_t*)&b;
       printf("boxed teeny encoding: %016lx %lf\n", b, bi);
       d = teeny_unbox(b);
