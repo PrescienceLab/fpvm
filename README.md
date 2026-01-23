@@ -22,6 +22,16 @@ We've tested on Ubuntu 22.04 systems with the following packages:
 sudo apt install build-essential libcapstone-dev libmpfr-dev libhdf5-dev python3 python3-pip git
 ```
 
+For FIR, ensure GNU Lightning 2.2.3 is installed:
+```bash
+curl https://ftp.gnu.org/gnu/lightning/lightning-2.2.3.tar.gz -o lightning-2.2.3.tar.gz
+tar xf lightning-2.2.3.tar.gz
+cd lightning-2.2.3.tar.gz
+./configure
+make
+sudo make install
+```
+
 Then, make sure you have the required python packages installed:
 ```bash
 pip3 install --user -r requirements.txt
