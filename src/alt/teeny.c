@@ -81,10 +81,13 @@
 
 #define UNUSED __attribute__((unused))
 
+static int numbits_type = CONFIG_TEENY_TYPE_BITS;
+
 static struct teeny_type
 {
     int numbits_exp;
     int numbits_mant;
+    int too_small_away;
 
     // Computed types
     int bias;
@@ -97,6 +100,8 @@ teeny_types[] = {
     {
     .numbits_exp = CONFIG_TEENY_EXP_BITS,
     .numbits_mant = CONFIG_TEENY_MANT_BITS,
+    .too_small_away = CONFIG_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO,
+
     .bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1),
     .exp_bitmask = ~(-1ULL << CONFIG_TEENY_EXP_BITS),
     .mant_bitmask = ~(-1ULL << CONFIG_TEENY_MANT_BITS),
@@ -120,7 +125,7 @@ static inline int
 validate_teeny_type(
 	struct teeny_type *type)
 { 
-  int numbits_all = 1 + type->numbits_mant + type->numbits_exp;
+  int numbits_all = numbits_type + 1 + type->numbits_mant + type->numbits_exp;
 
   // Compute derived fields
   type->bias = ((1<<(type->numbits_exp-1))-1);
@@ -140,8 +145,6 @@ validate_teeny_type(
 
   return 0;
 }
-
-static int too_small_away=CONFIG_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO;
 
 static double double_pack(uint64_t sign, uint64_t exp, uint64_t mantissa)
 {
@@ -192,8 +195,6 @@ static int is_double_denorm_exp(const uint64_t exp)
   return exp == 0;
 }
 
-
-
 static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 {
   uint64_t x;
@@ -203,10 +204,12 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
   uint64_t sign = unpacked.sign;
   uint64_t exp = unpacked.exp;
   uint64_t mantissa = unpacked.mantissa;
+  uint64_t type_index = unpacked.type;
 
   sign &= 0x1;
   exp &= type->exp_bitmask;
   mantissa &= type->mant_bitmask;
+  type_index &= bitmask(numbits_type);
 
   if(exp == type->exp_bitmask) {
       //if(mantissa == 0) {
@@ -221,10 +224,20 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
   //if(exp == 0 && mantissa == 0) {
   //    //fprintf(stderr, "teeny_pack: Creating a zero value\n");
   //}
-  
-  x =  (sign << (type->numbits_exp + type->numbits_mant)) | (exp << type->numbits_mant) | mantissa;
+ 
+  // Building Up the NaN payload
+  x = sign;
 
-  MATH_DEBUG("packing sign=%lu exp=%016lx mantissa=%016lx into %016lx\n",sign,exp,mantissa, x);
+  x <<= type->numbits_exp;
+  x |= exp;
+
+  x <<= type->numbits_mant;
+  x |= mantissa;
+
+  x <<= numbits_type;
+  x |= type_index;
+
+  MATH_DEBUG("packing sign=%lu exp=%016lx mantissa=%016lx type=%016lx into %016lx\n",sign,exp,mantissa, type_index, x);
 
   return x;
 
@@ -232,11 +245,11 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 
 static void teeny_unpack(const uint64_t x, struct unpacked_teeny *unpacked)
 {
-  unpacked->type = TEENY_DEFAULT_TYPE;
+  unpacked->type = x & bitmask(numbits_type);
   struct teeny_type *type = &teeny_types[unpacked->type];
 
-  unpacked->sign = (x>>(type->numbits_exp + type->numbits_mant)) & 0x1;
-  unpacked->exp = (x>>type->numbits_mant) & type->exp_bitmask;
+  unpacked->sign = (x>>(type->numbits_exp + type->numbits_mant + numbits_type)) & 0x1;
+  unpacked->exp = (x>>(type->numbits_mant + numbits_type)) & type->exp_bitmask;
   unpacked->mantissa = x & type->mant_bitmask;
   
   //  MATH_DEBUG("teeny %016lx unpacks to sign=%lu, exp=%016lx (%lu, unbiased %ld, %s), mant=%016lx\n",
@@ -268,8 +281,7 @@ static int is_teeny_inf(const uint64_t x)
 {
   struct unpacked_teeny unpacked;
   teeny_unpack(x,&unpacked); 
-  return is_teeny_special_exp(unpacked) && unpacked.mantissa==0;
-}
+  return is_teeny_special_exp(unpacked) && unpacked.mantissa==0; }
 
 #define UNIMPL() do { MATH_ERROR("unimplemented code path%s!!\n",""); exit(-1); } while (0)
 
@@ -388,7 +400,7 @@ static uint64_t teeny_encode(const double x, int type_index)
 
       mantissa >>= (64-type->numbits_mant);
 
-      if(too_small_away && mantissa == 0) {
+      if(type->too_small_away && mantissa == 0) {
 	  mantissa = 1;
       }
 
@@ -1086,6 +1098,10 @@ void fpvm_number_deinit(UNUSED void *y) {}
 void fpvm_number_system_init()
 {
   struct teeny_type *default_type = &teeny_types[TEENY_DEFAULT_TYPE];
+
+  if (getenv("FPVM_TEENY_TYPE_BITS")) {
+    numbits_type=atoi(getenv("FPVM_TEENY_TYPE_BITS"));
+  }
   if (getenv("FPVM_TEENY_EXP_BITS")) {
     default_type->numbits_exp=atoi(getenv("FPVM_TEENY_EXP_BITS"));
   }
@@ -1093,7 +1109,7 @@ void fpvm_number_system_init()
     default_type->numbits_mant=atoi(getenv("FPVM_TEENY_MANT_BITS"));
   }
   if (getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")) {
-    too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
+    default_type->too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
   }
 
   if(validate_teeny_type(default_type)) {

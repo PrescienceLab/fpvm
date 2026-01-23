@@ -175,6 +175,15 @@ choice
         help
             These are small floats that can be directly encoded into a nan
 
+config TEENY_TYPE_BITS
+    int "Teeny type size (bits)"
+                default 0
+		depends on ALT_MATH_TEENY
+    help
+       How many bits to dedicate to encoding
+       the "type" of a value when teeny
+       is running with multiple precisions.
+
 config TEENY_EXP_BITS
     int "Teeny exponent size (bits)"
 		default 8 
