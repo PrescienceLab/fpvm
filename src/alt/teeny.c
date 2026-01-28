@@ -96,7 +96,9 @@ static struct teeny_type
 }
 teeny_types[] = {
 
-#define TEENY_DEFAULT_TYPE 0
+#define TEENY_DOUBLE_TYPE (-1)
+
+#define TEENY_DEFAULT_TYPE (0)
     {
     .numbits_exp = CONFIG_TEENY_EXP_BITS,
     .numbits_mant = CONFIG_TEENY_MANT_BITS,
@@ -300,7 +302,7 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
 
   MATH_DEBUG("encode double %016lx (%lf)\n",*(uint64_t*)&x,x);
 
-  struct teeny_type *type = &teeny_types[type_index]; // "default" type
+  struct teeny_type *type = &teeny_types[type_index];
 
   uint64_t mantissa = m << (64-52); // 64 bit mantissa (leading one is implied 1.XXXXXX)
   ube = e - 1023; // 64-bit unbiased exponent
@@ -405,6 +407,7 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
       }
 
       struct unpacked_teeny subnormal = {
+	  .type = type_index,
 	  .sign = s,
 	  .exp = be,
 	  .mantissa = mantissa,
