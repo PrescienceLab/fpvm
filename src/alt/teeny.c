@@ -83,7 +83,7 @@
 
 static int numbits_type = CONFIG_TEENY_TYPE_BITS;
 
-static struct teeny_type
+struct teeny_type
 {
     int numbits_exp;
     int numbits_mant;
@@ -254,9 +254,10 @@ static void teeny_unpack(const uint64_t x, struct unpacked_teeny *unpacked)
   unpacked->exp = (x>>(type->numbits_mant + numbits_type)) & type->exp_bitmask;
   unpacked->mantissa = x & type->mant_bitmask;
   
-  //  MATH_DEBUG("teeny %016lx unpacks to sign=%lu, exp=%016lx (%lu, unbiased %ld, %s), mant=%016lx\n",
-  //	     x,*sign,*exp,*exp,((int64_t)*exp)-bias,
-  //	     *exp==0 ? "subnorm" : *exp==exp_bitmask ? *mantissa ? "nan" : "inf" : "norm", *mantissa);
+//    MATH_DEBUG("teeny %016lx unpacks to sign=%lu, exp=%016lx (%lu, unbiased %ld, %s), mant=%016lx, type=%d\n",
+//  	     x,unpacked->sign,unpacked->exp,unpacked->exp,((int64_t)unpacked->exp)-type->bias,
+//  	     unpacked->exp==0 ? "subnorm" : unpacked->exp==type->exp_bitmask ? unpacked->mantissa ? "nan" : "inf" : "norm", unpacked->mantissa,
+//	     (int)unpacked->type);
 	    
 }
 
@@ -418,7 +419,7 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
 
 // convert teeny into double (will always fit given the constraints,
 // namely that numbits_exp<=11 and numbits_exp<=46-numbits_exp-1
-static double teeny_decode(const uint64_t x)
+static double teeny_decode(const struct unpacked_teeny unpacked)
 {
   uint64_t s,e,m; // teeny sign, exp, mantissa
   uint64_t r=0;   // output result bitpattern
@@ -426,8 +427,6 @@ static double teeny_decode(const uint64_t x)
   int64_t  ube;   // unbiased teeny exponent
   int64_t  be;    // rebiased double exponent
 
-  struct unpacked_teeny unpacked;
-  teeny_unpack(x,&unpacked);
   struct teeny_type *type = &teeny_types[unpacked.type];
   s = unpacked.sign;
   e = unpacked.exp;
@@ -539,6 +538,10 @@ static void print_teeny(const uint64_t x)
 // if the value being boxed is negative, state that in the NaN.
 static double teeny_box(double val, int type_index, fpvm_round_mode_t round_mode)
 {
+  if(type_index == TEENY_DOUBLE_TYPE) {
+      // This is a double, do not round it
+      return val;
+  }
   uint64_t tval = teeny_encode(val, type_index, round_mode);
   // set bit 50 to make sure it's not a "null pointer"
   tval |= (0x1UL << 50);
@@ -548,21 +551,33 @@ static double teeny_box(double val, int type_index, fpvm_round_mode_t round_mode
   return result;
 }
 
-static double teeny_unbox(double val) {
+static double teeny_unbox(double val, int *type) {
   int sign;
   uint64_t tval;
 
   if (fpvm_gc_unbox_raw(val,&sign,(void**)&tval)) {
     // reset bit 50+ before decoding
     tval &= 0x3ffffffffffffUL;
-    double result = teeny_decode(tval);
+    struct unpacked_teeny unpacked;
+    teeny_unpack(tval, &unpacked);
+//    printf("unpacked: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
+//	    (unsigned long)unpacked.sign,
+//	    (unsigned long)unpacked.exp,
+//	    (unsigned long)unpacked.mantissa,
+//	    (unsigned long)unpacked.type);
+    double result = teeny_decode(unpacked);
     int resultsign = result<0;
-    if (sign != resultsign) {
-      return -result;
-    } else {
-      return result;
+    if(type != NULL) {
+	*type = unpacked.type;
     }
+    if (sign != resultsign) {
+      result = -result;
+    }
+    return result;
   } else {
+    if(type != NULL) {
+	*type = TEENY_DOUBLE_TYPE;
+    }
     return val;
   }
 }
@@ -572,13 +587,26 @@ static double teeny_unbox(double val) {
 static double decode_to_double(void *ptr)
 {
   double value = *(double *)ptr;
-  return teeny_unbox(value);
+  value = teeny_unbox(value, NULL);
+  return value;
 }
 
 static uint64_t decode_to_double_bits(void *ptr)
 {
   double v = decode_to_double(ptr);
   return *(uint64_t*)&v;
+}
+
+int
+teeny_unary_op_type(int type)
+{
+    return TEENY_DEFAULT_TYPE;
+}
+
+int
+teeny_binary_op_type(int lhs, int rhs)
+{
+    return TEENY_DEFAULT_TYPE;
 }
 
 #define teeny_add(x,y,r) ((x)+(y))
@@ -591,10 +619,13 @@ static uint64_t decode_to_double_bits(void *ptr)
 #define TEENY_BINARY_OP(OP, TYPE)					\
   FPVM_MATH_DECL(OP, TYPE) {						\
     double dst;								\
-    double a = teeny_unbox(*(double*)src1);				\
-    double b = teeny_unbox(*(double*)src2);				\
+    int type_a, type_b; 						\
+    double a = teeny_unbox(*(double*)src1, &type_a);			\
+    double b = teeny_unbox(*(double*)src2, &type_b);			\
     dst = teeny_##OP(a,b,ROUNDING_MODE);				\
-    *(double *)dest = teeny_box(dst, TEENY_DEFAULT_TYPE, special->round_mode);					\
+    *(double *)dest = teeny_box(dst, 					\
+	                        teeny_binary_op_type(type_a,type_b), 	\
+				special->round_mode);			\
     return 0;								\
   }
 
@@ -608,43 +639,55 @@ TEENY_BINARY_OP(min, double);
 // fused multiply and add
 FPVM_MATH_DECL(madd, double)
 {
-  double a = teeny_unbox(*(double*)src1);
-  double b = teeny_unbox(*(double*)src2);
-  double c = teeny_unbox(*(double*)src3);
-  double r = a * b + c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
+  int a_type,b_type,c_type;
+  double a = teeny_unbox(*(double*)src1, &a_type);
+  double b = teeny_unbox(*(double*)src2, &b_type);
+  double c = teeny_unbox(*(double*)src3, &c_type);
+  double r = (a * b) + c; // TODO ROUNDING_MODE
+  int prod_type = teeny_binary_op_type(a_type,b_type);
+  int sum_type = teeny_binary_op_type(prod_type,c_type);
+  *(double *)dest = teeny_box(r, sum_type, special->round_mode);
   return 0;
 }
 
 // fused negate multiply and add
 FPVM_MATH_DECL(nmadd, double)
 {
-  double a = teeny_unbox(*(double*)src1);
-  double b = teeny_unbox(*(double*)src2);
-  double c = teeny_unbox(*(double*)src3);
-  double r = -(a * b) + c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
+  int a_type,b_type,c_type;
+  double a = teeny_unbox(*(double*)src1, &a_type);
+  double b = teeny_unbox(*(double*)src2, &b_type);
+  double c = teeny_unbox(*(double*)src3, &c_type);
+  double r = -(a * b) + c; // TODO ROUNDING_MODE
+  int prod_type = teeny_binary_op_type(a_type,b_type);
+  int diff_type = teeny_binary_op_type(prod_type,c_type); 
+  *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
 
 // fused multiply and sub
 FPVM_MATH_DECL(msub, double)
 {
-  double a = teeny_unbox(*(double*)src1);
-  double b = teeny_unbox(*(double*)src2);
-  double c = teeny_unbox(*(double*)src3);
-  double r = a * b - c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
+  int a_type,b_type,c_type;
+  double a = teeny_unbox(*(double*)src1, &a_type);
+  double b = teeny_unbox(*(double*)src2, &b_type);
+  double c = teeny_unbox(*(double*)src3, &c_type);
+  double r = (a * b) - c; // TODO ROUNDING_MODE
+  int prod_type = teeny_binary_op_type(a_type,b_type);
+  int diff_type = teeny_binary_op_type(prod_type,c_type); 
+  *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
 
 // fused negate multiply and sub
 FPVM_MATH_DECL(nmsub, double) {
-  double a = teeny_unbox(*(double*)src1);
-  double b = teeny_unbox(*(double*)src2);
-  double c = teeny_unbox(*(double*)src3);
-  double r = -(a * b) - c; // ROUNDING_MODE
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
+  int a_type,b_type,c_type;
+  double a = teeny_unbox(*(double*)src1, &a_type);
+  double b = teeny_unbox(*(double*)src2, &b_type);
+  double c = teeny_unbox(*(double*)src3, &c_type);
+  double r = -(a * b) - c; // TODO ROUNDING_MODE
+  int prod_type = teeny_binary_op_type(a_type,b_type);
+  int diff_type = teeny_binary_op_type(prod_type,c_type);
+  *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
 
@@ -675,9 +718,11 @@ FPVM_MATH_DECL(u2f, double) {
 
 int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
                 void *src3, void *src4) {
-  double a = teeny_unbox(*(double*)src1);
+  int a_type;
+  double a = teeny_unbox(*(double*)src1, &a_type);
   double r = sqrt(a);
-  *(double *)dest = teeny_box(r, TEENY_DEFAULT_TYPE, special->round_mode);
+  int sqrt_type = teeny_unary_op_type(a_type);
+  *(double *)dest = teeny_box(r, sqrt_type, special->round_mode);
   return 0;
 }
 
@@ -722,7 +767,7 @@ void NO_TOUCH_FLOAT restore_double_in_place(uint64_t *p) {
 
 void altmath_demote_double_in_place(double *p)
 {
-  *p = teeny_unbox(*p);
+  *p = teeny_unbox(*p, NULL);
 }
 
 void altmath_promote_double_in_place(double *p)
@@ -751,7 +796,7 @@ void altmath_print_double(double *p, char *dest, int n)
     s = unpacked.sign;
     e = unpacked.exp;
     m = unpacked.mantissa;
-    double result = teeny_decode(tval);
+    double result = teeny_decode(unpacked);
     int resultsign = result<0;
     if (sign != resultsign) {
       result = -result;
@@ -825,11 +870,12 @@ int restore_xmm(void *xmm_ptr) {
   RET NAME(TYPE a) {							\
     TRAPALL_OFF();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
-    double src1 = teeny_unbox(a);					\
+    int type1; \
+    double src1 = teeny_unbox(a, &type1);					\
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
+    res = teeny_box(res, teeny_unary_op_type(type1), FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -850,12 +896,13 @@ int restore_xmm(void *xmm_ptr) {
   RET NAME(TYPE a, TYPE b) {						\
     TRAPALL_OFF();						\
     ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);			\
-    double src1 = teeny_unbox(a);					\
-    double src2 = teeny_unbox(b);					\
+    int type1,type2; \
+    double src1 = teeny_unbox(a, &type1);					\
+    double src2 = teeny_unbox(b, &type2);					\
     double res = orig_##NAME(src1,src2);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
+    res = teeny_box(res, teeny_binary_op_type(type1,type2), FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -890,13 +937,14 @@ MATH_STUB_TWO(atan2, double, double)
 double ldexp(double a, int b) {
   TRAPALL_OFF();			      
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
-  double src = teeny_unbox(a);
+  int type;
+  double src = teeny_unbox(a, &type);
   // hideous
   double res = src * orig_pow(2.0,(double)b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res =  teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
+  res =  teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -904,12 +952,13 @@ double ldexp(double a, int b) {
 long int lround(double a) {
   TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
-  double src = teeny_unbox(a);
+  int type;
+  double src = teeny_unbox(a, &type);
   double res = orig_lround(src);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -917,12 +966,13 @@ long int lround(double a) {
 double __powidf2(double a, int b) {
   TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
-  double src = teeny_unbox(a);
+  int type;
+  double src = teeny_unbox(a, &type);
   double res = orig___powidf2(src, b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -957,10 +1007,12 @@ double __powidf2(double a, int b) {
 void sincos(double a, double *sin_dst, double *cos_dst) {
   TRAPALL_OFF();			       
   ORIG_IF_CAN(fedisableexcept, FE_ALL_EXCEPT);
-  double src = teeny_unbox(a);
+  int type;
+  double src = teeny_unbox(a, &type);
   orig_sincos(src, sin_dst, cos_dst);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  // TODO IMPORTANT: We don't pack/round the results -KJH
   TRAPALL_ON();
 }
 
@@ -1068,14 +1120,16 @@ void teeny_shell(void)
       b = teeny_box(d, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
       bi = *(uint64_t*)&b;
       printf("boxed teeny encoding: %016lx %lf\n", b, bi);
-      d = teeny_unbox(b);
+      d = teeny_unbox(b, NULL);
       di = *(uint64_t*)&d;
       print_double(d);
       continue;
     } else if (sscanf(buf,"t 0x%lx",&ti)==1) {
       // from teeny (in hex only)
       print_teeny(ti);
-      d = teeny_decode(ti);
+      struct unpacked_teeny unpacked;
+      teeny_unpack(ti, &unpacked);
+      d = teeny_decode(unpacked);
       di = *(uint64_t*)&d;
       print_double(d);
       continue;
@@ -1083,7 +1137,7 @@ void teeny_shell(void)
       // from boxed teeny
       t = *(double*)&ti;
       printf("boxed teeny %016lx %lf\n",ti,t);
-      d = teeny_unbox(t);
+      d = teeny_unbox(t, NULL);
       di = *(uint64_t*)&d;
       print_double(d);
       continue;
