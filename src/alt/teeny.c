@@ -208,11 +208,11 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 {
   uint64_t x;
 
-  printf("packing: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
-    (unsigned long)unpacked.sign,
-    (unsigned long)unpacked.exp,
-    (unsigned long)unpacked.mantissa,
-    (unsigned long)unpacked.type);
+  //printf("packing: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
+  //  (unsigned long)unpacked.sign,
+  //  (unsigned long)unpacked.exp,
+  //  (unsigned long)unpacked.mantissa,
+  //  (unsigned long)unpacked.type);
 
   if(unpacked.type >= num_teeny_types) {
       MATH_ERROR("Trying to pack teeny of undefined type %d! (packing as default type instead)\n",
@@ -558,34 +558,46 @@ static double teeny_box(double val, int type_index, fpvm_round_mode_t round_mode
 }
 
 static double teeny_unbox(double val, int *type) {
-  int sign;
+  int fix_sign, box_sign;
   uint64_t tval;
 
-  if (fpvm_gc_unbox_raw(val,&sign,(void**)&tval)) {
+  if (fpvm_gc_unbox_raw(val,&box_sign,(void**)&tval)) {
+    fix_sign = 1;
     // reset bit 50+ before decoding
     tval &= 0x3ffffffffffffUL;
-    struct unpacked_teeny unpacked;
-    teeny_unpack(tval, &unpacked);
-    printf("unpacked: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
-	    (unsigned long)unpacked.sign,
-	    (unsigned long)unpacked.exp,
-	    (unsigned long)unpacked.mantissa,
-	    (unsigned long)unpacked.type);
-    double result = teeny_decode(unpacked);
+
+  } else {
+    fix_sign = 0;
+
+    // We actually need to *encode* non-nan boxed values
+    // so that they are appropriately rounded to the default
+    // teeny size -KJH
+
+    // TODO: Get rounding mode info here
+    tval = teeny_encode(val, TEENY_DEFAULT_TYPE, FPVM_ROUND_DEFAULT);
+  }
+
+  struct unpacked_teeny unpacked;
+  teeny_unpack(tval, &unpacked);
+  //printf("unpacked: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
+  //        (unsigned long)unpacked.sign,
+  //        (unsigned long)unpacked.exp,
+  //        (unsigned long)unpacked.mantissa,
+  //        (unsigned long)unpacked.type);
+  double result = teeny_decode(unpacked);
+
+  if(fix_sign) {
     int resultsign = result<0;
-    if(type != NULL) {
-	*type = unpacked.type;
-    }
-    if (sign != resultsign) {
+    if (box_sign != resultsign) {
       result = -result;
     }
-    return result;
-  } else {
-    if(type != NULL) {
-	*type = TEENY_DEFAULT_TYPE;
-    }
-    return val;
   }
+
+  if(type != NULL) {
+    *type = unpacked.type;
+  }
+
+  return result;
 }
 
 // if ptr points to a valid double, return that. If it points to a boxed value,
