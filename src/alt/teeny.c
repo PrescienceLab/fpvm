@@ -93,13 +93,12 @@ struct teeny_type
     int bias;
     uint64_t exp_bitmask;
     uint64_t mant_bitmask;
-}
-teeny_types[] = {
+};
 
 #define TEENY_DOUBLE_TYPE (-1)
-
+static struct teeny_type
+default_teeny_type = {
 #define TEENY_DEFAULT_TYPE (0)
-    {
     .numbits_exp = CONFIG_TEENY_EXP_BITS,
     .numbits_mant = CONFIG_TEENY_MANT_BITS,
     .too_small_away = CONFIG_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO,
@@ -107,9 +106,10 @@ teeny_types[] = {
     .bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1),
     .exp_bitmask = ~(-1ULL << CONFIG_TEENY_EXP_BITS),
     .mant_bitmask = ~(-1ULL << CONFIG_TEENY_MANT_BITS),
-    },
-
 };
+
+static unsigned long num_teeny_types = 1;
+static struct teeny_type *teeny_types = &default_teeny_type;
 
 struct unpacked_teeny {
     uint64_t sign; // 0 -> positive 1 -> negative
@@ -201,6 +201,11 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 {
   uint64_t x;
 
+  if(unpacked.type >= num_teeny_types) {
+      MATH_ERROR("Trying to pack teeny of undefined type %d! (packing as default type instead)\n",
+	      unpacked.type);
+      unpacked.type = TEENY_DEFAULT_TYPE;
+  }
   struct teeny_type *type = &teeny_types[unpacked.type];
 
   uint64_t sign = unpacked.sign;
@@ -248,6 +253,12 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 static void teeny_unpack(const uint64_t x, struct unpacked_teeny *unpacked)
 {
   unpacked->type = x & bitmask(numbits_type);
+
+  if(unpacked->type >= num_teeny_types) {
+      MATH_ERROR("Trying to unpack teeny of undefined type %d! (unpacking as default type instead? this is almost certainly wrong...)\n",
+	      unpacked->type);
+      unpacked->type = TEENY_DEFAULT_TYPE;
+  }
   struct teeny_type *type = &teeny_types[unpacked->type];
 
   unpacked->sign = (x>>(type->numbits_exp + type->numbits_mant + numbits_type)) & 0x1;
@@ -303,6 +314,11 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
 
   MATH_DEBUG("encode double %016lx (%lf)\n",*(uint64_t*)&x,x);
 
+  if(type_index >= num_teeny_types) {
+      MATH_ERROR("Trying to encode teeny of undefined type: %d! (encoding as default type instead)\n",
+	      type_index);
+      type_index = TEENY_DEFAULT_TYPE;
+  }
   struct teeny_type *type = &teeny_types[type_index];
 
   uint64_t mantissa = m << (64-52); // 64 bit mantissa (leading one is implied 1.XXXXXX)
@@ -1178,6 +1194,18 @@ void fpvm_number_system_init()
   if(validate_teeny_type(default_type)) {
       MATH_ERROR("Failed to validate default teeny type!\n");
       exit(-1);
+  }
+
+  num_teeny_types = 1ULL<<numbits_type;
+  teeny_types = malloc(sizeof(struct teeny_type) * num_teeny_types);
+  if(teeny_types == NULL) {
+      MATH_ERROR("Failed to allocate enough space for %lu teeny types!\n",
+	      num_teeny_types);
+      exit(-1);
+  }
+  // Set every teeny type to be a copy of the default type
+  for(unsigned long i = 0; i < num_teeny_types; i++) {
+      teeny_types[i] = default_teeny_type;
   }
 
   MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx] too_small_away=%s \n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask, too_small_away ? "y" : "n");
