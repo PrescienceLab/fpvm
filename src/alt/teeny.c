@@ -1191,11 +1191,6 @@ void fpvm_number_system_init()
     default_type->too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
   }
 
-  if(validate_teeny_type(default_type)) {
-      MATH_ERROR("Failed to validate default teeny type!\n");
-      exit(-1);
-  }
-
   num_teeny_types = 1ULL<<numbits_type;
   teeny_types = malloc(sizeof(struct teeny_type) * num_teeny_types);
   if(teeny_types == NULL) {
@@ -1206,6 +1201,47 @@ void fpvm_number_system_init()
   // Set every teeny type to be a copy of the default type
   for(unsigned long i = 0; i < num_teeny_types; i++) {
       teeny_types[i] = default_teeny_type;
+  }
+
+  // Try to load more types from a file of the form
+  //
+  // EXP_BITS_0:MANTISSA_BITS_0
+  // EXP_BITS_1:MANTISSA_BITS_1
+  // ...
+  // EXP_BITS_n:MANTISSA_BITS_n
+  //
+  {
+      const char *path = getenv("FPVM_TEENY_TYPES_PATH");
+      if(path != NULL) {
+          MATH_INFO("Reading teeny types from \"%s\"\n", path);
+          FILE *file = fopen(path, "r");
+          // I do not like using fscanf (because I am sane) but I want this to work ASAP and don't
+          // really care if a slightly ill-formed input file causes a crash -KJH
+	  unsigned long cur_type = 0;
+	  while(cur_type < num_teeny_types) {
+            unsigned long cur_numbits_exp, cur_numbits_mant;
+            int read = fscanf(file, " %lu : %lu", &cur_numbits_exp, &cur_numbits_mant);
+	    if (read != 2) {
+              fclose(file);
+	      break;
+	    }
+	    struct teeny_type *type = &teeny_types[cur_type];
+	    type->numbits_exp = cur_numbits_exp;
+	    type->numbits_mant = cur_numbits_mant;
+	    MATH_INFO("Initialized teeny type %d with %lu exponent bits and %lu mantissa bits\n",
+		    cur_type,
+		    type->numbits_exp,
+		    type->numbits_mant);
+	    cur_type++;
+	  }
+      }
+  }
+
+  for(unsigned long i = 0; i < num_teeny_types; i++) {
+      if(validate_teeny_type(&teeny_types[i])) {
+          MATH_ERROR("Failed to validate teeny type %lu!\n", i);
+          exit(-1);
+      }
   }
 
   MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx] too_small_away=%s \n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask, too_small_away ? "y" : "n");
