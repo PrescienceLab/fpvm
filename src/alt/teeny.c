@@ -95,7 +95,6 @@ struct teeny_type
     uint64_t mant_bitmask;
 };
 
-#define TEENY_DOUBLE_TYPE (-1)
 static struct teeny_type
 default_teeny_type = {
 #define TEENY_DEFAULT_TYPE (0)
@@ -110,6 +109,14 @@ default_teeny_type = {
 
 static unsigned long num_teeny_types = 1;
 static struct teeny_type *teeny_types = &default_teeny_type;
+
+// what a lovely 1 by 1 matrix -KJH
+static int default_teeny_conversion_table[] =
+{
+    0,
+};
+static int *teeny_conversion_table = default_teeny_conversion_table;
+
 
 struct unpacked_teeny {
     uint64_t sign; // 0 -> positive 1 -> negative
@@ -201,6 +208,12 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
 {
   uint64_t x;
 
+  printf("packing: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
+    (unsigned long)unpacked.sign,
+    (unsigned long)unpacked.exp,
+    (unsigned long)unpacked.mantissa,
+    (unsigned long)unpacked.type);
+
   if(unpacked.type >= num_teeny_types) {
       MATH_ERROR("Trying to pack teeny of undefined type %d! (packing as default type instead)\n",
 	      unpacked.type);
@@ -213,36 +226,17 @@ static uint64_t teeny_pack(struct unpacked_teeny unpacked)
   uint64_t mantissa = unpacked.mantissa;
   uint64_t type_index = unpacked.type;
 
-  sign &= 0x1;
-  exp &= type->exp_bitmask;
-  mantissa &= type->mant_bitmask;
-  type_index &= bitmask(numbits_type);
-
-  if(exp == type->exp_bitmask) {
-      //if(mantissa == 0) {
-      //    // +-Inf
-      //    //fprintf(stderr, "teeny_pack: Creating an infinite value\n");
-      //} else {
-      //    // NaN
-      //    //fprintf(stderr, "teeny_pack: Creating a NaN value\n");
-      //}
-  }
-
-  //if(exp == 0 && mantissa == 0) {
-  //    //fprintf(stderr, "teeny_pack: Creating a zero value\n");
-  //}
- 
   // Building Up the NaN payload
-  x = sign;
+  x = (sign & 1);
 
   x <<= type->numbits_exp;
-  x |= exp;
+  x |= (exp & type->exp_bitmask);
 
   x <<= type->numbits_mant;
-  x |= mantissa;
+  x |= (mantissa & type->mant_bitmask);
 
   x <<= numbits_type;
-  x |= type_index;
+  x |= (type_index & bitmask(numbits_type));
 
   MATH_DEBUG("packing sign=%lu exp=%016lx mantissa=%016lx type=%016lx into %016lx\n",sign,exp,mantissa, type_index, x);
 
@@ -263,7 +257,7 @@ static void teeny_unpack(const uint64_t x, struct unpacked_teeny *unpacked)
 
   unpacked->sign = (x>>(type->numbits_exp + type->numbits_mant + numbits_type)) & 0x1;
   unpacked->exp = (x>>(type->numbits_mant + numbits_type)) & type->exp_bitmask;
-  unpacked->mantissa = x & type->mant_bitmask;
+  unpacked->mantissa = (x>>numbits_type) & type->mant_bitmask;
   
 //    MATH_DEBUG("teeny %016lx unpacks to sign=%lu, exp=%016lx (%lu, unbiased %ld, %s), mant=%016lx, type=%d\n",
 //  	     x,unpacked->sign,unpacked->exp,unpacked->exp,((int64_t)unpacked->exp)-type->bias,
@@ -554,10 +548,6 @@ static void print_teeny(const uint64_t x)
 // if the value being boxed is negative, state that in the NaN.
 static double teeny_box(double val, int type_index, fpvm_round_mode_t round_mode)
 {
-  if(type_index == TEENY_DOUBLE_TYPE) {
-      // This is a double, do not round it
-      return val;
-  }
   uint64_t tval = teeny_encode(val, type_index, round_mode);
   // set bit 50 to make sure it's not a "null pointer"
   tval |= (0x1UL << 50);
@@ -576,11 +566,11 @@ static double teeny_unbox(double val, int *type) {
     tval &= 0x3ffffffffffffUL;
     struct unpacked_teeny unpacked;
     teeny_unpack(tval, &unpacked);
-//    printf("unpacked: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
-//	    (unsigned long)unpacked.sign,
-//	    (unsigned long)unpacked.exp,
-//	    (unsigned long)unpacked.mantissa,
-//	    (unsigned long)unpacked.type);
+    printf("unpacked: sign=0x%lx, exp=0x%lx, mant=0x%lx, type=0x%lx\n",
+	    (unsigned long)unpacked.sign,
+	    (unsigned long)unpacked.exp,
+	    (unsigned long)unpacked.mantissa,
+	    (unsigned long)unpacked.type);
     double result = teeny_decode(unpacked);
     int resultsign = result<0;
     if(type != NULL) {
@@ -592,7 +582,7 @@ static double teeny_unbox(double val, int *type) {
     return result;
   } else {
     if(type != NULL) {
-	*type = TEENY_DOUBLE_TYPE;
+	*type = TEENY_DEFAULT_TYPE;
     }
     return val;
   }
@@ -613,16 +603,16 @@ static uint64_t decode_to_double_bits(void *ptr)
   return *(uint64_t*)&v;
 }
 
-int
-teeny_unary_op_type(int type)
-{
-    return TEENY_DEFAULT_TYPE;
-}
-
-int
+static inline int
 teeny_binary_op_type(int lhs, int rhs)
 {
-    return TEENY_DEFAULT_TYPE;
+    return teeny_conversion_table[(lhs * num_teeny_types) + rhs];
+}
+
+static inline int
+teeny_unary_op_type(int type)
+{
+    return teeny_binary_op_type(type, type);
 }
 
 #define teeny_add(x,y,r) ((x)+(y))
@@ -1193,7 +1183,8 @@ void fpvm_number_system_init()
 
   num_teeny_types = 1ULL<<numbits_type;
   teeny_types = malloc(sizeof(struct teeny_type) * num_teeny_types);
-  if(teeny_types == NULL) {
+  teeny_conversion_table = malloc(sizeof(int) * num_teeny_types * num_teeny_types);
+  if(teeny_types == NULL || teeny_conversion_table == NULL) {
       MATH_ERROR("Failed to allocate enough space for %lu teeny types!\n",
 	      num_teeny_types);
       exit(-1);
@@ -1202,13 +1193,29 @@ void fpvm_number_system_init()
   for(unsigned long i = 0; i < num_teeny_types; i++) {
       teeny_types[i] = default_teeny_type;
   }
+  // Create a (left dominated) conversion table
+  //
+  // e.g. by default, the inputs to a binary operator
+  // are converted into the "left" input
+  for(int left = 0; left < num_teeny_types; left++) {
+      for(int right = 0; right < num_teeny_types; right++) {
+	  teeny_conversion_table[(left * num_teeny_types) + right] = left;
+      }
+  }
 
   // Try to load more types from a file of the form
-  //
-  // EXP_BITS_0:MANTISSA_BITS_0
-  // EXP_BITS_1:MANTISSA_BITS_1
+  // 
+  // ; This defines the various types
+  // t 0 EXP_BITS_0:MANTISSA_BITS_0
+  // t 1 EXP_BITS_1:MANTISSA_BITS_1
   // ...
-  // EXP_BITS_n:MANTISSA_BITS_n
+  // t n EXP_BITS_n:MANTISSA_BITS_n
+  // 
+  // ; This says if the inputs to a binary operation
+  // ; are of type M and N produce type P
+  // ; c ignores left vs. right and C requires exact matching
+  // c M N -> P
+  // C M N -> P
   //
   {
       const char *path = getenv("FPVM_TEENY_TYPES_PATH");
@@ -1217,22 +1224,29 @@ void fpvm_number_system_init()
           FILE *file = fopen(path, "r");
           // I do not like using fscanf (because I am sane) but I want this to work ASAP and don't
           // really care if a slightly ill-formed input file causes a crash -KJH
-	  unsigned long cur_type = 0;
-	  while(cur_type < num_teeny_types) {
-            unsigned long cur_numbits_exp, cur_numbits_mant;
-            int read = fscanf(file, " %lu : %lu", &cur_numbits_exp, &cur_numbits_mant);
-	    if (read != 2) {
+	  while(1) {
+            unsigned long t_type, t_numbits_exp, t_numbits_mant; // t ...
+            unsigned long c_lhs, c_rhs, c_result; // c ...
+
+            if(fscanf(file, " t %lu %lu : %lu", &t_type, &t_numbits_exp, &t_numbits_mant) == 3) {
+	        struct teeny_type *type = &teeny_types[t_type];
+	        type->numbits_exp = t_numbits_exp;
+	        type->numbits_mant = t_numbits_mant;
+	        MATH_INFO("Initialized teeny type %d with %lu exponent bits and %lu mantissa bits\n",
+	                t_type,
+	                type->numbits_exp,
+	                type->numbits_mant);
+	    } else if(fscanf(file, " c %lu %lu -> %lu", &c_lhs, &c_rhs, &c_result) == 3) {
+		teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+		teeny_conversion_table[(c_rhs * num_teeny_types) + c_lhs] = c_result;
+		MATH_INFO("Added conversion {%lu, %lu} -> %lu\n", c_lhs, c_rhs, c_result);
+	    } else if(fscanf(file, " C %lu %lu -> %lu", &c_lhs, &c_rhs, &c_result) == 3) {
+		teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+		MATH_INFO("Added conversion (%lu, %lu) -> %lu\n", c_lhs, c_rhs, c_result);
+	    } else {
               fclose(file);
 	      break;
 	    }
-	    struct teeny_type *type = &teeny_types[cur_type];
-	    type->numbits_exp = cur_numbits_exp;
-	    type->numbits_mant = cur_numbits_mant;
-	    MATH_INFO("Initialized teeny type %d with %lu exponent bits and %lu mantissa bits\n",
-		    cur_type,
-		    type->numbits_exp,
-		    type->numbits_mant);
-	    cur_type++;
 	  }
       }
   }
