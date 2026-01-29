@@ -87,7 +87,11 @@ struct teeny_type
 {
     int numbits_exp;
     int numbits_mant;
-    int too_small_away;
+
+    int loud_underflow;
+    int underflow_conv;
+    int loud_overflow;
+    int overflow_conv;
 
     // Computed types
     int bias;
@@ -100,7 +104,12 @@ default_teeny_type = {
 #define TEENY_DEFAULT_TYPE (0)
     .numbits_exp = CONFIG_TEENY_EXP_BITS,
     .numbits_mant = CONFIG_TEENY_MANT_BITS,
-    .too_small_away = CONFIG_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO,
+
+    .loud_underflow = 0,
+    .underflow_conv = TEENY_DEFAULT_TYPE,
+
+    .loud_overflow = 0,
+    .overflow_conv = TEENY_DEFAULT_TYPE,
 
     .bias = ((1<<((CONFIG_TEENY_EXP_BITS)-1))-1),
     .exp_bitmask = ~(-1ULL << CONFIG_TEENY_EXP_BITS),
@@ -110,16 +119,93 @@ default_teeny_type = {
 static unsigned long num_teeny_types = 1;
 static struct teeny_type *teeny_types = &default_teeny_type;
 
-static int *default_teeny_conversion_table = NULL;
-
-struct teeny_region {
+struct text_region
+{
     void *base;
     void *end;
-    struct teeny_region *next;
-    int matrix[];
+
+    struct text_region *left;
+    struct text_region *right;
+
+    int conv_table[];
 };
 
-static struct teeny_region *region_list = NULL;
+static struct text_region *default_text_region = NULL;
+static struct text_region *text_region_tree = NULL;
+
+static struct text_region *
+find_text_region(void *rip)
+{
+    struct text_region *cur_region = text_region_tree;
+    while(cur_region) {
+	if(cur_region->base <= rip) {
+	    if(rip < cur_region->end) {
+	        return cur_region; 
+	    }
+	    // This region was too low in memory
+	    cur_region = cur_region->right;
+	} else {
+	    // This region was too high in memory
+	    cur_region = cur_region->left;
+	}
+    }
+    return default_text_region;
+}
+
+static struct text_region *
+create_text_region(void *base, void *end) {
+    if(base >= end) {
+	return NULL;
+    }
+    struct text_region *cur_region = text_region_tree;
+    struct text_region **slot = &text_region_tree;
+    while(cur_region) {
+	// Check for overlap
+	if(!(cur_region->end <= base || end <= cur_region->base)) {
+	    return NULL;
+	}
+	if(cur_region->base < base) {
+	    // inserting region higher in memory
+	    if(cur_region->right) {
+		cur_region = cur_region->right;
+		continue;
+	    }
+	    slot = &cur_region->right;
+	} else {
+	    // insert region lower in memory
+	    if(cur_region->left) {
+		cur_region = cur_region->left;
+		continue;
+	    }
+	    slot = &cur_region->left;
+	}
+	break;
+    }
+
+    struct text_region *region = malloc(sizeof(struct text_region)
+    	                         + (sizeof(int) * num_teeny_types * num_teeny_types));
+    if(region == NULL) {
+        return NULL;
+    }
+    region->base = base;
+    region->end = end;
+    region->left = NULL;
+    region->right = NULL;
+    *slot = region;
+    return region;
+}
+
+static inline int
+teeny_binary_op_type(int lhs, int rhs, struct text_region *reg)
+{
+    return reg->conv_table[(lhs*num_teeny_types) + rhs];
+}
+
+static inline int
+teeny_unary_op_type(int type, struct text_region *reg)
+{
+    return teeny_binary_op_type(type, type, reg);
+}
 
 struct unpacked_teeny {
     uint64_t sign; // 0 -> positive 1 -> negative
@@ -376,7 +462,14 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
 		  be++;
 		  if(be == type->exp_bitmask) {
 		      // Rounded up to infinity
-		      MATH_DEBUG("Rounding during teeny_encode caused the generation of an infinite value!\n");
+		      //MATH_DEBUG("Rounding during teeny_encode caused the generation of an infinite value!\n");
+	              if(type->overflow_conv != type_index) {
+			  if(type->loud_overflow) {
+	                      MATH_INFO("Promoting teeny of type %lu to type %lu due to overflow! (value=%lf)\n",
+				      type_index, type->overflow_conv, x);
+			  }
+	                  return teeny_encode(x, type->overflow_conv, round_mode);
+	              }
 		  }
 	      } else {
 	        mantissa += 1;
@@ -392,6 +485,13 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
       }
       else {
 	  // Overflow to infinity
+	  if(type->overflow_conv != type_index) {
+	      if(type->loud_overflow) {
+	        MATH_INFO("Promoting teeny of type %lu to type %lu due to overflow! (value=%lf)\n",
+		          type_index, type->overflow_conv, x);
+	      }
+	      return teeny_encode(x, type->overflow_conv, round_mode);
+	  }
 	  struct unpacked_teeny inf = {
 	      .type = type_index,
 	      .sign = s,
@@ -416,9 +516,25 @@ static uint64_t teeny_encode(const double x, int type_index, fpvm_round_mode_t r
 
       mantissa >>= (64-type->numbits_mant);
 
-      if(type->too_small_away && mantissa == 0) {
-	  mantissa = 1;
+      if(mantissa == 0 && (type->underflow_conv != type_index)) {
+	if(type->loud_underflow) {
+	    MATH_INFO("Promoting teeny of type %lu to type %lu due to underflow! (value=%lf)\n",
+		      type_index, type->underflow_conv, x);
+	}
+	return teeny_encode(x, type->underflow_conv, round_mode);
       }
+
+//      if(type->too_small_away && mantissa == 0) {
+//
+//	  if(type->too_small_away_type == type_index) {
+//	      mantissa = 1;
+//	  } else {
+//	      // Tail recurse (hopefully optimized properly)
+//	      MATH_INFO("Promoting teeny of type %lu to type %lu due to underflow!\n",
+//		      type_index, type->too_small_away_type);
+//	      return teeny_encode(x, type->too_small_away_type, round_mode);
+//	  }
+//      }
 
       struct unpacked_teeny subnormal = {
 	  .type = type_index,
@@ -618,25 +734,6 @@ static uint64_t decode_to_double_bits(void *ptr)
   return *(uint64_t*)&v;
 }
 
-static inline int
-teeny_binary_op_type(int lhs, int rhs, void *rip)
-{
-    struct teeny_region *cur_region = region_list;
-    while(cur_region) {
-	if((cur_region->base <= rip) && (rip < cur_region->end)) {
-	    return cur_region->matrix[(lhs * num_teeny_types) + rhs]; 
-	}
-	cur_region = cur_region->next;
-    }
-    return default_teeny_conversion_table[(lhs * num_teeny_types) + rhs];
-}
-
-static inline int
-teeny_unary_op_type(int type, void *rip)
-{
-    return teeny_binary_op_type(type, type, rip);
-}
-
 #define teeny_add(x,y,r) ((x)+(y))
 #define teeny_sub(x,y,r) ((x)-(y))
 #define teeny_mul(x,y,r) ((x)*(y))
@@ -651,8 +748,9 @@ teeny_unary_op_type(int type, void *rip)
     double a = teeny_unbox(*(double*)src1, &type_a);			\
     double b = teeny_unbox(*(double*)src2, &type_b);			\
     dst = teeny_##OP(a,b,ROUNDING_MODE);				\
+    struct text_region *region = find_text_region(special->inst_addr);  \
     *(double *)dest = teeny_box(dst, 					\
-	                        teeny_binary_op_type(type_a,type_b,special->inst_addr), 	\
+	                        teeny_binary_op_type(type_a,type_b,region), \
 				special->round_mode);			\
     return 0;								\
   }
@@ -672,8 +770,9 @@ FPVM_MATH_DECL(madd, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = (a * b) + c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
-  int sum_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr);
+  struct text_region *region = find_text_region(special->inst_addr);
+  int prod_type = teeny_binary_op_type(a_type,b_type,region);
+  int sum_type = teeny_binary_op_type(prod_type,c_type,region);
   *(double *)dest = teeny_box(r, sum_type, special->round_mode);
   return 0;
 }
@@ -686,8 +785,9 @@ FPVM_MATH_DECL(nmadd, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = -(a * b) + c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
-  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr); 
+  struct text_region *region = find_text_region(special->inst_addr);
+  int prod_type = teeny_binary_op_type(a_type,b_type,region);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,region); 
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -700,8 +800,9 @@ FPVM_MATH_DECL(msub, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = (a * b) - c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
-  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr); 
+  struct text_region *region = find_text_region(special->inst_addr);
+  int prod_type = teeny_binary_op_type(a_type,b_type,region);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,region); 
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -713,8 +814,9 @@ FPVM_MATH_DECL(nmsub, double) {
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = -(a * b) - c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
-  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr);
+  struct text_region *region = find_text_region(special->inst_addr);
+  int prod_type = teeny_binary_op_type(a_type,b_type,region);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,region);
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -749,7 +851,8 @@ int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
   int a_type;
   double a = teeny_unbox(*(double*)src1, &a_type);
   double r = sqrt(a);
-  int sqrt_type = teeny_unary_op_type(a_type, special->inst_addr);
+  struct text_region *region = find_text_region(special->inst_addr);
+  int sqrt_type = teeny_unary_op_type(a_type, region);
   *(double *)dest = teeny_box(r, sqrt_type, special->round_mode);
   return 0;
 }
@@ -903,8 +1006,9 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
+    struct text_region *region = find_text_region(&NAME);  /* Use the current function address */ \
     res = teeny_box(res, \
-	            teeny_unary_op_type(type1,&NAME), /* Use the current function address */ \
+	            teeny_unary_op_type(type1,region), \
 	            FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
@@ -932,8 +1036,9 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1,src2);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
+    struct text_region *region = find_text_region(&NAME); /* Use the current function address */ \
     res = teeny_box(res, \
-	            teeny_binary_op_type(type1,type2,&NAME), /* Use the current function address */ \
+	            teeny_binary_op_type(type1,type2,region), \
 		    FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
@@ -975,8 +1080,9 @@ double ldexp(double a, int b) {
   double res = src * orig_pow(2.0,(double)b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  struct text_region *region = find_text_region(&ldexp);
   // TODO Can't get rounding mode here?
-  res =  teeny_box(res, teeny_unary_op_type(type, &ldexp), FPVM_ROUND_DEFAULT);
+  res =  teeny_box(res, teeny_unary_op_type(type, region), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -989,8 +1095,9 @@ long int lround(double a) {
   double res = orig_lround(src);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  struct text_region *region = find_text_region(&lround);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, teeny_unary_op_type(type, &lround), FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type, region), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -1003,8 +1110,9 @@ double __powidf2(double a, int b) {
   double res = orig___powidf2(src, b);
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
+  struct text_region *region = find_text_region(&__powidf2);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, teeny_unary_op_type(type, &__powidf2), FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type, region), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -1203,14 +1311,15 @@ void fpvm_number_system_init()
   if (getenv("FPVM_TEENY_MANT_BITS")) {
     default_type->numbits_mant=atoi(getenv("FPVM_TEENY_MANT_BITS"));
   }
-  if (getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")) {
-    default_type->too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
-  }
+
+  //if (getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")) {
+  //  default_type->too_small_away = tolower(getenv("FPVM_TEENY_ROUND_TOO_SMALLS_AWAY_FROM_ZERO")[0]) == 'y';
+  //}
 
   num_teeny_types = 1ULL<<numbits_type;
   teeny_types = malloc(sizeof(struct teeny_type) * num_teeny_types);
-  default_teeny_conversion_table = malloc(sizeof(int) * num_teeny_types * num_teeny_types);
-  if(teeny_types == NULL || default_teeny_conversion_table == NULL) {
+  default_text_region = malloc(sizeof(struct text_region) + (sizeof(int) * num_teeny_types * num_teeny_types));
+  if(teeny_types == NULL || default_text_region == NULL) {
       MATH_ERROR("Failed to allocate enough space for %lu teeny types!\n",
 	      num_teeny_types);
       exit(-1);
@@ -1223,9 +1332,13 @@ void fpvm_number_system_init()
   //
   // e.g. by default, the inputs to a binary operator
   // are converted into the "left" input
+  default_text_region->base = (void*)0ULL;
+  default_text_region->end = (void*)~0ULL;
+  default_text_region->left = NULL;
+  default_text_region->right = NULL;
   for(int left = 0; left < num_teeny_types; left++) {
       for(int right = 0; right < num_teeny_types; right++) {
-	  default_teeny_conversion_table[(left * num_teeny_types) + right] = left;
+	  default_text_region->conv_table[(left * num_teeny_types) + right] = left;
       }
   }
 
@@ -1257,57 +1370,106 @@ void fpvm_number_system_init()
           MATH_INFO("Reading teeny types from \"%s\"\n", path);
           FILE *file = fopen(path, "r");
 
-	  int *cur_teeny_conversion_table = default_teeny_conversion_table;
-	  struct teeny_region *cur_region = NULL;
+	  struct text_region *cur_text_region = default_text_region;
 
           // I do not like using fscanf (because I am sane) but I want this to work ASAP and don't
           // really care if a slightly ill-formed input file causes a crash -KJH
 	  while(1) {
             unsigned long t_type, t_numbits_exp, t_numbits_mant; // t ...
             unsigned long c_lhs, c_rhs, c_result; // c ...
+            unsigned long u_from, u_to; // u ...
+            unsigned long o_from, o_to; // o ...
 	    unsigned long r_base, r_end; // r ...
+
+	    long cur_pos = ftell(file);
+
+	    // Not every "fseek" is required here, I just want to be careful for now -KJH
 
             if(fscanf(file, " t %lu %lu : %lu", &t_type, &t_numbits_exp, &t_numbits_mant) == 3) {
 	        struct teeny_type *type = &teeny_types[t_type];
 	        type->numbits_exp = t_numbits_exp;
 	        type->numbits_mant = t_numbits_mant;
+		
+		// by default do nothing special on underflow or overflow
+		type->underflow_conv = t_type;
+		type->overflow_conv = t_type;
+
+		type->loud_underflow = 0;
+		type->loud_overflow = 0;
+		
 	        MATH_INFO("Initialized teeny type %d with %lu exponent bits and %lu mantissa bits\n",
 	                t_type,
 	                type->numbits_exp,
 	                type->numbits_mant);
-	    } else if(fscanf(file, " c %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
-		cur_teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
-		cur_teeny_conversion_table[(c_rhs * num_teeny_types) + c_lhs] = c_result;
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " c %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
+		cur_text_region->conv_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+		cur_text_region->conv_table[(c_rhs * num_teeny_types) + c_lhs] = c_result;
 		MATH_INFO("Added conversion {%li, %li} -> %li\n", c_lhs, c_rhs, c_result);
-	    } else if(fscanf(file, " C %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
-		cur_teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " C %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
+		cur_text_region->conv_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
 		MATH_INFO("Added conversion (%lu, %lu) -> %lu\n", c_lhs, c_rhs, c_result);
-	    } else if(fscanf(file, " r %li %li", &r_base, &r_end) == 2) {
-		struct teeny_region *region = malloc(sizeof(struct teeny_region) + (sizeof(int) * num_teeny_types * num_teeny_types)); 
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " u %li %li", &u_from, &u_to) == 2) {
+	        struct teeny_type *type = &teeny_types[u_from];
+		type->underflow_conv = u_to;
+		MATH_INFO("Added underflow behavior (%lu -> %lu)\n", u_from, u_to);
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " o %li %li", &o_from, &o_to) == 2) {
+	        struct teeny_type *type = &teeny_types[o_from];
+		type->overflow_conv = o_to;
+		MATH_INFO("Added overflow behavior (%lu -> %lu)\n", u_from, u_to);
+		continue;
+	    }
+	    if(fscanf(file, " lu %li", &u_from) == 1) {
+	        struct teeny_type *type = &teeny_types[u_from];
+		type->loud_underflow = 1;
+		MATH_INFO("Will warn on underflow for type %lu\n", u_from);
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " lo %li", &o_from) == 1) {
+	        struct teeny_type *type = &teeny_types[o_from];
+		type->loud_overflow = 1;
+		MATH_INFO("Will warn on overflow for type %lu\n", o_from);
+		continue;
+	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " r %li %li", &r_base, &r_end) == 2) {
+
+		struct text_region *region = create_text_region((void*)r_base, (void*)r_end); 
 		if(region == NULL) {
 		    MATH_ERROR("Failed to allocate teeny region [0x%lx, 0x%lx)\n", r_base, r_end);
 		    exit(-1);
 		}
-		region->base = (void*)r_base;
-		region->end = (void*)r_end;
-		region->next = cur_region;
 		printf("Adding a new conversion region [0x%lx,0x%lx)\n",
 			(unsigned long)region->base,
 			(unsigned long)region->end);
 
-		memcpy((void*)region->matrix,
-		       (void*)cur_teeny_conversion_table,
+		memcpy((void*)region->conv_table,
+		       (void*)cur_text_region->conv_table,
 		       (sizeof(int) * num_teeny_types * num_teeny_types));
 
-		cur_teeny_conversion_table = region->matrix;
-		cur_region = region;
-		region_list = region;
-	    } else if(fscanf(file, " ;%*[^\n]") == 0) {
-		// Skip comment lines
-	    } else {
-              fclose(file);
-	      break;
+		cur_text_region = region;
+		continue;
 	    }
+	    fseek(file, cur_pos, SEEK_SET);
+	    if(fscanf(file, " ;%*[^\n]") == 0) {
+		// Skip comment lines
+		continue;
+	    }
+
+            fclose(file);
+	    break;
 	  }
       }
   }
@@ -1319,7 +1481,7 @@ void fpvm_number_system_init()
       }
   }
 
-  MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx] too_small_away=%s \n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask, too_small_away ? "y" : "n");
+  // MATH_DEBUG("initialized with %d exponent bits (bias %d) [bitmask %016lx] and %d mantissa bits [bitmask %016lx] too_small_away=%s \n",numbits_exp,bias,exp_bitmask,numbits_mant,mant_bitmask, too_small_away ? "y" : "n");
 
   //  teeny_shell();
   //  exit(0);
