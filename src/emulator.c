@@ -234,6 +234,9 @@ int fpvm_emulator_emulate_inst(fpvm_inst_t *fi, int *promotions, int *demotions,
   }
 
   op_special_t special = {0, 0, 0, 0};
+
+  special.inst_addr = fi->addr;
+
   void *src1 = 0, *src2 = 0, *src3 = 0, *src4 = 0, *dest = 0;
   op_t func = 0;
 
@@ -909,6 +912,9 @@ fpvm_emulator_handle_correctness_for_inst(fpvm_inst_t *fi, fpvm_regs_t *fr, int 
   DEBUG("handling problematic memory instruction of op type %s\n",fpvm_op_to_string(fi->common->op_type));
 
   op_special_t special = {0, 0, 0};
+
+  special.inst_addr = fi->addr;
+
   void *src1 = 0, *src2 = 0, *src3 = 0, *src4 = 0, *dest = 0;
 
   op_t func = 0;

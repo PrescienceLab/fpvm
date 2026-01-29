@@ -23,8 +23,13 @@ typedef struct {
   int byte_width;
   int truncate;
   int unordered;
+
+  void *inst_addr;
+
   fpvm_inst_compare_t compare_type;    // for cmpxx
   fpvm_round_mode_t round_mode;
+
+  // x64 specific
   uint64_t *rflags;
 } op_special_t;
 

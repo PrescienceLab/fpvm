@@ -42,7 +42,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <ctype.h>
-
+#include <string.h>
 
 #define RFLAGS_CF 0x1UL
 #define RFLAGS_PF 0x4UL
@@ -110,13 +110,16 @@ default_teeny_type = {
 static unsigned long num_teeny_types = 1;
 static struct teeny_type *teeny_types = &default_teeny_type;
 
-// what a lovely 1 by 1 matrix -KJH
-static int default_teeny_conversion_table[] =
-{
-    0,
-};
-static int *teeny_conversion_table = default_teeny_conversion_table;
+static int *default_teeny_conversion_table = NULL;
 
+struct teeny_region {
+    void *base;
+    void *end;
+    struct teeny_region *next;
+    int matrix[];
+};
+
+static struct teeny_region *region_list = NULL;
 
 struct unpacked_teeny {
     uint64_t sign; // 0 -> positive 1 -> negative
@@ -616,15 +619,22 @@ static uint64_t decode_to_double_bits(void *ptr)
 }
 
 static inline int
-teeny_binary_op_type(int lhs, int rhs)
+teeny_binary_op_type(int lhs, int rhs, void *rip)
 {
-    return teeny_conversion_table[(lhs * num_teeny_types) + rhs];
+    struct teeny_region *cur_region = region_list;
+    while(cur_region) {
+	if((cur_region->base <= rip) && (rip < cur_region->end)) {
+	    return cur_region->matrix[(lhs * num_teeny_types) + rhs]; 
+	}
+	cur_region = cur_region->next;
+    }
+    return default_teeny_conversion_table[(lhs * num_teeny_types) + rhs];
 }
 
 static inline int
-teeny_unary_op_type(int type)
+teeny_unary_op_type(int type, void *rip)
 {
-    return teeny_binary_op_type(type, type);
+    return teeny_binary_op_type(type, type, rip);
 }
 
 #define teeny_add(x,y,r) ((x)+(y))
@@ -642,7 +652,7 @@ teeny_unary_op_type(int type)
     double b = teeny_unbox(*(double*)src2, &type_b);			\
     dst = teeny_##OP(a,b,ROUNDING_MODE);				\
     *(double *)dest = teeny_box(dst, 					\
-	                        teeny_binary_op_type(type_a,type_b), 	\
+	                        teeny_binary_op_type(type_a,type_b,special->inst_addr), 	\
 				special->round_mode);			\
     return 0;								\
   }
@@ -662,8 +672,8 @@ FPVM_MATH_DECL(madd, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = (a * b) + c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type);
-  int sum_type = teeny_binary_op_type(prod_type,c_type);
+  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
+  int sum_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr);
   *(double *)dest = teeny_box(r, sum_type, special->round_mode);
   return 0;
 }
@@ -676,8 +686,8 @@ FPVM_MATH_DECL(nmadd, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = -(a * b) + c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type);
-  int diff_type = teeny_binary_op_type(prod_type,c_type); 
+  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr); 
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -690,8 +700,8 @@ FPVM_MATH_DECL(msub, double)
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = (a * b) - c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type);
-  int diff_type = teeny_binary_op_type(prod_type,c_type); 
+  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr); 
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -703,8 +713,8 @@ FPVM_MATH_DECL(nmsub, double) {
   double b = teeny_unbox(*(double*)src2, &b_type);
   double c = teeny_unbox(*(double*)src3, &c_type);
   double r = -(a * b) - c; // TODO ROUNDING_MODE
-  int prod_type = teeny_binary_op_type(a_type,b_type);
-  int diff_type = teeny_binary_op_type(prod_type,c_type);
+  int prod_type = teeny_binary_op_type(a_type,b_type,special->inst_addr);
+  int diff_type = teeny_binary_op_type(prod_type,c_type,special->inst_addr);
   *(double *)dest = teeny_box(r, diff_type, special->round_mode);
   return 0;
 }
@@ -739,7 +749,7 @@ int sqrt_double(op_special_t *special, void *dest, void *src1, void *src2,
   int a_type;
   double a = teeny_unbox(*(double*)src1, &a_type);
   double r = sqrt(a);
-  int sqrt_type = teeny_unary_op_type(a_type);
+  int sqrt_type = teeny_unary_op_type(a_type, special->inst_addr);
   *(double *)dest = teeny_box(r, sqrt_type, special->round_mode);
   return 0;
 }
@@ -893,7 +903,9 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, teeny_unary_op_type(type1), FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
+    res = teeny_box(res, \
+	            teeny_unary_op_type(type1,&NAME), /* Use the current function address */ \
+	            FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -920,7 +932,9 @@ int restore_xmm(void *xmm_ptr) {
     double res = orig_##NAME(src1,src2);					\
     ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);				\
     ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);				\
-    res = teeny_box(res, teeny_binary_op_type(type1,type2), FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
+    res = teeny_box(res, \
+	            teeny_binary_op_type(type1,type2,&NAME), /* Use the current function address */ \
+		    FPVM_ROUND_DEFAULT); /* TODO: Need access to rounding mode */ \
     TRAPALL_ON();							\
     return res;								\
   }
@@ -962,7 +976,7 @@ double ldexp(double a, int b) {
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res =  teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
+  res =  teeny_box(res, teeny_unary_op_type(type, &ldexp), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -976,7 +990,7 @@ long int lround(double a) {
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type, &lround), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -990,7 +1004,7 @@ double __powidf2(double a, int b) {
   ORIG_IF_CAN(feenableexcept, FE_ALL_EXCEPT);
   ORIG_IF_CAN(feclearexcept, FE_ALL_EXCEPT);
   // TODO Can't get rounding mode here?
-  res = teeny_box(res, teeny_unary_op_type(type), FPVM_ROUND_DEFAULT);
+  res = teeny_box(res, teeny_unary_op_type(type, &__powidf2), FPVM_ROUND_DEFAULT);
   TRAPALL_ON();
   return res;
 }
@@ -1195,8 +1209,8 @@ void fpvm_number_system_init()
 
   num_teeny_types = 1ULL<<numbits_type;
   teeny_types = malloc(sizeof(struct teeny_type) * num_teeny_types);
-  teeny_conversion_table = malloc(sizeof(int) * num_teeny_types * num_teeny_types);
-  if(teeny_types == NULL || teeny_conversion_table == NULL) {
+  default_teeny_conversion_table = malloc(sizeof(int) * num_teeny_types * num_teeny_types);
+  if(teeny_types == NULL || default_teeny_conversion_table == NULL) {
       MATH_ERROR("Failed to allocate enough space for %lu teeny types!\n",
 	      num_teeny_types);
       exit(-1);
@@ -1211,7 +1225,7 @@ void fpvm_number_system_init()
   // are converted into the "left" input
   for(int left = 0; left < num_teeny_types; left++) {
       for(int right = 0; right < num_teeny_types; right++) {
-	  teeny_conversion_table[(left * num_teeny_types) + right] = left;
+	  default_teeny_conversion_table[(left * num_teeny_types) + right] = left;
       }
   }
 
@@ -1234,11 +1248,16 @@ void fpvm_number_system_init()
       if(path != NULL) {
           MATH_INFO("Reading teeny types from \"%s\"\n", path);
           FILE *file = fopen(path, "r");
+
+	  int *cur_teeny_conversion_table = default_teeny_conversion_table;
+	  struct teeny_region *cur_region = NULL;
+
           // I do not like using fscanf (because I am sane) but I want this to work ASAP and don't
           // really care if a slightly ill-formed input file causes a crash -KJH
 	  while(1) {
             unsigned long t_type, t_numbits_exp, t_numbits_mant; // t ...
             unsigned long c_lhs, c_rhs, c_result; // c ...
+	    unsigned long r_base, r_end; // r ...
 
             if(fscanf(file, " t %lu %lu : %lu", &t_type, &t_numbits_exp, &t_numbits_mant) == 3) {
 	        struct teeny_type *type = &teeny_types[t_type];
@@ -1248,13 +1267,30 @@ void fpvm_number_system_init()
 	                t_type,
 	                type->numbits_exp,
 	                type->numbits_mant);
-	    } else if(fscanf(file, " c %lu %lu -> %lu", &c_lhs, &c_rhs, &c_result) == 3) {
-		teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
-		teeny_conversion_table[(c_rhs * num_teeny_types) + c_lhs] = c_result;
-		MATH_INFO("Added conversion {%lu, %lu} -> %lu\n", c_lhs, c_rhs, c_result);
-	    } else if(fscanf(file, " C %lu %lu -> %lu", &c_lhs, &c_rhs, &c_result) == 3) {
-		teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+	    } else if(fscanf(file, " c %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
+		cur_teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
+		cur_teeny_conversion_table[(c_rhs * num_teeny_types) + c_lhs] = c_result;
+		MATH_INFO("Added conversion {%li, %li} -> %li\n", c_lhs, c_rhs, c_result);
+	    } else if(fscanf(file, " C %li %li -> %li", &c_lhs, &c_rhs, &c_result) == 3) {
+		cur_teeny_conversion_table[(c_lhs * num_teeny_types) + c_rhs] = c_result;
 		MATH_INFO("Added conversion (%lu, %lu) -> %lu\n", c_lhs, c_rhs, c_result);
+	    } else if(fscanf(file, " r %li %li", &r_base, &r_end) == 2) {
+		struct teeny_region *region = malloc(sizeof(struct teeny_region) + (sizeof(int) * num_teeny_types * num_teeny_types)); 
+		if(region == NULL) {
+		    MATH_ERROR("Failed to allocate teeny region [0x%lx, 0x%lx)\n", r_base, r_end);
+		    exit(-1);
+		}
+		region->base = (void*)r_base;
+		region->end = (void*)r_end;
+		region->next = cur_region;
+
+		memcpy((void*)region->matrix,
+		       (void*)cur_teeny_conversion_table,
+		       (sizeof(int) * num_teeny_types * num_teeny_types));
+
+		cur_teeny_conversion_table = region->matrix;
+		cur_region = region;
+		region_list = region;
 	    } else {
               fclose(file);
 	      break;
