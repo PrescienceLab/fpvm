@@ -1242,6 +1242,14 @@ void fpvm_number_system_init()
   // ; c ignores left vs. right and C requires exact matching
   // c M N -> P
   // C M N -> P
+  // 
+  // ; This creates a new region [START, END)
+  // ; with a clone of the current conversion rules.
+  // ; Any new rules added will only be applied to this
+  // ; new region (or any regions created after it)
+  //
+  // r START END
+  // c A B -> C
   //
   {
       const char *path = getenv("FPVM_TEENY_TYPES_PATH");
@@ -1283,6 +1291,9 @@ void fpvm_number_system_init()
 		region->base = (void*)r_base;
 		region->end = (void*)r_end;
 		region->next = cur_region;
+		printf("Adding a new conversion region [0x%lx,0x%lx)\n",
+			(unsigned long)region->base,
+			(unsigned long)region->end);
 
 		memcpy((void*)region->matrix,
 		       (void*)cur_teeny_conversion_table,
@@ -1291,6 +1302,8 @@ void fpvm_number_system_init()
 		cur_teeny_conversion_table = region->matrix;
 		cur_region = region;
 		region_list = region;
+	    } else if(fscanf(file, " ;%*[^\n]") == 0) {
+		// Skip comment lines
 	    } else {
               fclose(file);
 	      break;
