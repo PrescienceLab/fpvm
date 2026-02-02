@@ -23,7 +23,7 @@ extern void trap_entry(void);
   Support for individual mode depends on having our
   extensions to the F and D mode extensions that support
   traps, and are currently just stubbed out. Ideally,
-  these traps are delivered by our pipeline exceptions
+  these traps are delivered by our kernel-bypass exceptions
   extension.
 
   The (non-vector) floating point state consists of
@@ -324,9 +324,9 @@ struct delegate_config_t {
 
 
 #if CONFIG_RISCV_USE_ESTEP
-// When using PPE, we can place a new "estep" instruction
-// which will cause a trap that is delivered via PPE
-// this instruction is 32 bits.
+// When using KBEs, we can place a new "ESTEP" instruction
+// which will cause a trap that is delivered via KBE.
+// This instruction is 32 bits.
 #define BRK_INSTR 0x00300073
 #else
 // In regular operation, we will place an instruction
@@ -731,55 +731,55 @@ void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
 
 
 //
-// Entry point for FP Trap with pipelined exceptions on RISC-V
+// Entry point for FP Trap with Kernel-Bypass Exceptions on RISC-V
 //
-#if CONFIG_RISCV_TRAP_PIPELINED_EXCEPTIONS
+#if CONFIG_RISCV_TRAP_BYPASSED_EXCEPTIONS
 
 #include <fcntl.h>
 #include "riscv64.h"
 #include <sys/ioctl.h>
 
-#define PIPELINED_DELEGATE_HELLO_WORLD 0x4630
-#define PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
-#define PIPELINED_DELEGATE_DELEGATE_TRAPS 0x80084632
-#define PIPELINED_DELEGATE_CSR_STATUS 0x4633
-#define PIPELINED_DELEGATE_FILE "/dev/pipelined-delegate"
+#define BYPASSED_DELEGATE_HELLO_WORLD 0x4630
+#define BYPASSED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
+#define BYPASSED_DELEGATE_DELEGATE_TRAPS 0x80084632
+#define BYPASSED_DELEGATE_CSR_STATUS 0x4633
+#define BYPASSED_DELEGATE_FILE "/dev/pipelined-delegate"
 
-#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT)
+#define KBE_TRAP_MASK (1 << EXC_FLOATING_POINT)
 
 #if CONFIG_RISCV_USE_ESTEP
-#undef PPE_TRAP_MASK
-#define PPE_TRAP_MASK (1 << EXC_FLOATING_POINT) | (1 << EXC_INSTRUCTION_STEP)
+#undef KBE_TRAP_MASK
+#define KBE_TRAP_MASK (1 << EXC_FLOATING_POINT) | (1 << EXC_INSTRUCTION_STEP)
 #else
 #endif
 
 
 static int ppe_fd=-1;
 
-static int init_pipelined_exceptions(void) {
-  ppe_fd = open(PIPELINED_DELEGATE_FILE, O_RDWR);
+static int init_bypassed_exceptions(void) {
+  ppe_fd = open(BYPASSED_DELEGATE_FILE, O_RDWR);
 
   if (ppe_fd<0) {
-      ERROR("cannot open %s\n",PIPELINED_DELEGATE_FILE);
+      ERROR("cannot open %s\n",BYPASSED_DELEGATE_FILE);
       return -1;
   }
 
   struct delegate_config_t config = {
       .en_flag = 1,
-      .trap_mask = PPE_TRAP_MASK,
+      .trap_mask = KBE_TRAP_MASK,
   };
 
-  DEBUG("Installing %s (0x%016lx) as PPE handler\n", "trap_entry",
+  DEBUG("Installing %s (0x%016lx) as KBE handler\n", "trap_entry",
       (uintptr_t)trap_entry);
 
-  if (ioctl(ppe_fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
-      ERROR("cannot install handler target for PPE\n");
+  if (ioctl(ppe_fd, BYPASSED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
+      ERROR("cannot install handler target for KBE\n");
       close(ppe_fd);
       ppe_fd=-1;
       return -1;
   }
-  if (ioctl(ppe_fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
-      ERROR("cannot delegate traps for PPE\n");
+  if (ioctl(ppe_fd, BYPASSED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
+      ERROR("cannot delegate traps for KBE\n");
       close(ppe_fd);
       ppe_fd=-1;
       return -1;
@@ -792,13 +792,13 @@ static int init_pipelined_exceptions(void) {
   return 0;
 }
 
-static void deinit_pipelined_exceptions(void)
+static void deinit_bypassed_exceptions(void)
 {
     if (ppe_fd>0) {
-	DEBUG("terminating PPE handling\n");
+	DEBUG("terminating KBE handling\n");
 	close(ppe_fd);
     } else {
-	DEBUG("skipping request to terminate PPE handling as it is not running\n");
+	DEBUG("skipping request to terminate KBE handling as it is not running\n");
     }
 }
 
@@ -820,7 +820,7 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
   // Build up a sufficiently detailed ucontext_t and
   // call the shared handler.  Copy in/out the FP and GP
   // state
-  DEBUG("%s (0x%016lx): PPE Handling FPE! Building fake siginfo & ucontext\n", __func__,
+  DEBUG("%s (0x%016lx): KBE Handling FPE! Building fake siginfo & ucontext\n", __func__,
       (uintptr_t)ppe_fpe_handler);
 
   siginfo_t fake_siginfo = {0};
@@ -863,9 +863,9 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
 
   uint8_t __attribute__((unused)) *pc = (uint8_t *)uc->uc_mcontext.__gregs[REG_PC];
 
-  DEBUG("PPE-FPE signo 0x%x errno 0x%x code 0x%x pc %p 0x%08x\n", si->si_signo, si->si_errno,
+  DEBUG("KBE-FPE signo 0x%x errno 0x%x code 0x%x pc %p 0x%08x\n", si->si_signo, si->si_errno,
       si->si_code, si->si_addr, *(uint32_t *)pc);
-  DEBUG("PPE-FPE PC=%p SP=%p\n", pc, (void *)uc->uc_mcontext.__gregs[REG_SP]);
+  DEBUG("KBE-FPE PC=%p SP=%p\n", pc, (void *)uc->uc_mcontext.__gregs[REG_SP]);
 
   char buf[80];
 
@@ -910,26 +910,26 @@ static uintptr_t ppe_fpe_handler(void *priv, uintptr_t epc) {
   riscv64_fprs_in_d(fake_ucontext.uc_mcontext.__fpregs.__d.__f);
   riscv_set_fflags_mask(old_fflags);
 
-  DEBUG("PPE-FPE  done\n");
+  DEBUG("KBE-FPE  done\n");
 
   return MCTX_PC(&fake_ucontext.uc_mcontext);
 }
 
-/* ESTEPs are a pipeline-able exception cause that has been added to RISC-V for
- * the express purpose of being delegable. In theory, breakpoints could be
+/* ESTEPs are a kernel-bypass-able exception cause that has been added to RISC-V
+ * for the express purpose of being delegable. In theory, breakpoints could be
  * pipeline delegated too, but that would interfere with traditional dbugging
  * tools, like GDB or Valgrind. In an effort to make things behave like people
  * would expect, we introduced ESTEP, which is IDENTICAL to EBREAK, except for
  * the fact that no external software (GDB) will issue an ESTEP instruction. */
 
-/* Like the PPE FPE handler above, we construct a fake siginfo_t and ucontext_t
+/* Like the KBE FPE handler above, we construct a fake siginfo_t and ucontext_t
  * structs so that the arch-independent code works seamlessly.
  * When handling an ESTEP, this was intended to REPLACE the instruction
  * immediately AFTER the FP instruction. So we need to clean up and return the
  * original instruction, along with returning a set of FP flags that make sense
  * for the instruction we just executed. */
 static uintptr_t ppe_estep_handler(void *real_gregs, uintptr_t epc) {
-  DEBUG("%s (0x%016lx): PPE Handling ESTEP! Building fake siginfo & ucontext\n", __func__,
+  DEBUG("%s (0x%016lx): KBE Handling ESTEP! Building fake siginfo & ucontext\n", __func__,
       (uintptr_t)ppe_estep_handler);
   siginfo_t fake_siginfo = {0};
   ucontext_t fake_ucontext = {0};
@@ -954,15 +954,16 @@ static uintptr_t ppe_estep_handler(void *real_gregs, uintptr_t epc) {
   /* Restore the FCSR's FP event bits. */
   riscv_set_fcsr(fake_ucontext.uc_mcontext.__fpregs.__d.__fcsr);
 
-  DEBUG("PPE ESTEP done\n");
+  DEBUG("KBE ESTEP done\n");
 
   return skip_estep ? epc + 4 : epc;
 }
 
-// this is where the pipelined exception will land, and we will dispatch
+// this is where the bypassed exception will land, and we will dispatch
 // to the fpvm_short_circuit_handler
 uintptr_t handle_ppe(uintptr_t cause, uintptr_t epc, uintptr_t regs[32]) {
-  DEBUG("%s (0x%016lx): Handling pipelined trap\n", __func__, (uintptr_t)handle_ppe);
+  DEBUG("%s (0x%016lx): Handling kernel-bypassed trap\n",
+        __func__, (uintptr_t)handle_ppe);
   void *real_gregs = (void *)regs;
   switch (cause) {
     case EXC_FLOATING_POINT:
@@ -1054,9 +1055,9 @@ void arch_thread_deinit(void) { DEBUG("riscv64 thread deinit\n"); }
 
 int  arch_trap_short_circuiting_init(void)
 {
-    return init_pipelined_exceptions();
+    return init_bypassed_exceptions();
 }
 void arch_trap_short_circuiting_deinit(void)
 {
-    deinit_pipelined_exceptions();
+    deinit_bypassed_exceptions();
 }
