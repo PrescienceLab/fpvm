@@ -32,8 +32,8 @@ config RISCV_HAVE_FP_TRAPS
        Hardware support for floating point traps
        Not available in standard RISC-V, only RAFT-V
 
-config RISCV_TRAP_PIPELINED_EXCEPTIONS
-   bool "Do Trap Delivery Via PPEs (RAFT-V)"
+config RISCV_TRAP_BYPASSED_EXCEPTIONS
+   bool "Do Trap Delivery Via KBEs (RAFT-V)"
    depends on RISCV_HAVE_FP_TRAPS
    default n
    help
@@ -44,7 +44,7 @@ config RISCV_TRAP_PIPELINED_EXCEPTIONS
 
 config RISCV_USE_ESTEP
    bool "Do Breakpoint Delivery vie PPEs (RAFT-V)"
-   depends on RISCV_HAVE_FP_TRAPS
+   depends on RISCV_TRAP_BYPASSED_EXCEPTIONS
    default n
    help
        Use hardware support for Kernel-Bypass Exections (KBEs)
@@ -107,7 +107,7 @@ config ENABLE_PULSE_PROFILING
 
 config TRAP_SHORT_CIRCUITING
     bool "Trap short-circuiting (hardware support)"
-    depends on  RISCV_TRAP_PIPELINED_EXCEPTIONS && RISCV_USE_ESTEP
+    depends on RISCV_TRAP_BYPASSED_EXCEPTIONS
     default n
     help
        Use user-level trap handling if possible
