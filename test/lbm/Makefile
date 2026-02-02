@@ -1,4 +1,8 @@
-CC = gcc -lm -O3 -fno-pic -no-pie
+# PREFIX allows you to use a cross-compiler to build fbench. For example,
+# make PREFIX='riscv64-unknown-linux-gnu-' will cross-compile for RISC-V.
+PREFIX =
+CC = $(PREFIX)gcc
+CFLAGS = -lm -O3 -fno-pic -no-pie
 
 EXEC = lbm
 
@@ -16,7 +20,7 @@ run_fpvm_magic: $(EXEC).patched_magic
 	fpvm_run.sh ./$(EXEC).patched_magic 10 test.magic.out 0 0 > $(EXEC).patched_magic.out 2>&1
 
 $(EXEC): $(EXEC).c main.c
-	$(CC) $(EXEC).c main.c -lm -o $(EXEC)
+	$(CC) $(CFLAGS) $(EXEC).c main.c -lm -o $(EXEC)
 
 $(EXEC).patched_trap $(EXEC).patched_magic : $(EXEC)
 	fpvm_patch.sh -w workspace -m $(EXEC)
@@ -26,7 +30,3 @@ diff:
 
 clean:
 	rm -f $(EXEC) $(EXEC).patched_magic $(EXEC).patched_trap $(EXEC).out $(EXEC).patched_trap.out $(EXEC).patched_magic.out $(EXEC)*.timing $(EXEC)*fpvm_magic*  $(EXEC)*.csv $(EXEC).original
-
-
-
-
