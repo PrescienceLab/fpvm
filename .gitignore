@@ -61,6 +61,7 @@ three_body_simulation_y.txt
 test/fbench/fbench
 test/ffbench/ffbench
 test/three-body/three_body_simulation
+test/lbm/lbm
 
 /test/**/fpvm.json
 
