@@ -22,6 +22,14 @@ else
   CAPSTONE_LINK=-L$(CONFIG_CAPSTONE_DIR)/lib -lcapstone
 endif
 
+ifeq ($(CONFIG_ALT_MATH_MPFR),1)
+	MPFR_INC=-I$(CONFIG_MPFR_DIR)/include
+	MPFR_LINK=-L$(CONFIG_MPFR_DIR)/lib -lmpfr
+else
+	MPFR_INC=
+	MPFR_LINK=
+endif
+
 ifeq ($(CONFIG_ARCH_X64),1)
    ARCH=x64
 else ifeq ($(CONFIG_ARCH_ARM64),1)
@@ -47,7 +55,7 @@ OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
 INC_DIRS := $(ARCHINCDIR)/ include/
-INC_FLAGS := $(addprefix -I,$(INC_DIRS)) $(CAPSTONE_INC)
+INC_FLAGS := $(addprefix -I,$(INC_DIRS)) $(CAPSTONE_INC) $(MPFR_INC)
 
 CC = $(PREFIX)gcc
 AS = $(PREFIX)gcc
@@ -117,11 +125,11 @@ $(BUILD)/fpvm.so: $(BUILD) $(OBJS)
 	$(call quiet-cmd,LD,$@)
 	$(Q)cp .config $(BUILD)/.config
 	$(Q)cp include/fpvm/config.h $(BUILD)/config.h
-	$(Q)$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(BUILD)/fpvm.so -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
+	$(Q)$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(BUILD)/fpvm.so -Wl,-rpath -Wl,./lib/ $(MPFR_LINK) -lm -ldl -lstdc++ $(CAPSTONE_LINK)
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS)
 	$(call quiet-cmd,LD,$@)
-	$(Q)$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ $(CAPSTONE_LINK)
+	$(Q)$(CC) $(CFLAGS) $(OBJS) -o $(BUILD)/fpvm_main -Wl,-rpath -Wl,./lib/ $(MPFR_LINK) -lm -ldl -lstdc++ $(CAPSTONE_LINK)
 
 $(BUILD)/test_fpvm: test/test_fpvm.c
 	$(CC) $(CFLAGS) -Wno-discarded-qualifiers -O0 -pthread test/test_fpvm.c -lm -o $@

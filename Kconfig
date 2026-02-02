@@ -156,11 +156,18 @@ choice
     config ALT_MATH_MPFR
         bool "GNU MPFR"
 
-
     config MPFR_PRECISION
         int "MPFR Precision"
 		    default 200
 		    depends on ALT_MATH_MPFR
+
+    config MPFR_DIR
+       string "MPFR Install Directory"
+       depends on ALT_MATH_MPFR
+       default ""
+       help
+          Install directory for MPFR, which must include
+          support for your architecture
 
     config ALT_MATH_EXPR_TRACE
         bool "Expression-based thunk tracing"
