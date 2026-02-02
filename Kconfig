@@ -85,7 +85,7 @@ config TELEMETRY_PERIOD
     default 0
     help
         Number of FP traps between telemetry reports
-	0 means that reports are generated only at thread end / process end
+        0 means that reports are generated only at thread end / process end
 
 config PERF_STATS
     bool "Performance measurement"
@@ -97,7 +97,7 @@ config PERF_STATS_PERIOD
     default 0
     help
         Number of FP traps between performance statistics reports
-	0 means that reports are generated only at thread end / process end
+        0 means that reports are generated only at thread end / process end
 
 config ENABLE_PULSE_PROFILING
     bool "Enable the pulse profiler (throw fpvm.json into https://ui.perfetto.dev/)"
@@ -193,16 +193,16 @@ config TEENY_TYPE_BITS
 
 config TEENY_EXP_BITS
     int "Teeny exponent size (bits)"
-		default 8 
+		default 8
 		depends on ALT_MATH_TEENY
     help
        The exponent size must be <12
        This is the default, and can be overridden with
        the environment variable FPVM_TEENY_EXP_BITS
-       
+
 config TEENY_MANT_BITS
     int "Teeny mantissa size (bits)"
-		default 16 
+		default 16
 		depends on ALT_MATH_TEENY
     help
        The exponent size + mantissa size + 1 must be <= 50
@@ -266,7 +266,7 @@ config DEFER_BRINGUP_UNTIL_MAIN
     bool "Start FP interception just before main()"
     default n
     help
-      Intercept main() and use it as the point to bring up 
+      Intercept main() and use it as the point to bring up
       FPVM operation for the process.
 
       NOTE: If any foreign function calls occur before main() this will cause a hard failure.
