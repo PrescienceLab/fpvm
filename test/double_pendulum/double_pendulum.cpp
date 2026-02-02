@@ -116,7 +116,7 @@ int main() {
     std::pair<double, double> second_edge{
         first_edge.first + ss.length.second * sin(st.theta.second),
         first_edge.second + ss.length.second * cos(st.theta.second)};
-    printf("%d\t%.64lf\t%.64lf\t0.0\n", i, second_edge.first, -second_edge.second);
+    // printf("%d\t%.64lf\t%.64lf\t0.0\n", i, second_edge.first, -second_edge.second);
     st = dp::advance(st, ss, 0.01);
   }
 }
