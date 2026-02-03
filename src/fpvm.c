@@ -1428,8 +1428,6 @@ static void fp_trap_handler_emu(ucontext_t *uc)
     return;
   }
 
-  mc->fp_traps++;
-
 #define ON_SAME_PAGE(x,y) ((((uint64_t)(x))&(~0xfffUL))==(((uint64_t)(y))&(~0xfffUL)))
 
 #if 0 && CONFIG_INSTR_SEQ_EMULATION && DEBUG_OUTPUT
