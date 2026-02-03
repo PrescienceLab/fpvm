@@ -384,15 +384,15 @@ void arch_reset_trap(ucontext_t *uc, uint64_t *state) {
     DECODE(state, instr, flag);
 
     switch (flag) {
-      case 0:  // flag 0 = 1st trap to kick off machine
+    case INIT:  // 1st trap to kick off machine
         DEBUG("skipping rewrite of instruction on first trap\n");
         break;
-      case 2:  // flag 2 = trap due to inserted breakpoint instruction
+    case AWAIT_TRAP: // trap due to inserted breakpoint instruction
         *target = instr;
         __builtin___clear_cache(target, ((void *)target) + 4);
-        DEBUG("target at %p has been restored to original instruction %08x\n", target, instr);
+        DEBUG("target at %p has been restored to original instruction 0x%08x\n", target, instr);
         break;
-      default:
+    default:
         ERROR("Surprise state flag %x in reset trap\n", flag);
         break;
     }
