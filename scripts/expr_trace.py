@@ -1,4 +1,5 @@
 import struct
+import sympy
 
 def reinterpret_int64_as_double(int_value):
     """
@@ -72,8 +73,86 @@ with open('expressions.trace') as f:
 # lets do some basic analysis
 
 
+
 inputs = []
 outputs = []
+
+
+for node in nodes.values():
+    if node.operation.startswith("input."):
+        inputs.append(node)
+    if node.operation.startswith("output."):
+        outputs.append(node)
+
+
+class SympyGenerator:
+    def __init__(self):
+        self.bindings = {} # node -> sympy expression
+
+    def codegen(self, node):
+        if node.operation == 'constant':
+            return node.value
+        # generate a sympy expression for this node
+        if node in self.bindings:
+            return self.bindings[node]
+
+
+        xs = []
+        infix = None
+
+        for inp in node.inputs:
+            xs.append(self.codegen(inp))
+        if '.' in node.operation:
+            return xs[0]
+
+        if node.operation == 'add':
+            return xs[0] + xs[1]
+        elif node.operation == 'sub':
+            return xs[0] - xs[1]
+        elif node.operation == 'mul':
+            return xs[0] * xs[1]
+        elif node.operation == 'div':
+            return xs[0] / xs[1]
+        elif node.operation == 'neg':
+            return -xs[0]
+        elif node.operation == 'cos':
+            return sympy.cos(xs[0])
+        elif node.operation == 'sin':
+            return sympy.sin(xs[0])
+        elif node.operation == 'exp':
+            return sympy.exp(xs[0])
+        elif node.operation == 'log':
+            return sympy.log(xs[0])
+
+        raise ValueError(f'Unhandled operation: {node.operation}')
+        # else:
+        #     if len(arguments) != 2:
+        #         raise ValueError(f'Expected 2 arguments for {node.operation}, got {len(arguments)}')
+        #     print(f'  double {name} = {arguments[0]} {infix} {arguments[1]};')
+
+    def generate(self, nodes, inputs, outputs):
+        print(len(inputs), len(outputs))
+        for inp in inputs:
+            # create a sympy symbol for each input in the binding table
+            input_id = inp.operation.split('.')[1]
+            sym = sympy.symbols(f'i{input_id}')
+            self.bindings[inp] = sym
+
+        for out in outputs:
+            expr = self.codegen(out.inputs[0])
+            expr = sympy.simplify(expr)
+            print(f'{out.operation} = {expr}')
+            # solve expr so it equals some value
+            # print(f"Solving for {out.operation} = 0")
+            # s = sympy.solve(expr)
+            # print(s)
+        pass # ...
+
+sg = SympyGenerator()
+sg.generate(nodes, inputs, outputs)
+
+exit(0)
+
 
 variables = {} # name -> Node
 names = {} # Node -> name
@@ -82,11 +161,6 @@ def bind(node, name):
     names[node] = name
     variables[name] = node
 
-for node in nodes.values():
-    if node.operation.startswith("input."):
-        inputs.append(node)
-    if node.operation.startswith("output."):
-        outputs.append(node)
 
 print(f'void compute(double inputs[{len(inputs)}], double outputs[{len(outputs)}]) {{')
 
