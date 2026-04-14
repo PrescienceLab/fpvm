@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <fpvm/fir_jit.h>
+#include <lightning.h>
 
 // A cached pointer to the real fork() function from libc
 static pid_t (*real_fork)(void) = NULL;
@@ -162,6 +163,322 @@ void* compile_and_load_assembly(const char* asm_code) {
     unlink(tmp_so_file);
 
     return executable_mem;
+}
+
+static jit_state_t* _jit;
+
+// Pool of registers available for vstack values.
+// We exclude JIT_R0 entirely — it's always scratch.
+// Pool: JIT_R1, JIT_R2, JIT_V0... but V0/V1/V2 are taken by fpstate/mcontext/special
+// So pool is just JIT_R1, JIT_R2 = 2 registers
+#define VSTACK_REG_DEPTH 2  // JIT_R1, JIT_R2 only
+#define MAX_VSTACK_DEPTH 16 
+
+static jit_gpr_t pool_reg(int i) {
+    return JIT_R(i + 1);  // pool[0]=R1, pool[1]=R2
+}
+
+// Where a vstack value lives
+typedef enum { LOC_REG, LOC_SPILL } LocKind;
+typedef struct {
+    LocKind kind;
+    int index;  // pool index if LOC_REG, frame slot index if LOC_SPILL
+} Location;
+
+// Allocator state — reset between JIT compilations
+static struct {
+    Location vstack[MAX_VSTACK_DEPTH];
+    int      vsp;                        // index of top, -1 = empty
+    bool     reg_used[VSTACK_REG_DEPTH];
+    int      spill_hwm;                  // next free spill slot
+} ra;
+
+static int vstack_frame;  // frame offset of spill area
+
+static void ra_init() {
+    ra.vsp = -1;
+    memset(ra.reg_used, 0, sizeof(ra.reg_used));
+    ra.spill_hwm = 0;
+    vstack_frame = jit_allocai(MAX_VSTACK_DEPTH * 8);
+}
+
+// Find a free register in the pool, -1 if none
+static int ra_find_free() {
+    for (int i = 0; i < VSTACK_REG_DEPTH; i++)
+        if (!ra.reg_used[i]) return i;
+    return -1;
+}
+
+// Allocate a location for a new vstack push.
+// Tries a register first, falls back to a frame spill slot.
+static Location ra_push() {
+    Location loc;
+    int idx = ra_find_free();
+    if (idx >= 0) {
+        ra.reg_used[idx] = true;
+        loc = (Location){ LOC_REG, idx };
+    } else {
+        loc = (Location){ LOC_SPILL, ra.spill_hwm++ };
+    }
+    ra.vstack[++ra.vsp] = loc;
+    return loc;
+}
+
+// Pop top location and free its register if it was in one.
+static Location ra_pop() {
+    Location loc = ra.vstack[ra.vsp--];
+    if (loc.kind == LOC_REG)
+        ra.reg_used[loc.index] = false;
+    return loc;
+}
+
+// Peek at top without popping.
+static Location ra_peek() {
+    return ra.vstack[ra.vsp];
+}
+
+// Peek at arbitrary depth without popping. depth=0 is top.
+static Location ra_peek_at(int depth) {
+    return ra.vstack[ra.vsp - depth];
+}
+
+// Emit JIT code to store src register into a location.
+static void loc_store(jit_gpr_t src, Location loc) {
+    if (loc.kind == LOC_REG) {
+        if (pool_reg(loc.index) != src)
+            jit_movr(pool_reg(loc.index), src);
+    } else {
+        jit_stxi(vstack_frame + loc.index * 8, JIT_FP, src);
+    }
+}
+
+// Emit JIT code to load a location into dst register.
+static void loc_load(jit_gpr_t dst, Location loc) {
+    if (loc.kind == LOC_REG) {
+        if (pool_reg(loc.index) != dst)
+            jit_movr(dst, pool_reg(loc.index));
+    } else {
+        jit_ldxi(dst, JIT_FP, vstack_frame + loc.index * 8);
+    }
+}
+
+// Ensure a location is in a register, loading into a temp if needed.
+// Returns the register containing the value.
+// Sets *temp_idx to the pool index of the temp register allocated,
+// or -1 if no temp was needed (value was already in a register).
+// Caller must free the temp with ra.reg_used[*temp_idx] = false when done.
+static jit_gpr_t materialize(Location loc, int *temp_idx) {
+    if (loc.kind == LOC_REG) {
+        *temp_idx = -1;
+        return pool_reg(loc.index);
+    }
+    // Need a temp register to load the spilled value into
+    int idx = ra_find_free();
+    assert(idx >= 0 && "no free register for materialize");
+    ra.reg_used[idx] = true;
+    *temp_idx = idx;
+    jit_gpr_t reg = pool_reg(idx);
+    jit_ldxi(reg, JIT_FP, vstack_frame + loc.index * 8);
+    return reg;
+}
+
+jit_fn_t translate_fir_to_lightning(uint8_t *fir_code, size_t code_size) {
+    // Jit Initialization
+    _jit = jit_new_state();
+    jit_prolog();
+
+    jit_node_t *fp_regs_arg   = jit_arg();
+    jit_node_t *mcontext_arg  = jit_arg();
+
+    // JIT_V0 = fpstate pointer (callee-saved, survives calls)
+    // JIT_V1 = mcontext pointer (callee-saved, survives calls)
+    // JIT_V2 = special struct pointer (callee-saved)
+    jit_getarg(JIT_V0, fp_regs_arg);
+    jit_getarg(JIT_V1, mcontext_arg);
+
+    ra_init();
+
+    // Allocate the "special struct" on the frame (72 bytes = 9 x 8)
+    // jit_allocai returns a frame offset.
+    int special_frame = jit_allocai(sizeof(op_special_t));
+    // jit_movi(JIT_R0, 0);
+    // for (int i = 0; i < 9; i++) {
+    //     jit_stxi(special_frame + i * 8, JIT_FP, JIT_R0);
+    // }
+    // offsetof 
+    // V2 = address of special struct on frame
+    jit_addi(JIT_V2, JIT_FP, special_frame);
+
+    int vdepth = 0;
+    
+    uint8_t *pc = fir_code;
+    uint8_t *end = fir_code + code_size;
+
+    while (pc < end) {
+        uint8_t opcode = *pc++;
+
+        switch (opcode) {
+            case fpvm_opcode_fpptr: {
+                uint16_t offset = *(uint16_t *)pc; pc += 2;
+                // Allocate a location for the new value, compute into R0 scratch,
+                // then store R0 into wherever the allocator decided to put it
+                Location loc = ra_push();
+                jit_addi(JIT_R0, JIT_V0, offset);
+                loc_store(JIT_R0, loc);
+                break;
+            }
+
+            case fpvm_opcode_mcptr: {
+                uint16_t offset = *(uint16_t *)pc; pc += 2;
+                Location loc = ra_push();
+                jit_addi(JIT_R0, JIT_V1, offset);
+                loc_store(JIT_R0, loc);
+                break;
+            }
+
+            case fpvm_opcode_dup: {
+                // Load top into R0, push a new slot, store R0 there
+                Location src = ra_peek();
+                Location dst = ra_push();
+                loc_load(JIT_R0, src);
+                loc_store(JIT_R0, dst);
+                break;
+            }
+
+            case fpvm_opcode_ld64: {
+                // Load the pointer from top into R0, dereference it,
+                // store the value back in place (no push/pop, same slot)
+                Location top = ra_peek();
+                loc_load(JIT_R0, top);
+                jit_ldr(JIT_R0, JIT_R0);
+                loc_store(JIT_R0, top);
+                break;
+            }
+
+            case fpvm_opcode_iadd: {
+                // Pop two, add, push result
+                Location b = ra_pop();
+                Location a = ra_pop();
+                int ta, tb;
+                jit_gpr_t ra_reg = materialize(a, &ta);
+                jit_gpr_t rb_reg = materialize(b, &tb);
+                // Free temps before pushing result so allocator can reuse registers
+                if (tb >= 0) ra.reg_used[tb] = false;
+                if (ta >= 0) ra.reg_used[ta] = false;
+                Location res = ra_push();
+                jit_addr(JIT_R0, ra_reg, rb_reg);
+                loc_store(JIT_R0, res);
+                break;
+            }
+
+            case fpvm_opcode_imm64: {
+                int64_t imm = *(int64_t *)pc; pc += 8;
+                Location loc = ra_push();
+                jit_movi(JIT_R0, imm);
+                loc_store(JIT_R0, loc);
+                break;
+            }
+
+            case fpvm_opcode_call2s1d: {
+                void *func_ptr = *(void **)pc; pc += sizeof(void *);
+                // Load each arg into R0 and push immediately — pushargr captures
+                // the value at call time so overwriting R0 after each push is safe
+                // Stack: [..., src2, src1, dest] (dest = top)
+                jit_prepare();
+                    jit_pushargr(JIT_V2);
+                    loc_load(JIT_R0, ra_peek_at(0)); jit_pushargr(JIT_R0);  // dest
+                    loc_load(JIT_R0, ra_peek_at(1)); jit_pushargr(JIT_R0);  // src1
+                    loc_load(JIT_R0, ra_peek_at(2)); jit_pushargr(JIT_R0);  // src2
+                    jit_pushargi(0);
+                    jit_pushargi(0);
+                jit_finishi(func_ptr);
+                ra_pop(); ra_pop(); ra_pop();
+                break;
+            }
+
+            case fpvm_opcode_call1s1d: {
+                void *func_ptr = *(void **)pc; pc += sizeof(void *);
+                jit_prepare();
+                    jit_pushargr(JIT_V2);
+                    loc_load(JIT_R0, ra_peek_at(0)); jit_pushargr(JIT_R0);  // dest
+                    loc_load(JIT_R0, ra_peek_at(1)); jit_pushargr(JIT_R0);  // src1
+                    jit_pushargi(0);
+                    jit_pushargi(0);
+                    jit_pushargi(0);
+                jit_finishi(func_ptr);
+                ra_pop(); ra_pop();
+                break;
+            }
+
+            case fpvm_opcode_call3s1d: {
+                void *func_ptr = *(void **)pc; pc += sizeof(void *);
+                jit_prepare();
+                    jit_pushargr(JIT_V2);
+                    loc_load(JIT_R0, ra_peek_at(0)); jit_pushargr(JIT_R0);  // dest
+                    loc_load(JIT_R0, ra_peek_at(1)); jit_pushargr(JIT_R0);  // src1
+                    loc_load(JIT_R0, ra_peek_at(2)); jit_pushargr(JIT_R0);  // src2
+                    loc_load(JIT_R0, ra_peek_at(3)); jit_pushargr(JIT_R0);  // src3
+                    jit_pushargi(0);
+                jit_finishi(func_ptr);
+                ra_pop(); ra_pop(); ra_pop(); ra_pop();
+                break;
+            }
+
+            case fpvm_opcode_clspecial: {
+                // R0 is pure scratch so zeroing it is always safe
+                // vstack values live in R1/R2 or frame, never R0
+                jit_movi(JIT_R0, 0);
+                for (int i = 0; i < 9; i++)
+                    jit_stxi(special_frame + i * 8, JIT_FP, JIT_R0);
+                break;
+            }
+
+            case fpvm_opcode_setrflags: {
+                // Pop top, store into special->rflags (slot 0 of special struct)
+                Location top = ra_pop();
+                loc_load(JIT_R0, top);
+                jit_stxi(special_frame, JIT_FP, JIT_R0);
+                break;
+            }
+    
+                case fpvm_opcode_done: {
+                    jit_ret();
+                    goto done;
+                }
+    
+                default:
+                    // Unknown opcode — could log or assert
+                    break;
+        }
+    }
+
+    done:
+    jit_epilog();
+    
+    jit_fn_t jit_func = (jit_fn_t)jit_emit();
+
+    // jit_word_t real_code_size;
+
+    // jit_get_code(&real_code_size);  /* query exact size of the code */
+    // csh handle;
+    // cs_open(CS_ARCH_X86, CS_MODE_64, &handle);
+    // cs_insn *insn;
+    // size_t count = cs_disasm(handle, (const uint8_t*)jit_func, real_code_size, (uint64_t)(jit_func), 0, &insn);
+    // printf("Disassembly of JIT-compiled function at %p (size: %zu bytes):\n", jit_func, real_code_size);
+    // if (count > 0) {
+    //     for (size_t i = 0; i < count; i++) {
+    //         printf("0x%"PRIx64":\t%s\t\t%s\n", 
+    //               insn[i].address, 
+    //               insn[i].mnemonic, 
+    //               insn[i].op_str);
+    //     }
+    //     cs_free(insn, count);  // Free memory when done
+    // }
+    // cs_close(&handle);  // Clean up when done
+    
+    jit_clear_state();
+
+    return jit_func;
 }
 
 // FIR bytecode walker with assembly generation
