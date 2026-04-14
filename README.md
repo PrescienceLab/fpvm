@@ -26,8 +26,8 @@ For FIR, ensure GNU Lightning 2.2.3 is installed:
 ```bash
 curl https://ftp.gnu.org/gnu/lightning/lightning-2.2.3.tar.gz -o lightning-2.2.3.tar.gz
 tar xf lightning-2.2.3.tar.gz
-cd lightning-2.2.3.tar.gz
-./configure
+cd lightning-2.2.3
+./configure --prefix=<install-directory>
 make
 sudo make install
 ```
