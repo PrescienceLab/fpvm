@@ -1906,18 +1906,18 @@ static int fpvm_jit_compile_from_fir(fpvm_inst_t *fi, execution_context_t *mc) {
     asm_init(&gen);
     
     START_PERF(mc, fir_jit_asm_gen);
-    translate_fir_to_assembly(builder->code, builder->offset, &gen);
+    void (*jit_func) = translate_fir_to_lightning(builder->code, builder->offset);
     END_PERF(mc, fir_jit_asm_gen);
     
     printf("Generated assembly:\n%s\n", gen.code);
     
     // Compile and load the generated assembly
     START_PERF(mc, fir_jit_compile_load);
-    fi->jit_func = compile_and_load_assembly(gen.code);
+    fi->jit_func = jit_func
     END_PERF(mc, fir_jit_compile_load);
 
     if (fi->jit_func) {
-        printf("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
+        DEBUG("JIT compilation successful. Function for instruction at %p loaded at %p\n", fi->addr, fi->jit_func);
     } else {
         fprintf(stderr, "JIT compilation failed for instruction at %p.\n", fi->addr);
     }
