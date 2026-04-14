@@ -18,6 +18,8 @@ else
   PREFIX=
 endif
 
+LIGHTNING_LIB = ~/presciencelab/lightning-install/lib
+
 
 ARCHSRCDIR = arch/$(ARCH)
 ARCHINCDIR = $(ARCHSRCDIR)
@@ -81,7 +83,7 @@ $(TARGET): $(BUILD) $(OBJS)
 	@echo " LD   $(TARGET)"
 	@cp .config $(BUILD)/.config
 	@cp include/fpvm/config.h $(BUILD)/config.h
-	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone -L~/presciencelab/lightning-install/lib -llightning
+	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone -L$(LIGHTNING_LIB) -llightning
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS) 
 	@echo " LD   $(BUILD)/fpvm_main"
