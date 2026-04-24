@@ -179,16 +179,24 @@ static void fpvm_build_rawv(fpvm_builder_t *b, void *val, int length) {
 #include <fpvm/opcodes.inc>
 
 
+#include <fpvm/vm.h>
 
 int fpvm_vm_compile(fpvm_inst_t *fi) {
 #ifdef __amd64__
-#include <fpvm/vm.h>
   extern int fpvm_vm_x86_compile(fpvm_inst_t *);
   return fpvm_vm_x86_compile(fi);
+
+#elif defined(__aarch64__)
+  extern int fpvm_vm_arm64_compile(fpvm_inst_t *);
+  return fpvm_vm_arm64_compile(fi);
+
+#elif defined(__riscv)
+  extern int fpvm_vm_riscv64_compile(fpvm_inst_t *);
+  return fpvm_vm_riscv64_compile(fi);
+
 #else
-// #warning "FPVM's vm only works on x86_64 for now..."
   return -1;
-#endif  // __amd64__
+#endif
 }
 
 void vm_test_decode(fpvm_inst_t *fi) {
