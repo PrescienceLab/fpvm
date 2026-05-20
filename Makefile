@@ -18,7 +18,7 @@ else
   PREFIX=
 endif
 
-LIGHTNING_LIB = ~/presciencelab/lightning-install/lib
+LIGHTNING_LIB = $(HOME)/tools/
 
 
 ARCHSRCDIR = arch/$(ARCH)
@@ -37,7 +37,7 @@ BUILD?=build
 OBJS := $(SRCS:%=$(BUILD)/%.o)
 DEPS := $(OBJS:.o=.d)
 
-INC_DIRS := include/ $(ARCHINCDIR)/ ~/presciencelab/lightning-install/include
+INC_DIRS := include/ $(ARCHINCDIR)/ $(LIGHTNING_LIB)/include/
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CC = $(PREFIX)gcc
@@ -83,7 +83,7 @@ $(TARGET): $(BUILD) $(OBJS)
 	@echo " LD   $(TARGET)"
 	@cp .config $(BUILD)/.config
 	@cp include/fpvm/config.h $(BUILD)/config.h
-	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,./lib/ -lmpfr -lm -ldl -lstdc++ -lcapstone -L$(LIGHTNING_LIB) -llightning
+	@$(CC) $(CFLAGS) -fPIC -shared $(OBJS) -o $(TARGET) -Wl,-rpath -Wl,$(LIGHTNING_LIB)/lib -lmpfr -lm -ldl -lstdc++ -lcapstone -L$(LIGHTNING_LIB)/lib -llightning
 
 $(BUILD)/fpvm_main: $(BUILD) $(OBJS) 
 	@echo " LD   $(BUILD)/fpvm_main"
