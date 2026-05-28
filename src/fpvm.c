@@ -1901,19 +1901,10 @@ static int fpvm_jit_compile_from_fir(fpvm_inst_t *fi, execution_context_t *mc) {
         return -1;
     }
     
-    // Translate FIR bytecode to assembly
-    asm_gen_t gen;
-    asm_init(&gen);
-    
-    START_PERF(mc, fir_jit_asm_gen);
-    void (*jit_func) = translate_fir_to_lightning(builder->code, builder->offset);
-    END_PERF(mc, fir_jit_asm_gen);
-    
-    printf("Generated assembly:\n%s\n", gen.code);
-    
     // Compile and load the generated assembly
     START_PERF(mc, fir_jit_compile_load);
-    fi->jit_func = jit_func
+    void (*jit_func) = translate_fir_to_lightning(builder->code, builder->offset);
+    fi->jit_func = jit_func;
     END_PERF(mc, fir_jit_compile_load);
 
     if (fi->jit_func) {
@@ -1922,7 +1913,6 @@ static int fpvm_jit_compile_from_fir(fpvm_inst_t *fi, execution_context_t *mc) {
         fprintf(stderr, "JIT compilation failed for instruction at %p.\n", fi->addr);
     }
 
-    free(gen.code);
     return fi->jit_func ? 0 : -1;
 }
 
@@ -2853,166 +2843,26 @@ int main(int argc, char *argv[])
   regs.fprs = MCTX_FPRS(&uc.uc_mcontext);
   regs.fpr_size = 16;
 
-
-  INFO("Initial EFLAGS value: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
-  uint64_t eflags0 = uc.uc_mcontext.gregs[REG_EFL];
-  print_eflags(eflags0, eflags0);   // no “before” yet, so pass the same value
-
-  
-  // Doing fake bind here to capture operand sizes
-  // If we do it this way, we will only bind the first time we see the instruction
-  // and otherwise keep it in the decode cache
   if (fpvm_decoder_bind_operands(fi, &regs)) {
     ERROR("Cannot bind operands of instruction\n");
     abort();
   }
 
-
-  // Ethan + Ben
-  // Check if side effect addresses are set for comparison instructions
-  if (fi->common->op_type == FPVM_OP_CMP || fi->common->op_type == FPVM_OP_UCMP) {
-    INFO("Side effect address[0] (EFLAGS): %p\n", fi->side_effect_addrs[0]);
-    INFO("EFLAGS address from mcontext: %p\n", &regs.mcontext->gregs[REG_EFL]);
-    
-    // Verify they point to the same location
-    if ((void*)fi->side_effect_addrs[0] == (void*)&regs.mcontext->gregs[REG_EFL]) {
-      INFO("Side effect address correctly points to EFLAGS\n");
-    } else {
-      ERROR("Side effect address does NOT point to EFLAGS!\n");
-    }
-  }
-
   if (fpvm_vm_compile(fi)) {
-    ERROR("cannot compile instruction\n");
+    ERROR("cannot compile instruction to FIR\n");
     abort();
   }
 
-  INFO("successfully decoded and compiled instruction\n");
-  
-  INFO("Now displaying generated code\n");
-  fpvm_builder_disas(stdout, (fpvm_builder_t*)fi->codegen);
-
-
-  // --- BEGIN JIT TEST INSERTION ---
-  INFO("\n--- Testing JIT Compilation and Execution ---\n");
-
-  // Translate the FIR that was just generated into an assembly string
-  asm_gen_t gen;
-  asm_init(&gen);
-  fpvm_builder_t *builder = (fpvm_builder_t*)fi->codegen;
-  translate_fir_to_assembly(builder->code, (size_t)builder->offset, &gen);
-
-  // JIT Compile the assembly into a callable function
-  void* (*jit_function)(void*, void*) = compile_and_load_assembly(gen.code);
-  if (!jit_function) {
-      ERROR("JIT compilation failed. Skipping JIT test.\n");
-      free(gen.code);
+  if (fpvm_jit_compile_from_fir(fi, NULL) == 0 && fi->jit_func) {
+    DEBUG("Executing newly JIT-compiled function for instruction.\n");
+    fi->jit_func(regs.fprs, &uc.uc_mcontext);
   } else {
-      INFO("JIT compilation successful.\n");
-      free(gen.code);
-
-      // Prepare a separate set of registers for the JIT test
-      struct xmm fpregs_jit[16];
-      for (int i = 0; i < 16; i++) {
-        fpregs_jit[i].low = (double)i;
-        fpregs_jit[i].high = (double)i + 0.5;
-      }
-
-      // Execute the JIT-compiled function
-      ucontext_t jit_uc;
-      getcontext(&jit_uc);
-      jit_function(fpregs_jit, &jit_uc.uc_mcontext);
-
-      // Print the result from the JIT execution
-      INFO("\n--- JIT Final State ---\n");
-      fpvm_dump_xmms_double(stdout, fpregs_jit);
-      printf("=========================================================\n");
-  }
-  // --- END JIT TEST INSERTION ---
-
-  INFO("Now trying to execute generated code\n");
-
-  INFO("Now testing with VM\n");
-  
-
-  fpvm_vm_t vm;
-
-  struct xmm fpregs[16];
-
-  for (int i = 0; i < 16; i++) {
-    fpregs[i].low = (double)i;
-    fpregs[i].high = (double)i + 0.5;
+    ERROR("JIT compilation failed; cannot execute instruction.\n");
+    abort();
   }
 
-  regs.fprs = fpregs;
-  regs.fpr_size = 16;
-
-  INFO("Register initial state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
-
-  printf("\n");
-
-  // INFO("Register initial state (in hex)\n");
-  // print_fpregs_hex(fpregs);
-
-  printf("\n\n");
-
-  fpvm_vm_init(&vm, fi, &regs);
-
-
-  // uint64_t rflags = 0;
-  // vm.special.rflags = &rflags;
-  fpvm_vm_run(&vm);
-
-  // printf("RFLAGS = %016lx\n", rflags);
-
-  getcontext(&uc);
-
-  INFO("EFLAGS after VM run: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
-  uint64_t eflags1 = uc.uc_mcontext.gregs[REG_EFL];
-  print_eflags(eflags1, eflags0);
-
-  INFO("Register final state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
-
-  printf("\n");
-
-  // INFO("Register final state (in hex)\n");
-  // print_fpregs_hex(fpregs);
-
-  printf("\n\n");
-
-  INFO("Testing ground truth\n");
-  for (int i = 0; i < 16; i++) {
-    fpregs[i].low = (double)i;
-    fpregs[i].high = (double)i + 0.5;
-  }
-  // Get EFLAGS before ground truth test
-  getcontext(&uc);
-  INFO("EFLAGS before ground truth: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
-
-  INFO("Register initial state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
-
-  fpvm_test_instr(fpregs);
   
-  // Get EFLAGS after ground truth test
-  getcontext(&uc);
-  INFO("EFLAGS after ground truth: 0x%lx\n", uc.uc_mcontext.gregs[REG_EFL]);
-
-  printf("\n");
   
-  INFO("Register final state\n");
-  // print_fpregs_decimal(fpregs);
-  fpvm_dump_xmms_double(stderr, fpregs);
-
-  printf("\n");
-
-  // INFO("Register final state (in hex)\n");
-  // print_fpregs_hex(fpregs);
 
   return 0;
 }
