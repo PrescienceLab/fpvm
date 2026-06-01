@@ -20,6 +20,7 @@ OPCODE(ld64)
 OPCODE(imul)
 OPCODE(iadd)
 OPCODE(fdiv)
+OPCODE(ishl)
 
 
 OPCODE_ARG(xcall1, void*)
@@ -31,6 +32,7 @@ OPCODE_ARG(imm16, uint16_t)
 OPCODE_ARG(imm32, uint32_t)
 OPCODE_ARG(imm64, uint64_t)
 OPCODE_ARG(immptr, void*)
+OPCODE_ARG(ext32, uint8_t)
 
 // Calls an op_t with a special, 1 dest, and 3 sources.
 OPCODE_ARG(call3s1d, void*)

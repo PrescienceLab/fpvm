@@ -7,6 +7,7 @@
 #include <sys/wait.h>
 #include <sys/mman.h>
 #include <fpvm/fir_jit.h>
+#include <stdbool.h>
 #include <lightning.h>
 
 // A cached pointer to the real fork() function from libc
@@ -367,6 +368,37 @@ jit_fn_t translate_fir_to_lightning(uint8_t *fir_code, size_t code_size) {
                 if (ta >= 0) ra.reg_used[ta] = false;
                 Location res = ra_push();
                 jit_addr(JIT_R0, ra_reg, rb_reg);
+                loc_store(JIT_R0, res);
+                break;
+            }
+
+            case fpvm_opcode_ext32: {
+                int signedExt = *(uint8_t *)pc; pc += 1;
+                // Pop one, sign-extend or zero-extend to 64 bits, push result
+                Location a = ra_pop();
+                int ta;
+                jit_gpr_t ra_reg = materialize(a, &ta);
+                if (ta >= 0) ra.reg_used[ta] = false;
+                Location res = ra_push();
+                if (signedExt)
+                    jit_extr_i(JIT_R0, ra_reg);
+                else
+                    jit_extr_ui(JIT_R0, ra_reg);
+                loc_store(JIT_R0, res);
+                break;
+            }
+
+            case fpvm_opcode_ishl: {
+                // Pop two, shift-left, push result
+                Location b = ra_pop();
+                Location a = ra_pop();
+                int ta, tb;
+                jit_gpr_t ra_reg = materialize(a, &ta);
+                jit_gpr_t rb_reg = materialize(b, &tb);
+                if (tb >= 0) ra.reg_used[tb] = false;
+                if (ta >= 0) ra.reg_used[ta] = false;
+                Location res = ra_push();
+                jit_lshr(JIT_R0, ra_reg, rb_reg);
                 loc_store(JIT_R0, res);
                 break;
             }
