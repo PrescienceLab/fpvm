@@ -13,7 +13,7 @@
 #include <string.h>
 
 #include "exception_to_signal_handler.h"
-extern void ppe_handler_entry(void);
+extern void kbe_handler_entry(void);
 
 #include <assert.h>
 #define N 10000
@@ -65,13 +65,13 @@ static void wrong_uepc_usage(void) {
 void use (double f) {}
 
 int main() {
-  int pd_fd = open(PIPELINED_DELEGATE_FILE, O_RDWR | O_SYNC | O_DSYNC);
-  if (pd_fd < 0) {
-      printf("Could not open " PIPELINED_DELEGATE_FILE "\n");
+  int kbe_fd = open(KERNEL_BYPASS_FILE, O_RDWR | O_SYNC | O_DSYNC);
+  if (kbe_fd < 0) {
+      printf("Could not open " KERNEL_BYPASS_FILE "\n");
   }
 
   int rc = 0;
-  rc = ioctl(pd_fd, PIPELINED_DELEGATE_CSR_STATUS);
+  rc = ioctl(kbe_fd, KERNEL_BYPASS_CSR_STATUS);
 
   unsigned long handler_vaddr = (unsigned long) wrong_uepc_usage;
 #ifdef USE_SIGNALS
@@ -87,13 +87,13 @@ int main() {
       .en_flag = 1,
       .trap_mask = 1 << EXC_FLOATING_POINT_FAULT,
   };
-  rc = ioctl(pd_fd, PIPELINED_DELEGATE_DELEGATE_TRAPS, &test_enable_mask);
-  rc = ioctl(pd_fd, PIPELINED_DELEGATE_CSR_STATUS);
-  handler_vaddr = (unsigned long) ppe_handler_entry;
+  rc = ioctl(kbe_fd, KERNEL_BYPASS_DELEGATE_TRAPS, &test_enable_mask);
+  rc = ioctl(kbe_fd, KERNEL_BYPASS_CSR_STATUS);
+  handler_vaddr = (unsigned long) kbe_handler_entry;
 #endif
 
-  rc = ioctl(pd_fd, PIPELINED_DELEGATE_INSTALL_HANDLER_TARGET, handler_vaddr);
-  rc = ioctl(pd_fd, PIPELINED_DELEGATE_CSR_STATUS);
+  rc = ioctl(kbe_fd, KERNEL_BYPASS_INSTALL_HANDLER_TARGET, handler_vaddr);
+  rc = ioctl(kbe_fd, KERNEL_BYPASS_CSR_STATUS);
 
   use(rc);
 
@@ -150,6 +150,6 @@ int main() {
   fprintf(stderr, "Hit FP Handler %lu times\n", hit_handler_count);
   assert(hit_handler_count == N);
 
-  close(pd_fd);
+  close(kbe_fd);
   return 0;
 }

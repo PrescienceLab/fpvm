@@ -745,7 +745,7 @@ void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
 #define BYPASSED_DELEGATE_INSTALL_HANDLER_TARGET 0x80084631
 #define BYPASSED_DELEGATE_DELEGATE_TRAPS 0x80084632
 #define BYPASSED_DELEGATE_CSR_STATUS 0x4633
-#define BYPASSED_DELEGATE_FILE "/dev/pipelined-delegate"
+#define BYPASSED_DELEGATE_FILE "/dev/kernel-bypass"
 
 #define KBE_TRAP_MASK (1 << EXC_FLOATING_POINT)
 
@@ -756,12 +756,12 @@ void arch_set_gpregs(ucontext_t *uc, const fpvm_arch_gpregs_t *gpregs)
 #endif
 
 
-static int ppe_fd=-1;
+static int kbe_fd=-1;
 
 static int init_bypassed_exceptions(void) {
-  ppe_fd = open(BYPASSED_DELEGATE_FILE, O_RDWR);
+  kbe_fd = open(BYPASSED_DELEGATE_FILE, O_RDWR);
 
-  if (ppe_fd<0) {
+  if (kbe_fd<0) {
       ERROR("cannot open %s\n",BYPASSED_DELEGATE_FILE);
       return -1;
   }
@@ -774,16 +774,16 @@ static int init_bypassed_exceptions(void) {
   DEBUG("Installing %s (0x%016lx) as KBE handler\n", "trap_entry",
       (uintptr_t)trap_entry);
 
-  if (ioctl(ppe_fd, BYPASSED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
+  if (ioctl(kbe_fd, BYPASSED_DELEGATE_INSTALL_HANDLER_TARGET, trap_entry) < 0) {
       ERROR("cannot install handler target for KBE\n");
-      close(ppe_fd);
-      ppe_fd=-1;
+      close(kbe_fd);
+      kbe_fd=-1;
       return -1;
   }
-  if (ioctl(ppe_fd, BYPASSED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
+  if (ioctl(kbe_fd, BYPASSED_DELEGATE_DELEGATE_TRAPS, &config) < 0) {
       ERROR("cannot delegate traps for KBE\n");
-      close(ppe_fd);
-      ppe_fd=-1;
+      close(kbe_fd);
+      kbe_fd=-1;
       return -1;
   }
 
@@ -796,9 +796,9 @@ static int init_bypassed_exceptions(void) {
 
 static void deinit_bypassed_exceptions(void)
 {
-    if (ppe_fd>0) {
+    if (kbe_fd>0) {
 	DEBUG("terminating KBE handling\n");
-	close(ppe_fd);
+	close(kbe_fd);
     } else {
 	DEBUG("skipping request to terminate KBE handling as it is not running\n");
     }

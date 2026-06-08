@@ -26,9 +26,9 @@
   csrrw x1, CSR_USCRATCH, x1
   .endm
 
-  .global ppe_handler_entry
+  .global kbe_handler_entry
   .align 2
-ppe_handler_entry:
+kbe_handler_entry:
   /* NOTE: This rdcycle should NOT be in the final handler implementation. We
    * only need it here for timing the inst->handler->next-inst sequence. */
   CYCLES_TO_USCRATCH
